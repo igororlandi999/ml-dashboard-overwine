@@ -2730,6 +2730,134 @@
 
     </div>
 
+    <!-- ═══ ANALISE INTELIGENTE DO ESTOQUE ═══ -->
+    <style>
+      #ai-cards { display:none; grid-template-columns:1fr 1fr; gap:16px; }
+      @media (max-width: 900px) { #ai-cards { grid-template-columns:1fr; } }
+      .ai-metric { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:10px 12px; }
+      .ai-metric .ai-k { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
+      .ai-metric .ai-v { font-size:16px; font-weight:600; color:var(--gold-light); margin-top:3px; }
+    </style>
+    <div class="section-title" style="margin-top:28px">Analise Inteligente do Estoque</div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Analise Inteligente do Estoque</div>
+          <div class="card-meta">Cobertura, risco de ruptura e reposicao recomendada — atualiza conforme a selecao na tabela</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap" id="ai-cenarios">
+          <span style="font-size:11px;color:var(--muted);margin-right:4px">Cenario:</span>
+          <button class="filter-btn" onclick="aiSetCenario('pessimista',this)">Pessimista</button>
+          <button class="filter-btn active" onclick="aiSetCenario('realista',this)">Realista</button>
+          <button class="filter-btn" onclick="aiSetCenario('otimista',this)">Otimista</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:20px">
+        <div id="ai-vazio" class="empty-state" style="padding:40px 20px">
+          <p>Selecione um produto para visualizar a analise de estoque.</p>
+          <span>Use as caixas de selecao na tabela acima para analisar e comparar um ou mais produtos.</span>
+        </div>
+        <div id="ai-cards"></div>
+      </div>
+    </div>
+
+    <!-- Comparacao entre produtos (2+ selecionados) -->
+    <div class="card" id="ai-compare-card" style="display:none;margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Comparativo de Produtos</div>
+          <div class="card-meta">Ordenado do mais critico para o mais saudavel</div>
+        </div>
+      </div>
+      <div class="card-body" style="overflow-x:auto">
+        <table>
+          <thead><tr>
+            <th style="width:26%">Produto</th>
+            <th style="text-align:center">Criticidade</th>
+            <th style="text-align:right">Estoque</th>
+            <th style="text-align:right">Cobertura</th>
+            <th style="text-align:right">Dias Restantes</th>
+            <th style="text-align:right">Valor Excedente</th>
+            <th>Reposicao</th>
+            <th>Proxima Compra</th>
+            <th style="text-align:center">Status</th>
+          </tr></thead>
+          <tbody id="ai-compare-table"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Grafico: Evolucao do Estoque -->
+    <div class="card" id="ai-chart-card" style="display:none;margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Evolucao do Estoque</div>
+          <div class="card-meta" id="ai-chart-meta">Estoque restante projetado mes a mes ate dezembro</div>
+        </div>
+      </div>
+      <div class="card-body" style="padding:20px">
+        <div id="ai-chart-legend" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:11px"></div>
+        <div id="ai-chart" style="height:280px;position:relative;overflow:hidden"></div>
+      </div>
+    </div>
+
+    <!-- Insights automaticos -->
+    <div class="card" id="ai-insights-card" style="display:none;margin-bottom:20px">
+      <div class="card-header">
+        <div class="card-title">Insights Inteligentes</div>
+        <div class="card-meta" id="ai-insights-meta">-</div>
+      </div>
+      <div class="card-body" style="padding:16px 20px" id="ai-insights"></div>
+    </div>
+
+    <!-- ═══ COPILOTO: PAINEL DE ACOES (portfolio inteiro) ═══ -->
+    <div class="section-title" style="margin-top:28px">Copiloto de Compras e Estoque</div>
+
+    <div class="kpi-grid" id="ai-resumo" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">
+      <div class="kpi-card highlight">
+        <div class="kpi-label">Em Ruptura</div>
+        <div class="kpi-value" id="ai-r-ruptura" style="color:var(--red)">-</div>
+        <div class="kpi-delta neutral">risco de faltar</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Com Excesso</div>
+        <div class="kpi-value" id="ai-r-excesso" style="color:var(--amber)">-</div>
+        <div class="kpi-delta neutral">capital preso</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Reposicoes Necessarias</div>
+        <div class="kpi-value" id="ai-r-reposicoes" style="color:var(--amber)">-</div>
+        <div class="kpi-delta neutral">compras a programar</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Para Promocao</div>
+        <div class="kpi-value" id="ai-r-promocao" style="color:var(--gold)">-</div>
+        <div class="kpi-delta neutral">promover ou liquidar</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Cobertura Media</div>
+        <div class="kpi-value gold" id="ai-r-cobertura">-</div>
+        <div class="kpi-delta neutral">estoque ÷ consumo consolidado</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Estoque Excedente</div>
+        <div class="kpi-value" id="ai-r-excedente">-</div>
+        <div class="kpi-delta neutral">valor de venda estimado</div>
+      </div>
+    </div>
+
+    <!-- Recomendacoes Prioritarias -->
+    <div class="card" id="ai-recos-card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Recomendacoes Prioritarias</div>
+          <div class="card-meta" id="ai-recos-meta">Acoes ordenadas automaticamente por prioridade — portfolio completo</div>
+        </div>
+      </div>
+      <div class="card-body" id="ai-recos" style="padding:8px 20px"></div>
+    </div>
+
   </div><!-- fim tab-giro -->
 
 
@@ -8383,6 +8511,7 @@ function grSetPeso(mesIdx, valor) {
   // re-destacar a borda do mes ajustado sem redesenhar tudo
   const card = document.getElementById('gr-peso-' + mesIdx)?.parentElement;
   if (card) card.style.borderColor = 'var(--gold)';
+  renderAnaliseInteligente(); // projecoes da analise usam os mesmos pesos
 }
 
 // Restaura: remove ajustes manuais, volta ao historico real
@@ -8393,6 +8522,7 @@ function grResetPesos() {
     const l = _grLinhas.find(x => x.sku === _grSelecionado);
     if (l) renderGiroCurva(l);
   }
+  renderAnaliseInteligente();
 }
 
 // Estimativa de ritmo (pessimista/realista/otimista) a partir da variacao real
@@ -8453,6 +8583,7 @@ function renderGiro() {
     const sel = linhas.find(l => l.sku === _grSelecionado);
     if (sel) renderGiroPainel(sel);
   }
+  renderAnaliseInteligente(); // Analise Inteligente acompanha o recalculo
 }
 
 let _grLinhas = [];
@@ -8481,8 +8612,16 @@ function renderGiroTabela() {
   tbody.innerHTML = linhas.map(l => `
     <tr onclick="grSelecionar('${escHtml(l.sku)}')" style="cursor:pointer;${l.sku===_grSelecionado?'background:rgba(201,169,110,0.08)':''}">
       <td>
-        <span class="item-title">${escHtml(l.label)}</span>
-        <div class="item-sku">SKU: ${escHtml(l.sku)} · ${l.categoria}</div>
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <input type="checkbox" ${_aiSelecionados.has(l.sku)?'checked':''}
+            onclick="event.stopPropagation()" onchange="aiToggleSku('${escHtml(l.sku)}')"
+            title="Incluir na Analise Inteligente do Estoque"
+            style="margin-top:3px;accent-color:var(--gold);cursor:pointer;flex-shrink:0">
+          <div style="min-width:0">
+            <span class="item-title">${escHtml(l.label)}</span>
+            <div class="item-sku">SKU: ${escHtml(l.sku)} · ${l.categoria}</div>
+          </div>
+        </div>
       </td>
       <td style="text-align:right">${Math.round(l.estoque).toLocaleString('pt-BR')}</td>
       <td style="text-align:center" onclick="event.stopPropagation()">
@@ -8499,6 +8638,8 @@ function grSelecionar(sku) {
   _grSelecionado = sku;
   const l = _grLinhas.find(x => x.sku === sku);
   if (l) renderGiroPainel(l);
+  // Analise Inteligente: se nenhum produto marcado, incluir o clicado automaticamente
+  if (_aiSelecionados.size === 0) { _aiSelecionados.add(sku); renderAnaliseInteligente(); }
   renderGiroTabela(); // re-destaca a linha
 }
 
@@ -8744,6 +8885,1055 @@ function renderGiroCurva(l) {
     draw(Math.max(1,Math.min(N,w)));
   });
   canvas.addEventListener('mouseleave',()=>draw(null));
+}
+
+
+// ══════════════════════════════════════
+// ANALISE INTELIGENTE DO ESTOQUE (aba Giro)
+// ══════════════════════════════════════
+// ENGINE UNICA DE REGRAS (stockRules). Toda decisao de score, status, risco,
+// cobertura, recomendacao, insight, prioridade e resumo executivo nasce em
+// aiAvaliarPortfolio. Nenhum componente de interface decide sozinho.
+// Documentacao completa: REGRAS-ESTOQUE.md.
+//
+// DOIS EIXOS DE PROBLEMA, NUNCA MISTURADOS:
+//   RISCO OPERACIONAL (pode faltar)  → bandas Critico / Ruptura iminente
+//   EXCESSO DE ESTOQUE (capital preso) → banda Excesso de estoque
+// Um produto saudavel em ruptura nunca divide rotulo com um superestocado.
+
+let _aiSelecionados = new Set();
+let _aiCenario = 'realista';
+
+const AI_MESES_LONGO = ['janeiro','fevereiro','marco','abril','maio','junho',
+                        'julho','agosto','setembro','outubro','novembro','dezembro'];
+const AI_CORES = ['#C9A96E','#9B3A4A','#4CAF7D','#E8A84A','#E8D5A8','#7A9BC9'];
+
+// ── Configuracao central (thresholds auditaveis) ──
+const AI_CFG = {
+  minVendasConfiavel: 3,
+  minSemanasConfiavel: 2,
+  coberturaExibicaoMax: 36,     // interface mostra "36+"; tooltip mostra o valor real
+  coberturaIdealMin: 3,
+  coberturaIdealMax: 8,
+  coberturaExcesso: 12,         // acima = eixo excesso
+  coberturaExcessoForte: 16,    // acima = reduzir proxima importacao
+  coberturaLiquidacao: 24,      // acima = liquidar estoque
+  horizonteReposicaoDias: 60,   // REGRA TEMPORARIA ate AI_LEAD_TIME real
+  folgaLeadTimeDias: 15,
+  coberturaAlvoCompraMeses: 3,
+  margemSegurancaCompra: 0.10,
+  tendenciaBaixa: 0.10,
+  variabilidadeAlta: 0.6,       // ritmo instavel → compra parcial
+  sazonalidadeProximaFator: 1.15,
+};
+
+function aiToggleSku(sku) {
+  if (_aiSelecionados.has(sku)) _aiSelecionados.delete(sku);
+  else _aiSelecionados.add(sku);
+  renderAnaliseInteligente();
+}
+function aiSetCenario(c, btn) {
+  _aiCenario = c;
+  document.querySelectorAll('#ai-cenarios .filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+  renderAnaliseInteligente();
+}
+// Mes corrente (0-11) — isolado para regras dependentes de calendario serem testaveis
+function aiMesAtual() { return new Date().getMonth(); }
+
+// ══════════════════════════════════════
+// INTEGRACOES FUTURAS — pontos de entrada (defaults neutros)
+// ══════════════════════════════════════
+// Bling (custos)            → _aiCustoPorSku
+// Bling/ML (preco medio)    → _aiPrecoOverride (senao: media dos anuncios ativos)
+// Pedidos ao fornecedor     → _aiPedidosAbertos (creditam projecao, descontam compra)
+// Lead time da importacao   → AI_LEAD_TIME (antecipa compra, amplia horizonte e qtd)
+// Eventos/sazonalidade ML   → AI_EVENTOS_SAZONAIS (multiplicam demanda do mes)
+// FULL (recebimentos)       → _aiPedidosAbertos com etapa 'chegandoFull'
+// Cadastro de kits          → _aiFatorOverride (fator unidade-base por SKU)
+// Movimentacoes/Shopify     → entram por _grLinhas (vendas/estoque consolidados)
+
+const AI_LEAD_TIME = {
+  fabricacao: 0, transporte: 0, desembaraco: 0, entradaFull: 0, disponibilidade: 0,
+};
+function aiLeadTimeTotal() {
+  return Object.values(AI_LEAD_TIME).reduce((s, v) => s + (v || 0), 0);
+}
+function aiHorizonteReposicao() {
+  const lt = aiLeadTimeTotal();
+  return lt > 0 ? lt + AI_CFG.folgaLeadTimeDias : AI_CFG.horizonteReposicaoDias;
+}
+
+const AI_EVENTOS_SAZONAIS = [
+  // ex.: { nome: 'Black Friday', mesIdx: 10, indice: 1.8, ativo: false },
+];
+function aiIndiceEvento(mesIdx) {
+  return AI_EVENTOS_SAZONAIS
+    .filter(e => e.ativo && e.mesIdx === mesIdx)
+    .reduce((f, e) => f * (e.indice || 1), 1);
+}
+
+let _aiPedidosAbertos = [
+  // ex.: { sku: '21501', qtd: 600, previsao: '2026-09-15', etapa: 'transito' },
+];
+function aiRecebimentosNoMes(sku, ano, mesIdx) {
+  return _aiPedidosAbertos
+    .filter(p => p.sku === sku && p.previsao)
+    .filter(p => { const d = new Date(p.previsao + 'T12:00:00'); return d.getFullYear() === ano && d.getMonth() === mesIdx; })
+    .reduce((s, p) => s + (p.qtd || 0), 0);
+}
+function aiPedidosEmAbertoTotal(sku) {
+  return _aiPedidosAbertos.filter(p => p.sku === sku).reduce((s, p) => s + (p.qtd || 0), 0);
+}
+
+// ── Precos e custos ──
+// SEM custo real nao existe "capital parado": o conceito exibido e
+// VALOR EM ESTOQUE EXCEDENTE (estimado sobre preco de venda, sinalizado).
+// Quando _aiCustoPorSku for alimentado (Bling), a mesma metrica passa a
+// representar capital investido de fato.
+let _aiCustoPorSku = {};
+let _aiPrecoOverride = {};
+const AI_PRECO_ESTIMADO_UN = 80;
+let _aiPrecos = {};
+
+function aiPrecoPorSku() {
+  const acc = {};
+  (allItems || []).forEach(i => {
+    if (i.status !== 'active' || !(i.price > 0)) return;
+    const sku = itemSKU(i);
+    if (!acc[sku]) acc[sku] = { s: 0, n: 0 };
+    acc[sku].s += i.price; acc[sku].n++;
+  });
+  const map = {};
+  Object.keys(acc).forEach(k => { map[k] = acc[k].s / acc[k].n; });
+  Object.assign(map, _aiPrecoOverride);
+  return map;
+}
+function aiValorUnit(sku) {
+  if (_aiCustoPorSku[sku] > 0) return { valor: _aiCustoPorSku[sku], fonte: 'custo' };
+  if (_aiPrecos[sku] > 0)      return { valor: _aiPrecos[sku],      fonte: 'preco-venda' };
+  return { valor: AI_PRECO_ESTIMADO_UN, fonte: 'estimado' };
+}
+
+// ── Unidade-base (kits / bag-in-box) ──
+let _aiFatorOverride = {};
+function aiFatorUnidadesTitulo(titulo) {
+  const t = (titulo || '').toLowerCase();
+  if (/bag[\s-]*in[\s-]*box/.test(t)) return { fator: 1, tipo: 'bag-in-box' };
+  const m = t.match(/kit\s*(?:com\s*)?(\d+)/) || t.match(/pack\s*(?:com\s*)?(\d+)/)
+         || t.match(/caixa\s*(?:com\s*)?(\d+)/) || t.match(/\b(\d+)\s*(?:un|unid|unidades|garrafas)\b/);
+  if (m) { const n = parseInt(m[1]); if (n >= 2 && n <= 24) return { fator: n, tipo: 'kit' }; }
+  return { fator: 1, tipo: 'unitario' };
+}
+function aiUnidadesInfo(sku) {
+  if (_aiFatorOverride[sku] != null)
+    return { fator: _aiFatorOverride[sku], misto: false, tipos: ['override'] };
+  const listings = (allItems || []).filter(i => i.status === 'active' && itemSKU(i) === sku);
+  const fatores = new Set(), tipos = new Set();
+  listings.forEach(i => { const f = aiFatorUnidadesTitulo(i.title); fatores.add(f.fator); tipos.add(f.tipo); });
+  if (!fatores.size) return { fator: 1, misto: false, tipos: [] };
+  const misto = fatores.size > 1 || (tipos.has('bag-in-box') && tipos.size > 1);
+  return { fator: misto ? null : [...fatores][0], misto, tipos: [...tipos] };
+}
+
+// ══════════════════════════════════════
+// PROJECAO E METRICAS BRUTAS
+// ══════════════════════════════════════
+function aiProjecaoMensal(l, cenario, multiplicador) {
+  const est = grEstimativaRitmo(l.porSemana, l.semanasDecorridas, l.mediaReal);
+  const ritmoSemanal = (est[cenario || _aiCenario] ?? est.realista) * (multiplicador || 1);
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const meses = [];
+  let estoque = l.estoque;
+  for (let m = hoje.getMonth(); m <= 11; m++) {
+    const diasNoMes = new Date(ano, m + 1, 0).getDate();
+    const dias = (m === hoje.getMonth()) ? Math.max(0, diasNoMes - hoje.getDate() + 1) : diasNoMes;
+    const peso = grPesoSazonal(new Date(ano, m, 15));
+    const vendas = ritmoSemanal * peso * aiIndiceEvento(m) * (dias / 7);
+    const recebimentos = aiRecebimentosNoMes(l.sku, ano, m);
+    const inicio = estoque;
+    estoque = estoque - vendas + recebimentos;
+    meses.push({ mesIdx: m, nome: GR_MESES_CURTO[m], vendas, recebimentos, inicio, fim: estoque, dias });
+  }
+  return { meses, ritmoSemanal };
+}
+
+function aiMetricas(l, cenario) {
+  const cen = cenario || _aiCenario;
+  const proj = aiProjecaoMensal(l, cen);
+  const vendaMensal = proj.ritmoSemanal * (365.25 / 12 / 7);
+
+  let dados = 'ok';
+  if ((l.vendido || 0) === 0) dados = 'sem-historico';
+  else if ((l.vendido || 0) < AI_CFG.minVendasConfiavel || l.semanasDecorridas < AI_CFG.minSemanasConfiavel)
+    dados = 'insuficiente';
+
+  const cobertura = (dados === 'ok' && vendaMensal > 0) ? l.estoque / vendaMensal : null;
+  const dias = cobertura != null ? cobertura * 30 : null;
+  const estoqueMinimo = (dados === 'ok' && vendaMensal > 0) ? Math.max(1, Math.round(vendaMensal)) : 0;
+
+  let ruptura = null, rupturaZero = null;
+  if (dados === 'ok' && vendaMensal > 0) {
+    proj.meses.forEach(m => {
+      if (!ruptura && m.fim <= estoqueMinimo) ruptura = m;
+      if (!rupturaZero && m.fim <= 0) rupturaZero = m;
+    });
+  }
+  const projDez = proj.meses.length ? proj.meses[proj.meses.length - 1].fim : l.estoque;
+
+  return { proj, vendaMensal, cobertura, dias, estoqueMinimo, ruptura, rupturaZero, projDez, dados };
+}
+
+function aiDataCruzamento(proj, limiar) {
+  const hoje = new Date();
+  let diasAcum = 0;
+  for (const m of proj.meses) {
+    if (m.inicio <= limiar) {
+      const data = new Date(hoje.getTime() + diasAcum * 86400000);
+      return { dias: Math.round(diasAcum), data, mesIdx: m.mesIdx };
+    }
+    if (m.fim <= limiar && m.vendas > 0) {
+      const frac = Math.min(1, Math.max(0, (m.inicio - limiar) / m.vendas));
+      const diasAte = diasAcum + frac * m.dias;
+      const data = new Date(hoje.getTime() + diasAte * 86400000);
+      return { dias: Math.round(diasAte), data, mesIdx: m.mesIdx };
+    }
+    diasAcum += m.dias;
+  }
+  return null;
+}
+
+function aiTendencia(l) {
+  const n = Math.max(1, Math.round(l.semanasDecorridas));
+  if (n < 4) return null;
+  const semanas = [];
+  for (let w = 1; w <= n; w++) semanas.push(l.porSemana[w] || 0);
+  const h = Math.floor(n / 2);
+  const m1 = semanas.slice(0, h).reduce((s, v) => s + v, 0) / h;
+  const m2 = semanas.slice(h).reduce((s, v) => s + v, 0) / (n - h);
+  if (m1 === 0) return m2 > 0 ? 1 : 0;
+  return m2 / m1 - 1;
+}
+
+function aiSazonalidadeProxima() {
+  const pesos = grPesosEfetivos();
+  const media = pesos.reduce((s, v) => s + v, 0) / 12 || 1;
+  const hoje = new Date();
+  const m1 = (hoje.getMonth() + 1) % 12, m2 = (hoje.getMonth() + 2) % 12;
+  return Math.max(pesos[m1] || 1, pesos[m2] || 1) / media > AI_CFG.sazonalidadeProximaFator;
+}
+
+// ══════════════════════════════════════
+// SCORE CONTINUO E EXPLICAVEL — FONTE UNICA
+// ══════════════════════════════════════
+// Score = saude do estoque (0-100). Composicao ADITIVA de fatores continuos:
+// base 50 ± cobertura (curva com pico em ~5 meses), proximidade da ruptura,
+// giro vs meta, tendencia, estabilidade do ritmo, valor excedente relativo e
+// sazonalidade proxima. Cada componente e devolvido para o tooltip do badge.
+// Por serem funcoes continuas de entradas continuas, produtos parecidos
+// recebem notas proximas mas distintas — sem empates artificiais em faixas.
+function aiComporScore(d, ctx) {
+  const { l, m } = d;
+  const comps = [{ label: 'Base', valor: 50 }];
+  let s = 50;
+  const add = (label, val) => {
+    const v = Math.round(val * 10) / 10;
+    if (v !== 0) comps.push({ label, valor: v });
+    s += v;
+  };
+
+  // Cobertura: curva log-gaussiana com pico em 5 meses; excesso penaliza
+  // linearmente alem de 10 meses (continuo, nunca degrau)
+  const c = m.cobertura;
+  const gauss = Math.exp(-Math.pow(Math.log(c) - Math.log(5), 2) / (2 * 0.65 * 0.65));
+  let contrib;
+  if (c < 2)       contrib = -30 * (1 - c / 2) + 20 * gauss;
+  else if (c <= 10) contrib = 28 * gauss;
+  else              contrib = 28 * gauss - Math.min(34, (c - 10) * 1.15);
+  add(c > AI_CFG.coberturaExcesso ? 'Cobertura em excesso' : c < 2 ? 'Cobertura baixa' : 'Cobertura na faixa ideal', contrib);
+
+  // Proximidade da ruptura (continua em dias)
+  const diasR = d.cruzZero ? d.cruzZero.dias : null;
+  if (diasR == null) add('Sem risco de ruptura', 8);
+  else add(`Ruptura em ${diasR} dias`, -36 * Math.pow(Math.max(0, 120 - diasR) / 120, 1.15));
+
+  // Giro vs meta do ciclo
+  const ratio = l.metaSemanal > 0 ? l.mediaReal / l.metaSemanal : 1;
+  add(ratio >= 1 ? 'Giro no ritmo da meta' : 'Giro abaixo da meta',
+      Math.max(-10, Math.min(8, (ratio - 1) * 14)));
+
+  // Tendencia (2a metade vs 1a metade do ciclo)
+  if (d.tendencia != null && Math.abs(d.tendencia) > 0.02)
+    add(d.tendencia >= 0 ? 'Tendencia de crescimento' : 'Tendencia de queda',
+        Math.max(-6, Math.min(6, d.tendencia * 10)));
+
+  // Estabilidade do ritmo (variabilidade baixa = previsivel)
+  if (d.variabilidade != null)
+    add('Estabilidade do ritmo', Math.max(0, 5 * (1 - Math.min(1, d.variabilidade / AI_CFG.variabilidadeAlta))));
+
+  // Valor excedente relativo ao portfolio (capital preso pesa mais quando e o maior)
+  if (ctx.excedenteMax > 0 && d.excedente.valor > 0)
+    add('Valor excedente elevado', -8 * (d.excedente.valor / ctx.excedenteMax));
+
+  // Pico sazonal chegando com ruptura no radar
+  if (ctx.sazonalProxima && diasR != null && diasR <= 90)
+    add('Pico sazonal proximo', -5);
+
+  const score = Math.round(Math.max(2, Math.min(99, s)));
+  return { score, comps };
+}
+
+// Banda (status) — SEPARACAO SEMANTICA DOS EIXOS:
+// nota baixa por EXCESSO vira "Excesso de estoque" (ambar), nunca "Critico";
+// "Critico"/"Ruptura iminente" (vermelho) sao exclusivos de risco de falta.
+function aiBanda(score, eixo, diasRuptura) {
+  if (score >= 80) return { label: 'Excelente', cor: 'var(--green)' };
+  if (score >= 60) return { label: 'Saudavel',  cor: 'var(--gold)'  };
+  if (score >= 40) return { label: 'Atencao',   cor: 'var(--amber)' };
+  if (eixo === 'excesso' || eixo === 'sem-giro')
+    return { label: 'Excesso de estoque', cor: 'var(--amber)' };
+  if (diasRuptura != null && diasRuptura <= 15)
+    return { label: 'Ruptura iminente', cor: 'var(--red)' };
+  return { label: 'Critico', cor: 'var(--red)' };
+}
+
+const AI_EIXO_LABEL = {
+  'ruptura': 'risco operacional — pode faltar', 'baixa-cobertura': 'cobertura baixa',
+  'excesso': 'excesso de estoque — capital preso', 'ok': 'operacao normal',
+  'sem-giro': 'sem vendas no ciclo', 'insuficiente': 'amostra pequena de vendas',
+};
+
+// FONTE UNICA: score composto, banda(status), risco e eixo.
+function aiClassificar(d, ctx) {
+  const m = d.m;
+  if (m.dados === 'sem-historico')
+    return { score: null, comps: [], banda: 'Sem historico', cor: 'var(--muted)',
+             risco: '—', riscoCor: 'var(--muted)', eixo: 'sem-giro', tooltip: 'Sem vendas no ciclo — sem base para score' };
+  if (m.dados === 'insuficiente')
+    return { score: null, comps: [], banda: 'Sem historico suficiente', cor: 'var(--muted)',
+             risco: '—', riscoCor: 'var(--muted)', eixo: 'insuficiente', tooltip: 'Amostra de vendas pequena demais para score confiavel' };
+
+  const diasR = d.cruzZero ? d.cruzZero.dias : null;
+  let eixo = 'ok';
+  if (diasR != null && diasR <= 120) eixo = 'ruptura';
+  else if (m.cobertura > AI_CFG.coberturaExcesso) eixo = 'excesso';
+  else if (m.cobertura < 2) eixo = 'baixa-cobertura';
+
+  const { score, comps } = aiComporScore(d, ctx);
+  const b = aiBanda(score, eixo, diasR);
+
+  let risco, riscoCor;
+  if (diasR == null)     { risco = 'Baixo'; riscoCor = 'var(--green)'; }
+  else if (diasR <= 60)  { risco = 'Alto';  riscoCor = 'var(--red)';   }
+  else if (diasR <= 120) { risco = 'Medio'; riscoCor = 'var(--amber)'; }
+  else                   { risco = 'Baixo'; riscoCor = 'var(--green)'; }
+
+  const tooltip = 'Score ' + score + ' — composicao:&#10;' +
+    comps.map(cp => cp.label + ': ' + (cp.valor > 0 && cp.label !== 'Base' ? '+' : '') + cp.valor).join('&#10;');
+
+  return { score, comps, banda: b.label, cor: b.cor, risco, riscoCor, eixo, tooltip };
+}
+
+// ── Valor em estoque excedente (NAO e capital parado enquanto nao ha custo) ──
+function aiValorExcedente(d) {
+  const { l, m } = d;
+  const vu = aiValorUnit(l.sku);
+  let valor = 0;
+  if (m.dados !== 'ok' || m.vendaMensal === 0) valor = l.estoque * vu.valor;
+  else valor = Math.max(0, l.estoque - m.vendaMensal * AI_CFG.coberturaIdealMax) * vu.valor;
+  return { valor, fonte: vu.fonte };
+}
+function aiExcedenteRotulo(fonte) {
+  return fonte === 'custo' ? 'capital investido (custo real)' : 'valor potencial de venda — estimativa';
+}
+
+function aiProximaCompra(d) {
+  if (!d.cruzMin) return null;
+  const data = new Date(d.cruzMin.data.getTime() - aiLeadTimeTotal() * 86400000);
+  const hoje = new Date();
+  return { data, imediata: data <= hoje, dias: Math.max(0, Math.round((data - hoje) / 86400000)) };
+}
+
+function aiQtdRecomendada(d) {
+  const m = d.m;
+  if (m.dados !== 'ok' || !d.reposicaoAtiva) return 0;
+  const periodoMeses = aiLeadTimeTotal() / 30 + AI_CFG.coberturaAlvoCompraMeses;
+  const demanda = m.vendaMensal * periodoMeses;
+  const emAberto = aiPedidosEmAbertoTotal(d.l.sku);
+  const qtd = demanda * (1 + AI_CFG.margemSegurancaCompra) - emAberto;
+  return Math.max(0, Math.ceil(qtd / 10) * 10);
+}
+
+// ══════════════════════════════════════
+// MOTOR DE AVALIACAO DO PORTFOLIO
+// ══════════════════════════════════════
+function aiAvaliarPortfolio() {
+  _aiPrecos = aiPrecoPorSku();
+  const sazonalProxima = aiSazonalidadeProxima();
+  const itens = _grLinhas.map(l => ({ l, m: aiMetricas(l) }));
+
+  // 1a passada: fatos por produto
+  itens.forEach(d => {
+    d.un       = aiUnidadesInfo(d.l.sku);
+    d.cruzMin  = aiDataCruzamento(d.m.proj, d.m.estoqueMinimo);
+    d.cruzZero = aiDataCruzamento(d.m.proj, 0);
+    if (d.m.dados !== 'ok') { d.cruzMin = null; d.cruzZero = null; }
+    d.tendencia = aiTendencia(d.l);
+    d.excedente = aiValorExcedente(d);
+    d.reposicaoAtiva = !!(d.cruzMin && d.cruzMin.dias <= aiHorizonteReposicao());
+    d.proxCompra = aiProximaCompra(d);
+    d.qtdRec   = aiQtdRecomendada(d);
+    const est = grEstimativaRitmo(d.l.porSemana, d.l.semanasDecorridas, d.l.mediaReal);
+    d.variabilidade = est.realista > 0 ? (est.otimista - est.realista) / est.realista : null;
+    d.receitaMensal = d.m.vendaMensal * (_aiPrecos[d.l.sku] || AI_PRECO_ESTIMADO_UN);
+  });
+
+  // contexto do portfolio para score relativo e priorizacao por impacto
+  const ctx = {
+    sazonalProxima,
+    excedenteMax: Math.max(0, ...itens.map(d => d.excedente.valor)),
+    receitaMax:   Math.max(0, ...itens.map(d => d.receitaMensal)),
+  };
+
+  // 2a passada: classificacao (fonte unica) e grupo
+  itens.forEach(d => {
+    d.cls = aiClassificar(d, ctx);
+    if (d.cls.eixo === 'ruptura' || d.cls.eixo === 'baixa-cobertura') d.grupo = 0;
+    else if (d.cls.eixo === 'ok') d.grupo = 1;
+    else d.grupo = 2;
+  });
+
+  // cobertura media consolidada (Σ estoque-base ÷ Σ consumo-base)
+  const conf = itens.filter(d => d.m.dados === 'ok' && d.m.vendaMensal > 0);
+  const fatorDe = d => (d.un.misto || !d.un.fator) ? 1 : d.un.fator;
+  const totEstoque = conf.reduce((s, d) => s + d.l.estoque * fatorDe(d), 0);
+  const totConsumo = conf.reduce((s, d) => s + d.m.vendaMensal * fatorDe(d), 0);
+  const coberturaMedia = totConsumo > 0 ? totEstoque / totConsumo : 0;
+
+  const recos = aiGerarRecomendacoes(itens, coberturaMedia, sazonalProxima, ctx);
+
+  // RESUMO EXECUTIVO — dois eixos separados, contagens vindas da mesma engine
+  const excedenteTotal = itens.reduce((s, d) => s + d.excedente.valor, 0);
+  const resumo = {
+    ruptura:    itens.filter(d => d.cls.eixo === 'ruptura').length,
+    excesso:    itens.filter(d => d.cls.eixo === 'excesso' || (d.cls.eixo === 'sem-giro' && d.l.estoque > 0)).length,
+    reposicoes: itens.filter(d => d.qtdRec > 0).length,
+    promocao:   recos.filter(r => r.tipo === 'promocao' || r.tipo === 'liquidar').length,
+    coberturaMedia, excedenteTotal,
+    excedenteTemCusto: itens.some(d => d.excedente.fonte === 'custo'),
+  };
+
+  return { itens, coberturaMedia, excedenteTotal, resumo, sazonalProxima, ctx, recos };
+}
+
+// ══════════════════════════════════════
+// ARVORE DE RECOMENDACOES + PRIORIZACAO POR IMPACTO
+// ══════════════════════════════════════
+// Impacto (0-1) = 0.45×urgencia + 0.35×peso financeiro + 0.20×peso do eixo.
+//   urgencia: proximidade da ruptura/cruzamento (compras) ou fixa baixa (excesso)
+//   financeiro: receita mensal em risco (compras) ou valor excedente (promos),
+//               normalizados pelo maior valor do portfolio
+//   eixo: ruptura 1.0 · excesso 0.6 · demais 0.4
+// Prioridade exibida (1-5) deriva do impacto; a ordenacao usa o impacto bruto,
+// entao itens raramente empatam.
+function aiImpacto(r, ctx) {
+  const d = r.d;
+  const receitaN = ctx.receitaMax > 0 ? d.receitaMensal / ctx.receitaMax : 0;
+  const excedN   = ctx.excedenteMax > 0 ? d.excedente.valor / ctx.excedenteMax : 0;
+  let urg, fin;
+  if (['comprar-ja', 'comprar', 'comprar-parcial'].includes(r.tipo)) {
+    urg = d.cruzZero ? Math.max(0.15, (90 - Math.min(90, d.cruzZero.dias)) / 90) : 0.5;
+    fin = receitaN;
+  } else if (r.tipo === 'repor' || r.tipo === 'pos-bf') {
+    urg = d.cruzMin ? Math.max(0.1, (aiHorizonteReposicao() - Math.min(aiHorizonteReposicao(), d.cruzMin.dias)) / aiHorizonteReposicao()) * 0.75 : 0.3;
+    fin = receitaN;
+  } else if (['liquidar', 'promocao', 'reduzir-import', 'nao-comprar', 'reativar'].includes(r.tipo)) {
+    urg = r.tipo === 'liquidar' ? 0.35 : 0.22;
+    fin = excedN;
+  } else if (r.tipo === 'revisar-sku') { urg = 0.45; fin = Math.max(receitaN, excedN); }
+  else { urg = 0.18; fin = receitaN * 0.5; } // full, acompanhar
+  const eixoW = d.cls.eixo === 'ruptura' ? 1 : (d.cls.eixo === 'excesso' || d.cls.eixo === 'sem-giro') ? 0.6 : 0.4;
+  return 0.45 * urg + 0.35 * fin + 0.20 * eixoW;
+}
+
+function aiGerarRecomendacoes(itens, cobMedia, sazonalProxima, ctx) {
+  const recos = [];
+  const push = (tipo, cor, titulo, d, motivo) => recos.push({ tipo, cor, titulo, d, motivo });
+  const excedentes = itens.map(d => d.excedente.valor).filter(v => v > 0);
+  const excedenteMedio = excedentes.length ? excedentes.reduce((s, v) => s + v, 0) / excedentes.length : 0;
+  const mesAtual = aiMesAtual();
+
+  itens.forEach(d => {
+    const { l, m } = d;
+    const qtdTxt = d.qtdRec ? ` Quantidade sugerida: ${d.qtdRec.toLocaleString('pt-BR')} un.` : '';
+
+    if (d.un.misto) {
+      push('revisar-sku', 'var(--amber)', 'Revisar cadastro de SKU', d,
+        'Anuncios deste SKU misturam formatos (' + d.un.tipos.join(', ') + ') — giro, cobertura e valores ficam distorcidos ate separar os SKUs ou definir um fator manual.');
+    }
+
+    if (m.dados === 'insuficiente') {
+      push('acompanhar', 'var(--muted)', 'Manter acompanhamento', d,
+        `Apenas ${l.vendido} venda(s) no ciclo — aguardar mais historico antes de decidir compra ou promocao.`);
+      return;
+    }
+
+    if (m.dados === 'sem-historico') {
+      if (l.estoque >= 6) {
+        if (d.excedente.valor > excedenteMedio && excedenteMedio > 0) {
+          push('liquidar', 'var(--amber)', 'Liquidar estoque', d,
+            `Sem vendas no ciclo com ${grFmtUn(l.estoque)} paradas (${aiFmtBRL(d.excedente.valor)} em valor de venda) — liquidacao libera caixa e espaco.`);
+        } else {
+          push('reativar', 'var(--muted)', 'Reativar giro', d,
+            `Sem vendas no ciclo com ${grFmtUn(l.estoque)} em estoque — revisar preco, fotos e visibilidade do anuncio.`);
+        }
+      }
+      return;
+    }
+
+    // ── eixo ruptura: decisoes de compra ──
+    if (d.cruzZero && d.cruzZero.dias <= 30) {
+      push('comprar-ja', 'var(--red)', 'Comprar imediatamente', d,
+        `Ruptura prevista em ${d.cruzZero.dias} dias (${aiFmtData(d.cruzZero.data)}).${qtdTxt}`);
+    } else if (d.cruzZero && d.cruzZero.dias <= 60) {
+      if (d.variabilidade != null && d.variabilidade > AI_CFG.variabilidadeAlta) {
+        const metade = Math.max(10, Math.ceil(d.qtdRec / 2 / 10) * 10);
+        push('comprar-parcial', 'var(--amber)', 'Comprar parcialmente', d,
+          `Ruptura prevista em ${d.cruzZero.dias} dias, mas o ritmo de vendas esta instavel — comprar ~${metade.toLocaleString('pt-BR')} un agora e reavaliar em 2-3 semanas.`);
+      } else {
+        push('comprar', 'var(--red)', 'Comprar', d,
+          `Ruptura prevista em ${d.cruzZero.dias} dias (${aiFmtData(d.cruzZero.data)}).${qtdTxt}`);
+      }
+    } else if (d.reposicaoAtiva && d.cruzMin) {
+      // set-nov com cruzamento em nov/dez: o pico da Black Friday define a compra
+      if (mesAtual >= 8 && mesAtual <= 10 && d.cruzMin.mesIdx >= 10) {
+        push('pos-bf', 'var(--gold)', 'Comprar somente apos Black Friday', d,
+          `O estoque cruza o minimo em ${aiFmtData(d.cruzMin.data)} — aguardar o resultado da Black Friday para dimensionar a compra com demanda real.`);
+      } else {
+        push('repor', 'var(--amber)', 'Programar reposicao', d,
+          `Estoque cruza o minimo em ${d.cruzMin.dias} dias (${aiFmtData(d.cruzMin.data)}), dentro do horizonte de ${aiHorizonteReposicao()} dias.${qtdTxt}`);
+      }
+    }
+
+    // ── eixo excesso: decisoes de reducao ──
+    if (m.cobertura != null && m.cobertura > AI_CFG.coberturaExcesso) {
+      const promoConds = l.mediaReal < l.metaSemanal
+        && (d.tendencia == null || d.tendencia < AI_CFG.tendenciaBaixa)
+        && !sazonalProxima;
+      if (m.cobertura > AI_CFG.coberturaLiquidacao) {
+        push('liquidar', 'var(--amber)', 'Liquidar estoque', d,
+          `Cobertura de ${aiFmtCoberturaCurta(m)} — muito acima do que o giro atual justifica. Liquidacao parcial libera ${aiFmtBRL(d.excedente.valor)} em ${aiExcedenteRotulo(d.excedente.fonte)}.`);
+      } else if (m.cobertura > AI_CFG.coberturaExcessoForte) {
+        push('reduzir-import', 'var(--gold)', 'Reduzir proxima importacao', d,
+          `Cobertura de ${aiFmtCoberturaCurta(m)} — nao comprar este SKU no proximo pedido e reduzir volumes futuros ate normalizar.`);
+      }
+      if (promoConds) {
+        push('promocao', 'var(--gold)', 'Colocar em promocao', d,
+          `Cobertura de ${aiFmtCoberturaCurta(m)} com giro abaixo da meta, sem crescimento recente e sem pico sazonal proximo. Excedente: ${aiFmtBRL(d.excedente.valor)} (${aiExcedenteRotulo(d.excedente.fonte)}).`);
+      } else if (m.cobertura <= AI_CFG.coberturaExcessoForte) {
+        push('nao-comprar', 'var(--muted)', 'Nao comprar', d,
+          `Cobertura de ${aiFmtCoberturaCurta(m)} — suficiente por varios meses; nao incluir na proxima compra.`);
+      }
+    }
+
+    // ── FULL ──
+    if (!d.cruzZero && !d.reposicaoAtiva
+        && m.cobertura >= AI_CFG.coberturaIdealMin && m.cobertura <= AI_CFG.coberturaExcesso
+        && d.variabilidade !== null && d.variabilidade < 0.4) {
+      push('full', 'var(--green)', 'Transferir para FULL', d,
+        'Cobertura equilibrada e giro consistente — bom candidato a envio ao Mercado Envios Full.');
+    }
+  });
+
+  recos.forEach(r => {
+    r.impacto = aiImpacto(r, ctx);
+    r.prioridade = Math.max(1, Math.min(5, 1 + Math.round(r.impacto * 4)));
+  });
+  recos.sort((a, b) => b.impacto - a.impacto);
+  return recos;
+}
+
+// ══════════════════════════════════════
+// FORMATACAO
+// ══════════════════════════════════════
+function aiFmtBRL(v) {
+  return 'R$\u00a0' + Math.round(v || 0).toLocaleString('pt-BR');
+}
+function aiFmtData(d) {
+  return d.getDate() + ' ' + GR_MESES_CURTO[d.getMonth()].toLowerCase();
+}
+// Interface mostra "36+"; o valor real vai no tooltip (aiCoberturaTitle)
+function aiFmtCobertura(m) {
+  if (m.dados === 'sem-historico') return 'Sem historico';
+  if (m.dados === 'insuficiente')  return 'Sem historico suficiente';
+  if (m.cobertura == null) return '—';
+  if (m.cobertura > AI_CFG.coberturaExibicaoMax) return AI_CFG.coberturaExibicaoMax + '+';
+  return m.cobertura.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' meses';
+}
+function aiCoberturaTitle(m) {
+  if (m.cobertura == null) return '';
+  return 'Cobertura real: ' + m.cobertura.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' meses';
+}
+function aiFmtCoberturaCurta(m) {
+  if (m.cobertura == null) return '—';
+  if (m.cobertura > AI_CFG.coberturaExibicaoMax) return AI_CFG.coberturaExibicaoMax + '+ meses';
+  return m.cobertura.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' meses';
+}
+
+function aiBadge(txt, cor) {
+  return `<span style="display:inline-block;padding:2px 10px;border:1px solid ${cor};border-radius:3px;font-size:11px;font-weight:600;color:${cor}">${txt}</span>`;
+}
+// Badge do score com a COMPOSICAO no tooltip (transparencia do calculo)
+function aiScoreBadge(cls, size) {
+  const s = size || 46;
+  const num = cls.score != null ? cls.score : '—';
+  return `<div title="${cls.tooltip || cls.banda}"
+    style="width:${s}px;height:${s}px;border-radius:50%;border:2px solid ${cls.cor};background:var(--surface);display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:help">
+    <span style="font-size:${s >= 44 ? 15 : 12}px;font-weight:700;color:${cls.cor};line-height:1">${num}</span>
+  </div>`;
+}
+function aiPrioridadeBar(p) {
+  let seg = '';
+  for (let i = 1; i <= 5; i++)
+    seg += `<span style="width:13px;height:4px;border-radius:2px;background:${i <= p ? 'var(--gold)' : 'var(--surface3)'};display:inline-block"></span>`;
+  return `<span style="display:inline-flex;gap:3px;align-items:center" title="Prioridade ${p} de 5">${seg}</span>`;
+}
+
+// ══════════════════════════════════════
+// INTERFACE (consome apenas a engine)
+// ══════════════════════════════════════
+
+function aiCardHtml(d) {
+  const { l, m, cls } = d;
+  const met = (k, v, cor, title) => `<div class="ai-metric"${title ? ` title="${title}"` : ''}><div class="ai-k">${k}</div><div class="ai-v"${cor ? ` style="color:${cor}"` : ''}>${v}</div></div>`;
+
+  const diasRuptura = d.cruzZero
+    ? `<span style="color:${d.cruzZero.dias <= 60 ? 'var(--red)' : d.cruzZero.dias <= 120 ? 'var(--amber)' : 'var(--cream)'}">${d.cruzZero.dias} dias</span>`
+    : (m.dados === 'ok' ? '<span style="color:var(--green)">Sem previsao</span>' : '<span style="color:var(--muted)">—</span>');
+
+  const proxCompra = d.proxCompra && d.reposicaoAtiva
+    ? (d.proxCompra.imediata
+        ? '<span style="color:var(--red)">Imediata</span>'
+        : `<span style="color:var(--amber)">${aiFmtData(d.proxCompra.data)}</span>`)
+    : (m.dados === 'ok' ? '<span style="color:var(--green)">Nenhuma</span>' : '<span style="color:var(--muted)">—</span>');
+
+  const qtdRec = d.qtdRec > 0
+    ? `<span style="color:var(--amber)">${d.qtdRec.toLocaleString('pt-BR')} un</span>`
+    : '<span style="color:var(--muted)">—</span>';
+
+  const excedTitle = d.excedente.fonte === 'custo'
+    ? 'Capital investido calculado sobre CUSTO real'
+    : 'Valor potencial de VENDA do estoque excedente — estimativa ate integrar o custo real (Bling)';
+  const exced = d.excedente.valor > 0
+    ? aiFmtBRL(d.excedente.valor) + (d.excedente.fonte === 'custo' ? '' : '<span style="color:var(--muted);font-size:11px"> est.</span>')
+    : '—';
+
+  let estoqueTxt = grFmtUn(l.estoque);
+  if (d.un.misto) estoqueTxt += '<span style="color:var(--amber);font-size:11px"> SKU misto</span>';
+  else if (d.un.fator > 1) estoqueTxt += `<span style="color:var(--muted);font-size:11px"> · ${Math.round(l.estoque * d.un.fator).toLocaleString('pt-BR')} garrafas</span>`;
+
+  return `
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:18px">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px">
+        <div style="min-width:0">
+          <div style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--gold);line-height:1.35">${escHtml(l.label)}</div>
+          <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-top:3px">SKU ${escHtml(l.sku)} · ${l.categoria}</div>
+          <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            ${aiBadge(cls.banda, cls.cor)}
+            <span style="font-size:10px;color:var(--muted)">${AI_EIXO_LABEL[cls.eixo] || ''}</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0">
+          ${aiScoreBadge(cls)}
+          <span style="font-size:10px;font-weight:600;color:${cls.cor};text-transform:uppercase;letter-spacing:0.04em">Saude</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${met('Estoque Atual', estoqueTxt)}
+        ${met('Venda Media/Mes', m.dados === 'ok' ? grFmtUn(m.vendaMensal) : (m.dados === 'sem-historico' ? '—' : '<span style="color:var(--muted)">Baixo volume</span>'))}
+        ${met('Cobertura', aiFmtCobertura(m), null, aiCoberturaTitle(m))}
+        ${met('Dias de Estoque', m.dias != null ? Math.round(Math.min(m.dias, AI_CFG.coberturaExibicaoMax * 30)).toLocaleString('pt-BR') + (m.dias > AI_CFG.coberturaExibicaoMax * 30 ? '+' : '') + ' dias' : '—', null, m.dias != null && m.dias > AI_CFG.coberturaExibicaoMax * 30 ? 'Valor real: ' + Math.round(m.dias).toLocaleString('pt-BR') + ' dias' : '')}
+        ${met('Estoque Proj. Dezembro', grFmtUn(Math.max(0, m.projDez)))}
+        ${met('Risco de Ruptura', cls.risco, cls.riscoCor)}
+        ${met('Dias ate Ruptura', diasRuptura)}
+        ${met('Proxima Compra', proxCompra)}
+        ${met('Qtd Recomendada', qtdRec)}
+        ${met('Valor Excedente', exced, d.excedente.valor > 0 ? 'var(--gold-light)' : 'var(--muted)', excedTitle)}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;font-weight:600">Reposicao Recomendada</span>
+        <span style="font-size:13px;font-weight:600">${d.qtdRec > 0 && d.cruzMin
+          ? `<span style="color:var(--amber)">~${d.qtdRec.toLocaleString('pt-BR')} un ate ${aiFmtData(d.cruzMin.data)}</span>`
+          : '<span style="color:var(--green)">Nenhuma</span>'}</span>
+      </div>
+    </div>`;
+}
+
+function renderAnaliseInteligente() {
+  const vazio = document.getElementById('ai-vazio');
+  const cards = document.getElementById('ai-cards');
+  if (!vazio || !cards) return;
+
+  const validos = new Set(_grLinhas.map(l => l.sku));
+  [..._aiSelecionados].forEach(s => { if (!validos.has(s)) _aiSelecionados.delete(s); });
+
+  const av = aiAvaliarPortfolio();
+  renderAiResumo(av);
+  renderAiRecomendacoes(av);
+
+  const sel = av.itens.filter(d => _aiSelecionados.has(d.l.sku));
+  const compareCard  = document.getElementById('ai-compare-card');
+  const chartCard    = document.getElementById('ai-chart-card');
+  const insightsCard = document.getElementById('ai-insights-card');
+
+  if (!sel.length) {
+    vazio.style.display = 'block';
+    cards.style.display = 'none';
+    if (compareCard)  compareCard.style.display  = 'none';
+    if (chartCard)    chartCard.style.display    = 'none';
+    if (insightsCard) insightsCard.style.display = 'none';
+    return;
+  }
+
+  vazio.style.display = 'none';
+  cards.style.display = 'grid';
+  cards.innerHTML = sel.map(d => aiCardHtml(d)).join('');
+
+  if (compareCard) {
+    if (sel.length > 1) { compareCard.style.display = 'block'; renderAiCompare(sel); }
+    else compareCard.style.display = 'none';
+  }
+  if (chartCard)    { chartCard.style.display = 'block';    renderAiChart(sel); }
+  if (insightsCard) { insightsCard.style.display = 'block'; renderAiInsights(sel, av); }
+}
+
+function renderAiCompare(dados) {
+  const ord = [...dados].sort((a, b) => {
+    if (a.grupo !== b.grupo) return a.grupo - b.grupo;
+    if (a.grupo === 0) return (a.cruzZero?.dias ?? 9999) - (b.cruzZero?.dias ?? 9999);
+    if (a.grupo === 2) return b.excedente.valor - a.excedente.valor;
+    return (b.cls.score ?? 0) - (a.cls.score ?? 0);
+  });
+
+  document.getElementById('ai-compare-table').innerHTML = ord.map(d => {
+    const { l, m, cls } = d;
+    const dias = d.cruzZero
+      ? `<span style="color:${d.cruzZero.dias <= 60 ? 'var(--red)' : 'var(--amber)'}">${d.cruzZero.dias} dias</span>`
+      : (m.dados === 'ok' ? '<span style="color:var(--green)">Sem ruptura</span>' : '<span style="color:var(--muted)">—</span>');
+    const compra = d.proxCompra && d.reposicaoAtiva
+      ? (d.proxCompra.imediata ? '<span style="color:var(--red)">Imediata</span>' : aiFmtData(d.proxCompra.data))
+      : '<span style="color:var(--muted)">Nenhuma</span>';
+    return `
+    <tr>
+      <td>
+        <span class="item-title">${escHtml(l.label)}</span>
+        <div class="item-sku">SKU ${escHtml(l.sku)}${d.un.misto ? ' · <span style="color:var(--amber)">misto</span>' : ''}</div>
+      </td>
+      <td style="text-align:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px" title="${cls.tooltip || ''}">
+          <span style="font-size:14px;font-weight:700;color:${cls.cor}">${cls.score != null ? cls.score : '—'}</span>
+          <div style="width:44px;height:3px;background:var(--surface3);border-radius:2px;overflow:hidden">
+            <div style="width:${cls.score ?? 0}%;height:100%;background:${cls.cor}"></div>
+          </div>
+        </div>
+      </td>
+      <td style="text-align:right">${grFmtUn(l.estoque)}</td>
+      <td style="text-align:right;color:var(--gold-light)" title="${aiCoberturaTitle(m)}">${aiFmtCobertura(m)}</td>
+      <td style="text-align:right">${dias}</td>
+      <td style="text-align:right;color:${d.excedente.valor > 0 ? 'var(--gold-light)' : 'var(--muted)'}" title="${d.excedente.fonte === 'custo' ? 'Custo real' : 'Estimativa sobre preco de venda'}">${d.excedente.valor > 0 ? aiFmtBRL(d.excedente.valor) : '—'}</td>
+      <td style="font-size:12px;color:${d.qtdRec > 0 ? 'var(--amber)' : 'var(--muted)'}">
+        ${d.qtdRec > 0 ? '~' + d.qtdRec.toLocaleString('pt-BR') + ' un' : 'Nenhuma'}
+      </td>
+      <td style="font-size:12px">${compra}</td>
+      <td style="text-align:center">${aiBadge(cls.banda, cls.cor)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Grafico Evolucao do Estoque (visual inalterado; tooltip completo)
+function renderAiChart(dados) {
+  const el = document.getElementById('ai-chart');
+  const cenLbl = { pessimista: 'Pessimista', realista: 'Realista', otimista: 'Otimista' }[_aiCenario];
+  document.getElementById('ai-chart-meta').textContent =
+    `Estoque restante projetado mes a mes ate dezembro · cenario ${cenLbl}`;
+
+  const labels = ['Hoje', ...dados[0].m.proj.meses.map(mm => mm.nome)];
+  const mesIdxs = [null, ...dados[0].m.proj.meses.map(mm => mm.mesIdx)];
+  const series = dados.map((d, i) => ({
+    nome: d.l.label, sku: d.l.sku, cor: AI_CORES[i % AI_CORES.length],
+    minimo: d.m.estoqueMinimo, ruptura: d.m.ruptura, vendaMensal: d.m.vendaMensal,
+    estoqueInicial: d.l.estoque,
+    vendas: [0, ...d.m.proj.meses.map(mm => mm.vendas)],
+    pontos: [d.l.estoque, ...d.m.proj.meses.map(mm => Math.max(0, mm.fim))],
+  }));
+
+  document.getElementById('ai-chart-legend').innerHTML = series.map(s =>
+    `<span style="display:flex;align-items:center;gap:6px;color:var(--muted)">
+      <span style="width:14px;height:2px;background:${s.cor};display:inline-block"></span>${escHtml(s.sku)}
+    </span>`).join('') + (series.length === 1 && series[0].minimo > 0
+      ? `<span style="display:flex;align-items:center;gap:6px;color:var(--muted)">
+          <span style="width:14px;height:0;border-top:2px dashed var(--red);display:inline-block"></span>Estoque minimo (${series[0].minimo.toLocaleString('pt-BR')} un)
+        </span>` : '');
+
+  const DPR = window.devicePixelRatio || 1;
+  const W = el.offsetWidth || 720, H = 280;
+  el.innerHTML = `<canvas id="ai-cv" style="width:${W}px;height:${H}px;display:block"></canvas>`;
+  const canvas = document.getElementById('ai-cv');
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  const ctx = canvas.getContext('2d'); ctx.scale(DPR, DPR);
+  const C = canvasColors();
+  const pad = { top: 16, right: 14, bottom: 28, left: 52 };
+  const iW = W - pad.left - pad.right, iH = H - pad.top - pad.bottom;
+  const n = labels.length;
+  const maxV = Math.max(1, ...series.flatMap(s => s.pontos), ...(series.length === 1 ? [series[0].minimo] : []));
+  const xPos = i => pad.left + (n > 1 ? (i / (n - 1)) * iW : iW / 2);
+  const yPos = v => pad.top + iH - (v / maxV) * iH;
+
+  function draw(hoverIdx) {
+    ctx.clearRect(0, 0, W, H);
+
+    [0, 0.25, 0.5, 0.75, 1].forEach(f => {
+      const yy = pad.top + iH - f * iH;
+      ctx.strokeStyle = 'rgba(201,169,110,0.08)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + iW, yy); ctx.stroke();
+      ctx.font = '9px JetBrains Mono, monospace'; ctx.fillStyle = C.muted; ctx.textAlign = 'right';
+      ctx.fillText(Math.round(f * maxV).toLocaleString('pt-BR'), pad.left - 6, yy + 3);
+    });
+
+    labels.forEach((lb, i) => {
+      ctx.font = '9px Plus Jakarta Sans, sans-serif'; ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+      ctx.fillText(lb, xPos(i), H - 8);
+    });
+
+    if (series.length === 1 && series[0].vendaMensal > 0) {
+      const yy = yPos(series[0].minimo);
+      ctx.save();
+      ctx.strokeStyle = C.red; ctx.lineWidth = 1.4; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(pad.left, yy); ctx.lineTo(pad.left + iW, yy); ctx.stroke();
+      ctx.restore();
+    }
+
+    series.forEach(s => {
+      if (series.length === 1) {
+        const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + iH);
+        grad.addColorStop(0, 'rgba(201,169,110,0.18)');
+        grad.addColorStop(1, 'rgba(201,169,110,0.01)');
+        ctx.beginPath();
+        s.pontos.forEach((v, i) => { const x = xPos(i), y = yPos(v); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+        ctx.lineTo(xPos(n - 1), pad.top + iH); ctx.lineTo(xPos(0), pad.top + iH); ctx.closePath();
+        ctx.fillStyle = grad; ctx.fill();
+      }
+      ctx.beginPath();
+      s.pontos.forEach((v, i) => { const x = xPos(i), y = yPos(v); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
+      ctx.strokeStyle = s.cor; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.stroke();
+
+      if (s.ruptura) {
+        const idx = labels.indexOf(s.ruptura.nome);
+        if (idx > 0) {
+          const rx = xPos(idx), ry = yPos(Math.max(0, s.pontos[idx]));
+          ctx.beginPath(); ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = C.red; ctx.fill();
+          ctx.strokeStyle = C.surface; ctx.lineWidth = 1.5; ctx.stroke();
+          if (series.length === 1) {
+            ctx.font = '600 10px Plus Jakarta Sans, sans-serif';
+            ctx.fillStyle = C.red;
+            ctx.textAlign = idx > n / 2 ? 'right' : 'left';
+            ctx.fillText('Ruptura prevista', rx + (idx > n / 2 ? -10 : 10), ry - 10);
+          }
+        }
+      }
+    });
+
+    if (hoverIdx !== null) {
+      const hx = xPos(hoverIdx);
+      ctx.strokeStyle = 'rgba(201,169,110,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, pad.top + iH); ctx.stroke(); ctx.setLineDash([]);
+      let refY = pad.top + iH;
+      const lines = [labels[hoverIdx]];
+      if (mesIdxs[hoverIdx] != null) lines.push('Mes: ' + AI_MESES_LONGO[mesIdxs[hoverIdx]]);
+      series.forEach(s => {
+        const v = s.pontos[hoverIdx];
+        const y = yPos(v);
+        refY = Math.min(refY, y);
+        ctx.beginPath(); ctx.arc(hx, y, 3.5, 0, Math.PI * 2); ctx.fillStyle = s.cor; ctx.fill();
+        if (series.length === 1) {
+          lines.push('Estoque restante: ' + Math.round(v).toLocaleString('pt-BR') + ' un');
+          if (hoverIdx > 0) lines.push('Consumo previsto: ' + Math.round(s.vendas[hoverIdx]).toLocaleString('pt-BR') + ' un');
+          if (s.vendaMensal > 0) {
+            const cob = v / s.vendaMensal;
+            lines.push('Cobertura restante: ' + cob.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' meses');
+          }
+          if (s.estoqueInicial > 0) {
+            const consumido = Math.max(0, Math.min(100, (s.estoqueInicial - v) / s.estoqueInicial * 100));
+            lines.push('Consumido: ' + consumido.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + '%');
+          }
+        } else {
+          lines.push(`${s.sku}: ${Math.round(v).toLocaleString('pt-BR')} un`);
+        }
+      });
+      drawTooltipBox(ctx, labels[hoverIdx], lines, hx, refY, W, H);
+    }
+  }
+
+  draw(null);
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    if (mx < pad.left || mx > pad.left + iW) { draw(null); return; }
+    const idx = Math.round((mx - pad.left) / iW * (n - 1));
+    draw(Math.max(0, Math.min(n - 1, idx)));
+  });
+  canvas.addEventListener('mouseleave', () => draw(null));
+}
+
+// ══════════════════════════════════════
+// INSIGHTS — analise com voz de gestor, rankeada por relevancia
+// ══════════════════════════════════════
+// Cada situacao gera frases candidatas com peso de relevancia; exibimos as 6
+// mais relevantes por produto. Situacoes diferentes → textos diferentes.
+function aiInsightsProduto(d, av) {
+  const { l, m, cls } = d;
+  const cand = [];
+  const add = (peso, txt) => cand.push({ peso, txt });
+
+  if (d.un.misto) add(95, 'Este SKU mistura formatos diferentes no cadastro (' + d.un.tipos.join(', ') + ') — recomendo separar os SKUs antes de confiar nas metricas abaixo.');
+
+  if (m.dados === 'sem-historico') {
+    add(100, 'Sem vendas no ciclo atual — nao ha base para projetar demanda.');
+    if (d.excedente.valor > 0) add(80, `Ha ${aiFmtBRL(d.excedente.valor)} em ${aiExcedenteRotulo(d.excedente.fonte)} sem giro; uma liquidacao parcial liberaria caixa e espaco.`);
+    add(60, 'Antes de qualquer compra, vale revisar preco, fotos e posicionamento do anuncio para destravar o giro.');
+  } else if (m.dados === 'insuficiente') {
+    add(100, `A amostra ainda e pequena (${l.vendido} venda${l.vendido > 1 ? 's' : ''} no ciclo) — qualquer projecao agora seria especulativa.`);
+    add(60, 'Sugiro acompanhar por mais 2-3 semanas antes de decidir compra ou promocao.');
+  } else {
+    // ruptura / reposicao
+    if (d.cruzZero) {
+      add(100, `No ritmo atual, o estoque se esgota em ${d.cruzZero.dias} dias (${aiFmtData(d.cruzZero.data)})${d.qtdRec ? ` — recomendo garantir a compra de ~${d.qtdRec.toLocaleString('pt-BR')} unidades o quanto antes` : ''}.`);
+    } else if (d.reposicaoAtiva && d.cruzMin) {
+      add(92, `O estoque cruza o minimo em ${d.cruzMin.dias} dias — vale programar a reposicao${d.qtdRec ? ` (~${d.qtdRec.toLocaleString('pt-BR')} un)` : ''} para nao operar no limite.`);
+    }
+
+    // Black Friday
+    const mNov = m.proj.meses.find(mm => mm.mesIdx === 10);
+    const mDez = m.proj.meses.find(mm => mm.mesIdx === 11);
+    if (mNov && mDez && mNov.inicio < (mNov.vendas + mDez.vendas) * 1.5) {
+      add(90, 'Atencao a Black Friday: o estoque projetado chega apertado a novembro — um pico de demanda pode antecipar a ruptura.');
+    }
+
+    // excesso
+    if (m.cobertura > AI_CFG.coberturaExcesso) {
+      add(85, `Este SKU esta com cobertura bem acima do ideal do portfolio (${aiFmtCoberturaCurta(m)} contra media de ${av.coberturaMedia.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} meses) — considere reduzir as proximas compras e priorizar campanhas promocionais.`);
+      if (d.excedente.valor > 0) add(78, `Ha oportunidade de liberar caixa: ~${aiFmtBRL(d.excedente.valor)} em ${aiExcedenteRotulo(d.excedente.fonte)} alem de ${AI_CFG.coberturaIdealMax} meses de cobertura.`);
+    }
+
+    // simulacao +20%
+    const sim20 = aiDataCruzamento(aiProjecaoMensal(l, _aiCenario, 1.2), 0);
+    if (!sim20) add(75, 'Mesmo em um cenario de crescimento de 20% nas vendas, nao ha risco de ruptura ate dezembro.');
+    else if (!d.cruzZero) add(76, `Um crescimento de 20% nas vendas anteciparia a ruptura para ${AI_MESES_LONGO[sim20.mesIdx]} — vale acompanhar o ritmo de perto.`);
+
+    // cobertura base
+    add(70, `O estoque atual suporta aproximadamente ${aiFmtCoberturaCurta(m)} considerando o ritmo recente de vendas.`);
+
+    // tendencia notavel
+    if (d.tendencia != null && Math.abs(d.tendencia) >= 0.25) {
+      const pct = Math.round(Math.abs(d.tendencia) * 100);
+      add(68, d.tendencia > 0
+        ? `As vendas da segunda metade do ciclo estao ~${pct}% acima da primeira — a projecao ja incorpora essa aceleracao.`
+        : `As vendas da segunda metade do ciclo cairam ~${pct}% em relacao a primeira — se a queda persistir, a cobertura real sera maior que a projetada.`);
+    }
+
+    // cenario otimista
+    if (_aiCenario !== 'otimista' && !d.cruzZero) {
+      const otim = aiMetricas(l, 'otimista');
+      if (otim.rupturaZero) add(66, `No cenario Otimista a ruptura chegaria em ${AI_MESES_LONGO[otim.rupturaZero.mesIdx]} — e o cenario que exige mais atencao.`);
+    }
+
+    // giro
+    if (l.mediaReal < l.metaSemanal) {
+      add(60, `O giro esta abaixo do planejado para o ciclo (${l.mediaReal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}/sem contra meta de ${l.metaSemanal.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}) — vale revisar preco ou visibilidade do anuncio.`);
+    }
+
+    // FULL
+    if (!d.cruzZero && !d.reposicaoAtiva && m.cobertura >= AI_CFG.coberturaIdealMin && m.cobertura <= AI_CFG.coberturaExcesso
+        && d.variabilidade !== null && d.variabilidade < 0.4) {
+      add(55, 'Giro consistente e cobertura equilibrada — bom candidato a envio ao FULL.');
+    }
+
+    // situacao confortavel
+    if (cls.eixo === 'ok' && (cls.banda === 'Excelente' || cls.banda === 'Saudavel')) {
+      add(50, 'Situacao confortavel: risco operacional baixo e cobertura dentro da faixa saudavel.');
+    }
+  }
+
+  return cand.sort((a, b) => b.peso - a.peso).slice(0, 6).map(x => x.txt);
+}
+
+function renderAiInsights(dados, av) {
+  const cenLbl = { pessimista: 'Pessimista', realista: 'Realista', otimista: 'Otimista' }[_aiCenario];
+  document.getElementById('ai-insights-meta').textContent =
+    `Cenario ${cenLbl} · analise gerada pela engine de regras`;
+
+  const blocos = dados.map(d => {
+    const frases = aiInsightsProduto(d, av);
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px">
+          <div style="font-size:12px;font-weight:600;color:var(--gold)">${escHtml(d.l.label)} <span style="color:var(--muted);font-weight:400;font-family:var(--font-mono);font-size:11px">SKU ${escHtml(d.l.sku)}</span></div>
+          <span style="font-size:11px;font-weight:700;color:${d.cls.cor}" title="${d.cls.tooltip || ''}">${d.cls.score != null ? d.cls.score + ' · ' : ''}${d.cls.banda}</span>
+        </div>
+        ${frases.map(f => `<div style="font-size:12px;color:var(--cream);line-height:1.7;display:flex;gap:8px"><span style="color:var(--gold);flex-shrink:0">—</span><span>${f}</span></div>`).join('')}
+      </div>`;
+  });
+
+  const elIns = document.getElementById('ai-insights');
+  elIns.innerHTML = blocos.join('');
+  const last = elIns.lastElementChild;
+  if (last) last.style.borderBottom = 'none';
+}
+
+// ── Painel de Acoes (resumo executivo — dois eixos separados) ──
+function renderAiResumo(av) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('ai-r-ruptura',    av.resumo.ruptura);
+  set('ai-r-excesso',    av.resumo.excesso);
+  set('ai-r-reposicoes', av.resumo.reposicoes);
+  set('ai-r-promocao',   av.resumo.promocao);
+  set('ai-r-cobertura',  av.resumo.coberturaMedia > 0
+    ? av.resumo.coberturaMedia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' meses' : '—');
+  set('ai-r-excedente',  aiFmtBRL(av.resumo.excedenteTotal));
+}
+
+// ── Recomendacoes Prioritarias (ordenadas por impacto) ──
+function renderAiRecomendacoes(av) {
+  const el = document.getElementById('ai-recos');
+  if (!el) return;
+  const meta = document.getElementById('ai-recos-meta');
+  const LIMITE = 12;
+  const recos = av.recos.slice(0, LIMITE);
+  if (meta) meta.textContent = av.recos.length
+    ? `${av.recos.length} acoes identificadas · exibindo ${recos.length} por impacto (urgencia × valor × eixo) · cenario ${_aiCenario}`
+    : 'Portfolio completo analisado automaticamente';
+
+  if (!recos.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:32px 0"><p>Nenhuma acao prioritaria</p><span>Portfolio saudavel no cenario atual.</span></div>';
+    return;
+  }
+  el.innerHTML = recos.map(r => `
+    <div style="display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border);align-items:stretch">
+      <div style="width:3px;background:${r.cor};border-radius:2px;flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:5px">
+          <span style="display:inline-block;padding:2px 10px;border:1px solid ${r.cor};border-radius:3px;font-size:11px;font-weight:600;color:${r.cor};text-transform:uppercase;letter-spacing:0.04em">${r.titulo}</span>
+          ${aiPrioridadeBar(r.prioridade)}
+        </div>
+        <div style="font-size:13px;font-weight:500;color:var(--cream)">${escHtml(r.d.l.label)}
+          <span style="font-size:11px;color:var(--muted);font-family:var(--font-mono)"> SKU ${escHtml(r.d.l.sku)}</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5">${r.motivo}</div>
+      </div>
+      <div style="display:flex;align-items:center">${aiScoreBadge(r.d.cls, 38)}</div>
+    </div>`).join('');
+  const last = el.lastElementChild;
+  if (last) last.style.borderBottom = 'none';
 }
 
 
