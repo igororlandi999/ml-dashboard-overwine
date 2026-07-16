@@ -1299,10 +1299,10 @@
 <!-- SETUP -->
 <div id="setup-screen">
 
-  <!-- LOGIN POR SENHA (autenticacao via backend — nenhum token ML no navegador) -->
+  <!-- MODO VISUALIZADOR (senha simples) -->
   <div id="login-viewer">
     <h2>Overwine Dashboard</h2>
-    <p>Digite a senha de acesso para entrar no dashboard.</p>
+    <p>Digite a senha de acesso para visualizar o dashboard.</p>
     <div class="input-group" style="margin-top:8px">
       <label>Senha de acesso</label>
       <input type="password" id="viewer-pass" placeholder="••••••••"
@@ -1310,6 +1310,30 @@
     </div>
     <button class="btn-primary" onclick="checkViewerPass()">Entrar</button>
     <div id="viewer-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none">Senha incorreta.</div>
+    <div class="setup-divider" style="margin-top:24px">acesso administrador</div>
+    <button class="btn-secondary" onclick="showAdminLogin()">Conectar com Mercado Livre</button>
+  </div>
+
+  <!-- MODO ADMIN (OAuth / token) -->
+  <div id="login-admin" style="display:none">
+    <h2>Overwine Dashboard</h2>
+    <p>Conecte sua conta do Mercado Livre. O login é feito uma única vez — o sistema renova o acesso automaticamente.</p>
+    <button class="btn-primary btn-ml-login" onclick="doOAuthLogin()">Entrar com Mercado Livre</button>
+    <div class="setup-divider">ou insira o token manualmente</div>
+    <div class="input-group">
+      <label>Access Token</label>
+      <input type="text" id="token-input" placeholder="APP_USR-..." />
+    </div>
+    <div class="input-group">
+      <label>User ID</label>
+      <input type="text" id="userid-input" placeholder="2329718196" />
+    </div>
+    <button class="btn-secondary" onclick="connectWithToken()">Conectar com token</button>
+    <div style="margin-top:16px">
+      <button class="btn-secondary" onclick="showViewerLogin()" style="font-size:11px;padding:7px">
+        Voltar ao login de visualizacao
+      </button>
+    </div>
   </div>
 
 </div>
@@ -3042,8 +3066,8 @@
 // ══════════════════════════════════════
 // CONFIG
 // ══════════════════════════════════════
-// USER_ID e identificador PUBLICO do vendedor (aparece em URLs do ML) — nao e credencial.
-let USER_ID = 2329718196;
+let ACCESS_TOKEN = '';
+let USER_ID      = 0;
 
 let allItems   = [];
 let allOrders  = [];
@@ -3486,99 +3510,23 @@ function initMgPubManualInput() {
 // ══════════════════════════════════════
 // API
 // ══════════════════════════════════════
-// ══════════════════════════════════════
-// CAMADA DE REDE — backend BFF (overwine-assistant)
-// O navegador NUNCA recebe, envia ou armazena tokens do Mercado Livre.
-// Autenticacao: sessao opaca mantida SOMENTE EM MEMORIA (SESSION_TOKEN),
-// obtida por senha via POST /api/auth/login. Toda consulta ao ML passa
-// pelo proxy com allowlist do backend.
-// ══════════════════════════════════════
-const BACKEND_URL = 'https://overwine-assistant.vercel.app';
-let SESSION_TOKEN = null; // nunca em localStorage/sessionStorage
-
-function handleSessionExpired() {
-  SESSION_TOKEN = null;
-  clearInterval(refreshTimer);
-  clearInterval(countdownTimer);
-  hideLoading();
-  document.getElementById('main-header').style.display  = 'none';
-  document.getElementById('main-content').style.display = 'none';
-  showSetup();
-  showToast('Sessao expirada. Digite a senha novamente.', 'error');
-}
-
-async function backendFetch(path, init = {}) {
-  const headers = Object.assign({}, init.headers || {});
-  if (SESSION_TOKEN) headers['Authorization'] = 'Bearer ' + SESSION_TOKEN;
-  if (init.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-  const res = await fetch(BACKEND_URL + path, Object.assign({}, init, { headers }));
-  if (res.status === 401 && path.indexOf('/api/auth/login') === -1) {
-    handleSessionExpired();
+async function mlFetch(path, _retry = false) {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`https://api.mercadolibre.com${path}${sep}access_token=${ACCESS_TOKEN}`);
+  if (res.status === 401 && !_retry) {
+    // Token expirado — tentar renovar uma vez automaticamente
+    console.warn('[auth] 401 em', path, '— tentando renovar token...');
+    const ok = await renewToken();
+    if (ok) return mlFetch(path, true); // retry com token novo
+    // Renovacao falhou — tentar shared token como ultimo recurso
+    saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+    loadTokens();
+    const ok2 = await renewToken();
+    if (ok2) return mlFetch(path, true);
     throw new Error('Sessao expirada. Faca login novamente.');
   }
-  return res;
-}
-
-// Traduz os paths historicos da API ML para as operacoes da allowlist do
-// backend. Mantem os call sites existentes intactos (mesma assinatura).
-function mlPathToOp(path) {
-  const qIdx = path.indexOf('?');
-  const p = qIdx === -1 ? path : path.slice(0, qIdx);
-  const q = new URLSearchParams(qIdx === -1 ? '' : path.slice(qIdx + 1));
-  let m;
-
-  if (/^\/users\/\d+\/items\/search$/.test(p))
-    return `/api/ml/items-search?status=${q.get('status') || 'active'}&offset=${q.get('offset') || 0}`;
-
-  if (p === '/items')
-    return `/api/ml/items?ids=${encodeURIComponent(q.get('ids') || '')}`;
-
-  if (p === '/orders/search') {
-    const out = new URLSearchParams();
-    out.set('offset', q.get('offset') || '0');
-    out.set('limit',  q.get('limit')  || '50');
-    const st = q.get('status') || q.get('order.status');
-    if (st) out.set('status', st);
-    const df = q.get('order.date_created.from'); if (df) out.set('date_from', df);
-    const dt = q.get('order.date_created.to');   if (dt) out.set('date_to', dt);
-    return '/api/ml/orders?' + out.toString();
-  }
-
-  if ((m = p.match(/^\/orders\/(\d+)\/discounts$/))) return `/api/ml/order-discounts?id=${m[1]}`;
-  if ((m = p.match(/^\/orders\/(\d+)$/)))            return `/api/ml/order?id=${m[1]}`;
-  if ((m = p.match(/^\/shipments\/(\d+)$/)))         return `/api/ml/shipment?id=${m[1]}`;
-
-  if (/^\/users\/\d+\/items_visits\/time_window$/.test(p))
-    return `/api/ml/visits?last=${q.get('last') || 30}`;
-
-  if (/^\/users\/\d+$/.test(p)) return '/api/ml/reputation';
-
-  if (p === '/sites/MLB/search')
-    return `/api/ml/sites-search?q=${encodeURIComponent(q.get('q') || '')}&limit=${q.get('limit') || 50}&offset=${q.get('offset') || 0}`;
-
-  if ((m = p.match(/^\/products\/(MLB\d+)\/items$/))) return `/api/ml/product-items?id=${m[1]}`;
-
-  if (/^\/seller-promotions\/users\/\d+$/.test(p)) return '/api/ml/promotions';
-
-  if ((m = p.match(/^\/seller-promotions\/promotions\/([^\/]+)\/items$/)))
-    return `/api/ml/promotion-items?id=${encodeURIComponent(m[1])}&type=${q.get('promotion_type') || ''}`;
-
-  if (p === '/advertising/product_ads/billing/aggregate')
-    return `/api/ml/ads-billing?date_from=${q.get('date_from') || ''}&date_to=${q.get('date_to') || ''}`;
-
-  return null;
-}
-
-async function mlFetch(path) {
-  const op = mlPathToOp(path);
-  if (!op) throw new Error('Rota ML nao mapeada no backend: ' + path);
-  const res  = await backendFetch(op);
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    const extra = body && body.error ? ` — ${body.error}` : '';
-    throw new Error(`API ${res.status}: ${path}${extra}`);
-  }
-  return body;
+  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
+  return res.json();
 }
 
 // ══════════════════════════════════════
@@ -3848,30 +3796,46 @@ async function loadAdCost(dias) {
   const dateFrom = inicio.toISOString().slice(0,10);
   const dateTo   = hoje.toISOString().slice(0,10);
 
-  // Consulta via backend (allowlist): somente o endpoint agregado e suportado.
-  // Os 3 fallbacks exploratorios antigos (billing, clicks/summary, campaigns)
-  // eram diagnostico de console e foram descontinuados na migracao BFF
-  // (decisao documentada na Etapa 2.1).
-  try {
-    const data = await mlFetch(`/advertising/product_ads/billing/aggregate?date_from=${dateFrom}&date_to=${dateTo}&user_id=${USER_ID}`);
-    console.log('[ads] aggregate →', JSON.stringify(data).slice(0, 300));
-    if (data.total_amount != null) {
-      adCostTotal = Math.abs(data.total_amount);
-    } else if (data.total_cost != null) {
-      adCostTotal = Math.abs(data.total_cost);
-    } else if (data.summary?.total_cost != null) {
-      adCostTotal = Math.abs(data.summary.total_cost);
-    } else if (Array.isArray(data.results)) {
-      adCostTotal = data.results.reduce((s, r) => s + Math.abs(r.amount || r.total_amount || r.cost || 0), 0);
-      data.results.forEach(r => {
-        const id = r.item_id || r.ad_id;
-        if (id && (r.amount || r.cost)) {
-          adCostByItem[id] = (adCostByItem[id] || 0) + Math.abs(r.amount || r.cost);
-        }
-      });
+  // Endpoints a tentar em ordem
+  const endpoints = [
+    `/advertising/product_ads/billing/aggregate?date_from=${dateFrom}&date_to=${dateTo}&user_id=${USER_ID}`,
+    `/advertising/product_ads/billing?date_from=${dateFrom}&date_to=${dateTo}`,
+    `/advertising/product_ads/clicks/summary?date_from=${dateFrom}&date_to=${dateTo}`,
+    `/users/${USER_ID}/ads/campaigns`,
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      const sep  = ep.includes('?') ? '&' : '?';
+      const res  = await fetch(`https://api.mercadolibre.com${ep}${sep}access_token=${ACCESS_TOKEN}`);
+      const data = await res.json();
+      console.log(`[ads] ${ep} → status ${res.status}:`, JSON.stringify(data).slice(0, 300));
+
+      if (!res.ok) continue; // 4xx/5xx → tentar próximo
+
+      // Extrair custo total dependendo do formato da resposta
+      if (data.total_amount != null) {
+        adCostTotal = Math.abs(data.total_amount); break;
+      }
+      if (data.total_cost != null) {
+        adCostTotal = Math.abs(data.total_cost); break;
+      }
+      if (data.summary?.total_cost != null) {
+        adCostTotal = Math.abs(data.summary.total_cost); break;
+      }
+      if (Array.isArray(data.results)) {
+        adCostTotal = data.results.reduce((s, r) => s + Math.abs(r.amount || r.total_amount || r.cost || 0), 0);
+        data.results.forEach(r => {
+          const id = r.item_id || r.ad_id;
+          if (id && (r.amount || r.cost)) {
+            adCostByItem[id] = (adCostByItem[id] || 0) + Math.abs(r.amount || r.cost);
+          }
+        });
+        if (adCostTotal > 0) break;
+      }
+    } catch(e) {
+      console.warn(`[ads] Erro em ${ep}:`, e.message);
     }
-  } catch(e) {
-    console.warn('[ads] Erro:', e.message);
   }
 
   if (adCostTotal === 0) {
@@ -6539,11 +6503,17 @@ async function posBuscar(offset) {
     const qEnc = encodeURIComponent(q);
     let geralData = null;
 
-    // Busca geral via backend (proxy allowlist)
+    // Tentar busca geral (funciona se o ML liberar CORS para esta origem)
     try {
-      const json = await mlFetch(`/sites/MLB/search?q=${qEnc}&limit=${POS_LIMIT}&offset=${_posOffset}`);
-      if (json.results?.length > 0) geralData = json;
-    } catch(e2) { /* busca indisponivel — usar fallback local */ }
+      const geralRes = await fetch(
+        `https://api.mercadolibre.com/sites/MLB/search?q=${qEnc}&limit=${POS_LIMIT}&offset=${_posOffset}`,
+        { headers: { 'Authorization': `Bearer ${ACCESS_TOKEN}` } }
+      );
+      if (geralRes.ok) {
+        const json = await geralRes.json();
+        if (json.results?.length > 0) geralData = json;
+      }
+    } catch(e2) { /* CORS bloqueado — usar fallback */ }
 
     if (geralData) {
       _posData = geralData;
@@ -7054,30 +7024,24 @@ let rlAllPromos  = [];
 let rlPromoItems = {};
 let rlStats      = { ok: 0, err: 0 };
 
-// ── API helpers especificos — via backend BFF (allowlist de promocoes) ──
+// ── API helpers especificos (reutiliza ACCESS_TOKEN global) ──
 async function rlPost(path, data) {
-  const m = path.match(/^\/seller-promotions\/items\/(MLB\d+)/);
-  if (!m) throw new Error('Rota de promocao nao mapeada: ' + path);
-  const res  = await backendFetch('/api/ml/promotion-item-set', {
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`https://api.mercadolibre.com${path}${sep}access_token=${ACCESS_TOKEN}`, {
     method: 'POST',
-    body: JSON.stringify(Object.assign({ id: m[1] }, data))
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(body.message || body.error || 'API error'), { status: res.status, data: body });
+  const body = await res.json();
+  if (!res.ok) throw Object.assign(new Error(body.message || 'API error'), { status: res.status, data: body });
   return body;
 }
 
 async function rlDelete(path) {
-  const m = path.match(/^\/seller-promotions\/items\/(MLB\d+)/);
-  if (!m) throw new Error('Rota de promocao nao mapeada: ' + path);
-  const qIdx = path.indexOf('?');
-  const q = new URLSearchParams(qIdx === -1 ? '' : path.slice(qIdx + 1));
-  const res = await backendFetch(
-    `/api/ml/promotion-item-remove?id=${m[1]}&promotion_type=${q.get('promotion_type') || 'LIGHTNING'}&promotion_id=${encodeURIComponent(q.get('promotion_id') || '')}`,
-    { method: 'DELETE' }
-  );
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`https://api.mercadolibre.com${path}${sep}access_token=${ACCESS_TOKEN}`, { method: 'DELETE' });
   if (!res.ok) { const b = await res.text(); throw new Error(`DELETE ${res.status}: ${b.slice(0,200)}`); }
-  return res.status === 204 ? {} : res.json().catch(() => ({}));
+  return res.status === 204 ? {} : res.json();
 }
 
 // ── UI helpers ──
@@ -7325,27 +7289,10 @@ async function rlRunPromo(promoId, items) {
 
   for (let i = 0; i < items.length; i++) {
     const it   = items[i];
-    const orig = Number(it.original_price);
-
-    if (!Number.isFinite(orig) || orig <= 0) {
-      err++;
-      rlLog(`IGNORADO ${it.id}: sem preco original valido (original_price=${it.original_price})`, 'err');
-      rlSetBadge(promoId, it.id, 'erro', 'rl-is-err');
-      rlSetProgress((i + 1) / items.length * 100, true);
-      await new Promise(r => setTimeout(r, 300));
-      continue;
-    }
-
-    const dealPrice = Math.max(it.min_discounted_price || 0, Math.round(orig * (1 - desc / 100) * 100) / 100);
-
-    if (!Number.isFinite(dealPrice) || dealPrice <= 0) {
-      err++;
-      rlLog(`IGNORADO ${it.id}: preco calculado invalido (${dealPrice})`, 'err');
-      rlSetBadge(promoId, it.id, 'erro', 'rl-is-err');
-      rlSetProgress((i + 1) / items.length * 100, true);
-      await new Promise(r => setTimeout(r, 300));
-      continue;
-    }
+    const orig = it.original_price || 0;
+    const dealPrice = orig > 0
+      ? Math.max(it.min_discounted_price || 0, Math.round(orig * (1 - desc / 100) * 100) / 100)
+      : 0;
 
     const payload = {
       deal_price:     dealPrice,
@@ -7354,11 +7301,9 @@ async function rlRunPromo(promoId, items) {
       promotion_id:   promoId
     };
 
-    if (topDesc > desc) {
+    if (topDesc > desc && orig > 0) {
       const topPrice = Math.max(it.min_discounted_price || 0, Math.round(orig * (1 - topDesc / 100) * 100) / 100);
-      if (Number.isFinite(topPrice) && topPrice > 0 && topPrice <= 100000 && topPrice < dealPrice) {
-        payload.top_deal_price = topPrice;
-      }
+      if (topPrice < dealPrice) payload.top_deal_price = topPrice;
     }
 
     try {
@@ -7481,7 +7426,7 @@ async function rlCancelPromo(promoId) {
   let ok = 0;
   for (const it of items) {
     try {
-      await rlDelete(`/seller-promotions/items/${it.id}?app_version=v2&promotion_type=${encodeURIComponent(it.promotion_type || 'LIGHTNING')}&promotion_id=${promoId}`);
+      await rlDelete(`/seller-promotions/items/${it.id}?app_version=v2&promotion_type=LIGHTNING&promotion_id=${promoId}`);
       ok++;
       rlLog(`Removido ${it.id}`, 'ok');
       rlSetBadge(promoId, it.id, 'removido', 'rl-is-idle');
@@ -10515,47 +10460,147 @@ function showToast(msg, type = 'info') {
 }
 
 // ══════════════════════════════════════
-// AUTH — sessao opaca via backend (zero tokens ML no navegador)
+// AUTH & TOKENS
 // ══════════════════════════════════════
-const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
+const CLIENT_ID     = '8918126038521343';
+const CLIENT_SECRET = 'vWcMy2XyVA52bXvVaaVTRlTishHtKlk1';
+const REDIRECT_URI  = 'https://igororlandi999.github.io/ml-dashboard-overwine/';
+const REFRESH_INTERVAL_MS   = 30 * 60 * 1000;
+const TOKEN_RENEW_BEFORE_MS = 10 * 60 * 1000;
 
+let tokenExpiresAt = null;
 let refreshTimer   = null;
+let renewTimer     = null;
 let countdown      = 0;
 let countdownTimer = null;
 
-async function apiLogin(password) {
-  const res  = await backendFetch('/api/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ password })
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Login falhou (${res.status})`);
-  SESSION_TOKEN = body.session_token;
-  return true;
+function saveTokens(accessToken, refreshToken, expiresIn, userId) {
+  localStorage.setItem('ml_token',      accessToken);
+  localStorage.setItem('ml_refresh',    refreshToken || '');
+  localStorage.setItem('ml_expires_at', String(Date.now() + expiresIn * 1000));
+  if (userId) localStorage.setItem('ml_userid', String(userId));
 }
 
-async function apiLogout() {
-  try { await backendFetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* melhor esforco */ }
-  SESSION_TOKEN = null;
+function loadTokens() {
+  ACCESS_TOKEN         = localStorage.getItem('ml_token')      || '';
+  window._refreshToken = localStorage.getItem('ml_refresh')    || '';
+  tokenExpiresAt       = parseInt(localStorage.getItem('ml_expires_at') || '0');
+  USER_ID              = parseInt(localStorage.getItem('ml_userid') || '0');
 }
 
-async function checkSession() {
-  if (!SESSION_TOKEN) return false;
+function doOAuthLogin() {
+  const state = Math.random().toString(36).slice(2);
+  sessionStorage.setItem('oauth_state', state);
+  window.location.href =
+    `https://auth.mercadolivre.com.br/authorization?response_type=code` +
+    `&client_id=${CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+    `&state=${state}`;
+}
+
+async function handleOAuthCallback(code) {
+  showLoading('Autenticando...');
   try {
-    const res = await backendFetch('/api/auth/session');
-    return res.ok;
-  } catch (e) { return false; }
+    const res  = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: CLIENT_ID, client_secret: CLIENT_SECRET,
+        code, redirect_uri: REDIRECT_URI
+      })
+    });
+    const data = await res.json();
+    if (!data.access_token) throw new Error(data.message || 'Falha no OAuth');
+    const _uid = data.user_id || USER_ID;
+
+    if (_uid && _uid !== 2329718196) {
+      hideLoading();
+      showSetup();
+      showToast('Conta incorreta. Faca login com a conta Overwine (ID 2329718196).', 'error');
+      return;
+    }
+
+    saveTokens(data.access_token, data.refresh_token, data.expires_in || 21600, _uid);
+    loadTokens();
+    window.history.replaceState({}, document.title, window.location.pathname);
+    await startDashboard();
+  } catch(e) {
+    hideLoading(); showSetup();
+    showToast('Erro no login: ' + e.message, 'error');
+  }
+}
+
+// Tenta renovar via refresh token.
+// Retorna true se conseguiu, false se falhou.
+async function renewToken() {
+  const rt = window._refreshToken || localStorage.getItem('ml_refresh') || SHARED_REFRESH;
+  if (!rt) return false;
+  try {
+    const res  = await fetch('https://api.mercadolibre.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type:    'refresh_token',
+        client_id:     CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+        redirect_uri:  REDIRECT_URI,
+        refresh_token: rt
+      })
+    });
+    const data = await res.json();
+    if (data.access_token) {
+      saveTokens(
+        data.access_token,
+        data.refresh_token || rt,
+        data.expires_in || 21600,
+        data.user_id || USER_ID || SHARED_USERID
+      );
+      loadTokens();
+      scheduleTokenRenewal(data.expires_in || 21600);
+      console.log('[auth] Token renovado com sucesso');
+      return true;
+    }
+    console.warn('[auth] Renovacao falhou:', data);
+    return false;
+  } catch(e) {
+    console.warn('[auth] Erro ao renovar token:', e);
+    return false;
+  }
+}
+
+// Agenda renovacao TOKEN_RENEW_BEFORE_MS antes do vencimento.
+// Se a renovacao falhar, tenta de novo em 5 minutos — sem mostrar erro ao usuario.
+function scheduleTokenRenewal(expiresInSeconds) {
+  clearTimeout(renewTimer);
+  const renewIn = Math.max((expiresInSeconds * 1000) - TOKEN_RENEW_BEFORE_MS, 10000);
+  renewTimer = setTimeout(async () => {
+    const ok = await renewToken();
+    if (!ok) {
+      // Tentar de novo em 5 min antes de desistir
+      console.warn('[auth] Tentando novamente em 5 min...');
+      renewTimer = setTimeout(async () => {
+        const ok2 = await renewToken();
+        if (!ok2) {
+          // Ultima tentativa: usar SHARED token como fallback antes de redirecionar
+          console.warn('[auth] Fallback para shared token...');
+          saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+          loadTokens();
+          const ok3 = await renewToken();
+          if (!ok3) {
+            // Nada funcionou — mostrar aviso mas nao forcar logout
+            showToast('Sessao expirou. Atualize a pagina.', 'error');
+          }
+        }
+      }, 5 * 60 * 1000);
+    }
+  }, renewIn);
 }
 
 function scheduleAutoRefresh() {
   clearInterval(refreshTimer);
-  refreshTimer = setInterval(async () => {
-    // Valida a sessao antes da rajada de chamadas do loadAll —
-    // se expirou com a aba ociosa, volta direto para a tela de senha.
-    if (!(await checkSession())) { handleSessionExpired(); return; }
-    loadAll();
-  }, REFRESH_INTERVAL_MS);
-  countdown = REFRESH_INTERVAL_MS / 1000;
+  refreshTimer = setInterval(() => loadAll(), REFRESH_INTERVAL_MS);
+  countdown    = REFRESH_INTERVAL_MS / 1000;
   clearInterval(countdownTimer);
   countdownTimer = setInterval(() => {
     countdown--;
@@ -10573,61 +10618,123 @@ function showLoading(msg) {
   document.getElementById('loading-screen').style.display = 'flex';
   document.getElementById('setup-screen').style.display   = 'none';
   const lt = document.getElementById('loading-text');
-  if (lt) lt.textContent = msg || 'Conectando...';
+  if (lt) lt.textContent = msg || 'Conectando a API...';
 }
 function hideLoading() { document.getElementById('loading-screen').style.display = 'none'; }
 function showSetup() {
-  document.getElementById('setup-screen').style.display = 'block';
-  const vp = document.getElementById('viewer-pass');
-  if (vp) { vp.value = ''; vp.focus(); }
+  document.getElementById('setup-screen').style.display  = 'block';
+  document.getElementById('login-viewer').style.display  = 'block';
+  document.getElementById('login-admin').style.display   = 'none';
+  // Se ja tinha sessao de visualizador ativa, nao pedir senha de novo
+  if (sessionStorage.getItem(VIEWER_SESSION_KEY)) {
+    loadTokens();
+    if (ACCESS_TOKEN && USER_ID) { startDashboard(); return; }
+  }
 }
 
 // ══════════════════════════════════════
-// LOGIN POR SENHA (a senha nao e armazenada em lugar nenhum do navegador)
+// SENHA DE VISUALIZACAO
 // ══════════════════════════════════════
-async function checkViewerPass() {
+// Altere esta senha para o que quiser:
+const VIEWER_PASSWORD = 'overwine2026';
+
+// Token padrao compartilhado — usado quando nao ha token proprio no dispositivo
+// Renovado automaticamente via refresh token
+const SHARED_TOKEN   = 'APP_USR-8918126038521343-031308-93838e837a992777290b579e71a8f943-2329718196';
+const SHARED_REFRESH = 'TG-69b4013425c51c00013a2bd9-2329718196';
+const SHARED_USERID  = 2329718196;
+
+// Chave usada para guardar o token do admin no localStorage
+// quando o visualizador nao tem token proprio
+const VIEWER_SESSION_KEY = 'ow_viewer_ok';
+
+function checkViewerPass() {
   const input = document.getElementById('viewer-pass');
-  const errEl = document.getElementById('viewer-error');
   const val   = input.value.trim();
-  if (!val) return;
-  errEl.style.display = 'none';
-  try {
-    showLoading('Autenticando...');
-    await apiLogin(val);
-    input.value = '';
-    await startDashboard();
-  } catch (e) {
-    hideLoading();
-    showSetup();
-    errEl.textContent = e.message || 'Senha incorreta.';
-    errEl.style.display = 'block';
+  if (val === VIEWER_PASSWORD) {
+    sessionStorage.setItem(VIEWER_SESSION_KEY, '1');
+    document.getElementById('viewer-error').style.display = 'none';
+    // Tentar tokens salvos localmente primeiro; senao usar o token compartilhado
+    loadTokens();
+    if (!ACCESS_TOKEN || !USER_ID) {
+      saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+      loadTokens();
+    }
+    startDashboard();
+  } else {
+    document.getElementById('viewer-error').style.display = 'block';
+    document.getElementById('viewer-error').textContent = 'Senha incorreta.';
     input.value = '';
     input.focus();
   }
 }
 
-async function doLogout() {
+function showAdminLogin() {
+  document.getElementById('login-viewer').style.display = 'none';
+  document.getElementById('login-admin').style.display  = 'block';
+}
+
+function showViewerLogin() {
+  document.getElementById('login-admin').style.display  = 'none';
+  document.getElementById('login-viewer').style.display = 'block';
+}
+
+function doLogout() {
   clearInterval(refreshTimer);
   clearInterval(countdownTimer);
-  await apiLogout();
+  clearTimeout(renewTimer);
+  ['ml_token','ml_refresh','ml_expires_at','ml_userid'].forEach(k => localStorage.removeItem(k));
+  ACCESS_TOKEN = ''; USER_ID = 0;
   document.getElementById('main-header').style.display  = 'none';
   document.getElementById('main-content').style.display = 'none';
-  showSetup();
+  document.getElementById('setup-screen').style.display = 'block';
+  document.getElementById('login-viewer').style.display = 'block';
+  document.getElementById('login-admin').style.display  = 'none';
+  document.getElementById('token-input').value   = '';
+  document.getElementById('userid-input').value  = '';
+  const vp = document.getElementById('viewer-pass');
+  if (vp) { vp.value = ''; vp.focus(); }
+  sessionStorage.removeItem(VIEWER_SESSION_KEY);
+}
+
+function connectWithToken() {
+  const token = document.getElementById('token-input').value.trim();
+  const uid   = document.getElementById('userid-input').value.trim();
+  if (!token || !uid) { showToast('Preencha token e user ID', 'error'); return; }
+  saveTokens(token, '', 21600, uid);
+  loadTokens();
+  startDashboard();
 }
 
 async function startDashboard() {
-  showLoading('Conectando...');
+  showLoading('Conectando a API...');
   document.getElementById('setup-screen').style.display = 'none';
   try {
+    // Se token ja expirou antes de comecar, renovar primeiro
+    if (tokenExpiresAt && Date.now() >= tokenExpiresAt - 30000) {
+      console.log('[auth] Token expirado/expirando, renovando antes de carregar...');
+      const ok = await renewToken();
+      if (!ok) {
+        // Fallback: shared token
+        saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+        loadTokens();
+        await renewToken();
+      }
+    }
     await loadAll();
     hideLoading();
     document.getElementById('main-header').style.display  = 'flex';
     document.getElementById('main-content').style.display = 'block';
     scheduleAutoRefresh();
-  } catch (e) {
+    const expiresIn = tokenExpiresAt
+      ? Math.max(Math.floor((tokenExpiresAt - Date.now()) / 1000), 60)
+      : 21600;
+    scheduleTokenRenewal(expiresIn);
+  } catch(e) {
     console.error('[start]', e);
     hideLoading();
     const msg = (e && e.message) ? e.message : String(e || 'erro desconhecido');
+    // Se o erro for de sessao expirada, mostrar setup
     if (msg.includes('expirada') || msg.includes('401') || msg.includes('403')) {
       showSetup();
       showToast('Sessao expirada ou sem permissao. Entre novamente.', 'error');
@@ -10642,7 +10749,7 @@ async function startDashboard() {
 // ══════════════════════════════════════
 // INIT
 // ══════════════════════════════════════
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
   // Inicializar date range com os ultimos 7 dias
   (function() {
     const hoje = new Date();
@@ -10655,20 +10762,49 @@ window.addEventListener('DOMContentLoaded', () => {
     if (ateEl) ateEl.value = fmt(hoje);
     [deEl, ateEl].forEach(el => { if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') aplicarPeriodoCustom(); }); });
   })();
+  // 1. Callback OAuth — voltou do login ML
+  const params = new URLSearchParams(window.location.search);
+  const code   = params.get('code');
+  if (code) { handleOAuthCallback(code); return; }
 
-  // Higiene de migracao: apagar tokens ML antigos deste dispositivo.
-  ['ml_token', 'ml_refresh', 'ml_expires_at', 'ml_userid'].forEach(k => localStorage.removeItem(k));
-  sessionStorage.removeItem('ow_viewer_ok');
-  sessionStorage.removeItem('oauth_state');
+  // 2. Carregar tokens salvos no localStorage
+  loadTokens();
 
-  // Resto de ?code= do fluxo OAuth antigo: apenas limpar da URL.
-  if (new URLSearchParams(window.location.search).get('code')) {
-    window.history.replaceState({}, document.title, window.location.pathname);
+  // 3. Se nao tem token nenhum, verificar se tem sessao de visualizador ativa
+  //    e usar shared token como base
+  if (!ACCESS_TOKEN || !USER_ID) {
+    const isViewer = sessionStorage.getItem(VIEWER_SESSION_KEY);
+    if (isViewer) {
+      // Visualizador sem token — carregar shared token e tentar renovar
+      saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+      loadTokens();
+    } else {
+      hideLoading(); showSetup(); return;
+    }
   }
 
-  // A sessao vive somente em memoria — todo carregamento comeca pela senha.
-  hideLoading();
-  showSetup();
+  // 4. Token presente — garantir que esta valido antes de abrir o dashboard
+  //    Tenta renovar se estiver perto de expirar (ou ja expirou)
+  const timeLeft = tokenExpiresAt ? tokenExpiresAt - Date.now() : 0;
+  if (timeLeft < 5 * 60 * 1000) {
+    // Menos de 5 min para expirar (ou ja expirou) — renovar agora
+    showLoading('Renovando sessao...');
+    const ok = await renewToken();
+    if (!ok) {
+      // Fallback para shared token
+      saveTokens(SHARED_TOKEN, SHARED_REFRESH, 21600, SHARED_USERID);
+      loadTokens();
+      const ok2 = await renewToken();
+      if (!ok2) {
+        hideLoading(); showSetup();
+        showToast('Nao foi possivel renovar a sessao. Entre novamente.', 'error');
+        return;
+      }
+    }
+  }
+
+  // 5. Tudo ok — iniciar dashboard
+  startDashboard();
 });
 
 
