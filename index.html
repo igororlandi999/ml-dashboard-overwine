@@ -4251,6 +4251,114 @@ function calcMetas(meses, byMonth) {
   return metas;
 }
 
+// ══════════════════════════════════════
+// VARIACAO MENSAL (MoM) - FATURAMENTO
+// ══════════════════════════════════════
+// Formatador unico (pt-BR, 1 casa decimal) reaproveitado por todos os rotulos.
+const _fmtPct1BR = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+// Converte 'YYYY-MM' em indice absoluto (ano*12+mes). Retorna NaN se invalido.
+function mesParaIndice(mes) {
+  if (typeof mes !== 'string') return NaN;
+  const mt = /^(\d{4})-(\d{2})$/.exec(mes);
+  if (!mt) return NaN;
+  const ano = parseInt(mt[1], 10), num = parseInt(mt[2], 10);
+  if (!(num >= 1 && num <= 12)) return NaN;
+  return ano * 12 + (num - 1);
+}
+
+// Quantidade de dias do mes 'YYYY-MM'. Retorna NaN se invalido.
+function diasNoMes(mes) {
+  const mt = /^(\d{4})-(\d{2})$/.exec(typeof mes === 'string' ? mes : '');
+  if (!mt) return NaN;
+  const d = new Date(Date.UTC(parseInt(mt[1], 10), parseInt(mt[2], 10), 0));
+  return d.getUTCDate();
+}
+
+// Ordenacao cronologica robusta: nao confia na ordem recebida da API.
+// Chaves invalidas vao para o fim, mantendo ordem alfabetica entre si.
+function ordenarMesesCronologico(lista) {
+  return [...lista].sort((a, b) => {
+    const ia = mesParaIndice(a), ib = mesParaIndice(b);
+    const va = Number.isFinite(ia), vb = Number.isFinite(ib);
+    if (va && vb) return ia - ib;
+    if (va) return -1;
+    if (vb) return 1;
+    return String(a).localeCompare(String(b));
+  });
+}
+
+// Nucleo do calculo. Retorna sempre um objeto seguro para render.
+// tom: 'alta' | 'queda' | 'neutro'  ->  usado para escolher a cor
+function calcularVariacaoMensal(valorAtual, valorAnterior) {
+  const INDEFINIDO = { tipo: 'indefinido', percentual: null, texto: '\u2014', tom: 'neutro' };
+  if (valorAtual === null || valorAtual === undefined) return INDEFINIDO;
+  if (valorAnterior === null || valorAnterior === undefined) return INDEFINIDO;
+  const atual = Number(valorAtual), anterior = Number(valorAnterior);
+  if (!Number.isFinite(atual) || !Number.isFinite(anterior)) return INDEFINIDO;
+  if (atual < 0 || anterior < 0) return INDEFINIDO;
+
+  if (anterior === 0) {
+    if (atual === 0) return { tipo: 'estavel', percentual: 0, texto: '0,0%', tom: 'neutro' };
+    return { tipo: 'novo', percentual: null, texto: 'Novo', tom: 'alta' };
+  }
+
+  const pct = ((atual - anterior) / anterior) * 100;
+  if (!Number.isFinite(pct)) return INDEFINIDO;
+
+  const abs = _fmtPct1BR.format(Math.abs(pct));
+  // Arredondou para zero -> tratado como sem alteracao (evita "▲ 0,0%")
+  if (abs === '0,0') return { tipo: 'estavel', percentual: pct, texto: '0,0%', tom: 'neutro' };
+
+  return pct > 0
+    ? { tipo: 'alta',  percentual: pct, texto: '\u25B2 ' + abs + '%', tom: 'alta'  }
+    : { tipo: 'queda', percentual: pct, texto: '\u25BC ' + abs + '%', tom: 'queda' };
+}
+
+// Monta a variacao de cada mes da serie.
+// meses      : array 'YYYY-MM' JA ordenado cronologicamente
+// byMonth    : mapa mes -> faturamento (nao e alterado aqui)
+// mesAtual   : 'YYYY-MM' do mes corrente (pode estar incompleto)
+// diaCorte   : dia do mes ja decorrido no mes corrente (1..31) ou null
+// somaAteDia : (mes, dia) => numero | null  -> faturamento acumulado ate o dia
+// modo: 'primeiro' | 'completo' | 'proporcional' | 'andamento' | 'lacuna' | 'indefinido'
+function calcularVariacoesFaturamento(meses, byMonth, mesAtual, diaCorte, somaAteDia) {
+  const lista = Array.isArray(meses) ? meses : [];
+  const mapa  = byMonth || {};
+  return lista.map((mes, i) => {
+    if (i === 0) {
+      return { tipo: 'primeiro', percentual: null, texto: '\u2014', tom: 'neutro', mesRef: null, modo: 'primeiro', diaCorte: null };
+    }
+    const mesAnterior = lista[i - 1];
+    const contiguo    = (mesParaIndice(mes) - mesParaIndice(mesAnterior)) === 1;
+    const valorAtual  = mapa[mes];
+    let   valorBase   = mapa[mesAnterior];
+    let   modo        = contiguo ? 'completo' : 'lacuna';
+    let   corte       = null;
+
+    if (mes === mesAtual && contiguo) {
+      modo = 'andamento';
+      const diasAnt = diasNoMes(mesAnterior);
+      const d = Number(diaCorte);
+      // So vale a pena proporcionalizar se o mes anterior tem mais dias do que o ja decorrido
+      if (typeof somaAteDia === 'function' && Number.isFinite(d) && d >= 1 && Number.isFinite(diasAnt) && d < diasAnt) {
+        const parcial = somaAteDia(mesAnterior, d);
+        if (Number.isFinite(parcial) && parcial > 0) {
+          valorBase = parcial;
+          modo      = 'proporcional';
+          corte     = d;
+        }
+      }
+    } else if (mes === mesAtual) {
+      modo = 'andamento';
+    }
+
+    const v = calcularVariacaoMensal(valorAtual, valorBase);
+    if (v.tipo === 'indefinido') modo = 'indefinido';
+    return Object.assign({}, v, { mesRef: mesAnterior, modo, diaCorte: corte });
+  });
+}
+
 function renderChartFaturamento() {
   const el = document.getElementById('chart-faturamento');
   const byMonth = {};
@@ -4259,7 +4367,8 @@ function renderChartFaturamento() {
     const m = (o.date_created || '').slice(0,7);
     if (m) byMonth[m] = (byMonth[m] || 0) + (o.paid_amount || 0);
   });
-  const meses = Object.keys(byMonth).sort();
+  // Ordenacao cronologica explicita (nao confia na ordem recebida da API)
+  const meses = ordenarMesesCronologico(Object.keys(byMonth));
   if (!meses.length) {
     el.innerHTML = '<div class="empty-state" style="padding:40px 0"><p>Sem dados</p></div>';
     return;
@@ -4267,6 +4376,32 @@ function renderChartFaturamento() {
 
   // Calcular metas
   const metas = calcMetas(meses, byMonth);
+
+  // ── Variacao mensal (MoM) ────────────────────────────────
+  // Fonte: o MESMO byMonth usado pelas barras. O calculo do faturamento nao e alterado.
+  const _hoje       = new Date();
+  const mesCorrente = _hoje.getFullYear() + '-' + String(_hoje.getMonth() + 1).padStart(2, '0');
+  const _diasMesCor = diasNoMes(mesCorrente);
+  const diaDecorrido = Number.isFinite(_diasMesCor) ? Math.min(_hoje.getDate(), _diasMesCor) : _hoje.getDate();
+
+  // Faturamento acumulado ate um dia do mes (mesmo filtro das barras: paid / paid_amount).
+  // Retorna null quando nao ha dado diario utilizavel para aquele mes.
+  const somaAteDiaMes = (mes, dia) => {
+    let soma = 0, temDado = false;
+    for (const o of allOrders) {
+      if (o.status !== 'paid') continue;
+      const dt = o.date_created || '';
+      if (dt.slice(0, 7) !== mes) continue;
+      const d = parseInt(dt.slice(8, 10), 10);
+      if (!Number.isFinite(d) || d < 1 || d > 31) continue;
+      temDado = true;
+      if (d <= dia) soma += (o.paid_amount || 0);
+    }
+    return temDado ? soma : null;
+  };
+
+  const variacoes = calcularVariacoesFaturamento(meses, byMonth, mesCorrente, diaDecorrido, somaAteDiaMes);
+  const CORES_VAR = { alta: 'rgba(76,175,125,0.95)', queda: 'rgba(224,82,82,0.85)', neutro: '#9A8E94' };
 
   const DPR = window.devicePixelRatio || 1;
   const W = el.offsetWidth || 440, H = 210;
@@ -4308,6 +4443,9 @@ function renderChartFaturamento() {
   const labelMinGap = 44;
   const maxLabels   = Math.max(2, Math.floor(iW / labelMinGap));
   const labelStep   = n <= maxLabels ? 1 : Math.ceil((n-1)/(maxLabels-1));
+  // Rotulo de variacao acima da barra: apenas em telas/graficos com folga.
+  // Em larguras menores a informacao fica somente no tooltip.
+  const rotuloVarAtivo = W >= 420 && (iW / n) >= 46;
   const labelSet    = new Set();
   for (let i = 0; i < n; i += labelStep) labelSet.add(i);
   labelSet.add(n-1);
@@ -4359,6 +4497,22 @@ function renderChartFaturamento() {
         ctx.fillStyle = hover ? C.goldLight : C.gold;
         ctx.textAlign = 'center';
         ctx.fillText('R$' + Math.round(v/1000) + 'k', bx + barW/2, by - 5);
+      }
+
+      // Variacao vs mes anterior (acima da barra, so quando ha espaco real)
+      if (rotuloVarAtivo) {
+        const va = variacoes[i];
+        if (va && va.tipo !== 'primeiro' && va.tipo !== 'indefinido') {
+          ctx.font = '600 9px Plus Jakarta Sans, sans-serif';
+          const tw       = ctx.measureText(va.texto).width;
+          const temValor = (hover || isMax);
+          const yTexto   = by - (temValor ? 17 : 5);
+          if (tw + 10 <= gap && (yTexto - 9) >= 2) {
+            ctx.fillStyle = CORES_VAR[va.tom] || CORES_VAR.neutro;
+            ctx.textAlign = 'center';
+            ctx.fillText(va.texto, bx + barW / 2, yTexto);
+          }
+        }
       }
 
       // Label eixo X
@@ -4430,6 +4584,24 @@ function renderChartFaturamento() {
         sinal + pct + '% vs meta',
         cnt + ' pedidos',
       ];
+
+      // Comparacao com o mes imediatamente anterior
+      const va = variacoes[hIdx];
+      if (va) {
+        if (va.modo === 'primeiro') {
+          linhas.push('Comparação com mês anterior: —');
+        } else {
+          linhas.push('Comparação com ' + nomeMes(va.mesRef) + ': ' + va.texto);
+          if (va.modo === 'proporcional') {
+            linhas.push('comparação proporcional (dias 1-' + va.diaCorte + ')');
+          } else if (va.modo === 'andamento') {
+            linhas.push('mês em andamento vs mês completo');
+          } else if (va.modo === 'lacuna') {
+            linhas.push('intervalo com meses sem faturamento');
+          }
+        }
+      }
+
       drawTooltipBox(ctx, '', linhas, cx, by, W, H);
     }
   }
