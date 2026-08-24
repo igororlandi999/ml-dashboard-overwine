@@ -5469,7 +5469,7 @@
     // obtida por senha via POST /api/auth/login. Toda consulta ao ML passa
     // pelo proxy com allowlist do backend.
     // ══════════════════════════════════════
-    const BACKEND_URL = 'https://overwine-assistant-preview.vercel.app';
+    const BACKEND_URL = 'https://overwine-assistant.vercel.app';
     let SESSION_TOKEN = null; // nunca em localStorage/sessionStorage
 
     function handleSessionExpired() {
@@ -13653,8 +13653,13 @@
         [deEl, ateEl].forEach(el => { if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') aplicarPeriodoCustom(); }); });
       })();
 
-      // Higiene de migracao: apagar tokens ML antigos deste dispositivo.
-      ['ml_token', 'ml_refresh', 'ml_expires_at', 'ml_userid'].forEach(k => localStorage.removeItem(k));
+      // Higiene de migracao: apagar credenciais antigas deste dispositivo.
+      // `gh_token` era um Personal Access Token do GitHub que a versao
+      // standalone pedia por prompt() para gravar sku-config.json no
+      // repositorio. Aquela funcao nao existe mais aqui, e deixar o token no
+      // navegador seria uma credencial esquecida sem nada que a use.
+      ['ml_token', 'ml_refresh', 'ml_expires_at', 'ml_userid', 'gh_token']
+        .forEach(k => localStorage.removeItem(k));
       sessionStorage.removeItem('ow_viewer_ok');
       sessionStorage.removeItem('oauth_state');
 
