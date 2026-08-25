@@ -5542,8 +5542,10 @@
       if ((m = p.match(/^\/seller-promotions\/promotions\/([^\/]+)\/items$/)))
         return `/api/ml/promotion-items?id=${encodeURIComponent(m[1])}&type=${q.get('promotion_type') || ''}`;
 
-      if (p === '/advertising/product_ads/billing/aggregate')
-        return `/api/ml/ads-billing?date_from=${q.get('date_from') || ''}&date_to=${q.get('date_to') || ''}`;
+      // O agregado legado (`/advertising/product_ads/billing/aggregate`) NAO tem
+      // mapeamento de proposito: foi desligado pelo ML em 27/05/2026 e responde
+      // 404. Sem call site e sem rota, ninguem o ressuscita por engano. A op
+      // `ads-billing` segue na allowlist do backend, morta, em backlog.
 
       // Publicidade, API ATUAL. A geracao anterior de Product Ads foi desligada
       // pelo Mercado Livre em 27/05/2026 e responde 404 — sao os erros [ads] que
@@ -6483,47 +6485,127 @@
     // ══════════════════════════════════════
     // CUSTO DE PUBLICIDADE VIA API
     // ══════════════════════════════════════
+    /**
+     * Investimento em publicidade pela API ATUAL de Product Ads, sempre via BFF.
+     *
+     * Historico do bug, em duas camadas:
+     *  1. A geracao anterior (`/advertising/product_ads/billing/aggregate`,
+     *     escopada por user_id) foi desligada em 27/05/2026 e responde 404 — era
+     *     o `[ads] Erro: API 404` do console.
+     *  2. Trocada pela rota atual, a consulta passou a listar as campanhas mas
+     *     somava 0,00: na API atual a campanha so vem com bloco de METRICA
+     *     quando as metricas sao pedidas por parametro. Quem pede e o BFF, com
+     *     lista fixa de servidor (`metrics=clicks,prints,cost&metrics_summary=true`).
+     *
+     * De onde sai o gasto, em ordem:
+     *  - `metrics_summary.cost` — agregado do periodo somando TODAS as campanhas.
+     *    E a fonte preferida: nao depende de paginar certo.
+     *  - soma de `cost` por campanha — usada so se o agregado nao vier.
+     *
+     * `cost` e o unico campo aceito. `total_amount` e receita ATRIBUIDA a
+     * publicidade e `budget` e orcamento configurado; nenhum dos dois e gasto, e
+     * usar qualquer um deles inflaria a margem em silencio.
+     *
+     * Dois limites do ML respeitados aqui:
+     *  - janela maxima de 90 dias para tras (periodo maior e truncado);
+     *  - a metrica do dia corrente so consolida as 10h (GMT-3) — hoje pode vir
+     *    parcial.
+     *
+     * `adCostByItem` fica vazio de proposito: a consulta por campanha nao quebra
+     * o custo por anuncio, e o agregado antigo que prometia isso nao existe mais.
+     */
     async function loadAdCost(dias) {
       adCostTotal = 0;
       adCostByItem = {};
 
-      // Calcular datas
       const hoje = new Date();
       const inicio = new Date(hoje);
-      inicio.setDate(inicio.getDate() - dias);
+      inicio.setDate(inicio.getDate() - Math.min(Math.max(dias || 0, 1), 90));
 
       const dateFrom = inicio.toISOString().slice(0, 10);
       const dateTo = hoje.toISOString().slice(0, 10);
 
-      // Consulta via backend (allowlist): somente o endpoint agregado e suportado.
-      // Os 3 fallbacks exploratorios antigos (billing, clicks/summary, campaigns)
-      // eram diagnostico de console e foram descontinuados na migracao BFF
-      // (decisao documentada na Etapa 2.1).
       try {
-        const data = await mlFetch(`/advertising/product_ads/billing/aggregate?date_from=${dateFrom}&date_to=${dateTo}&user_id=${USER_ID}`);
-        console.log('[ads] aggregate →', JSON.stringify(data).slice(0, 300));
-        if (data.total_amount != null) {
-          adCostTotal = Math.abs(data.total_amount);
-        } else if (data.total_cost != null) {
-          adCostTotal = Math.abs(data.total_cost);
-        } else if (data.summary?.total_cost != null) {
-          adCostTotal = Math.abs(data.summary.total_cost);
-        } else if (Array.isArray(data.results)) {
-          adCostTotal = data.results.reduce((s, r) => s + Math.abs(r.amount || r.total_amount || r.cost || 0), 0);
-          data.results.forEach(r => {
-            const id = r.item_id || r.ad_id;
-            if (id && (r.amount || r.cost)) {
-              adCostByItem[id] = (adCostByItem[id] || 0) + Math.abs(r.amount || r.cost);
-            }
-          });
+        const anunciantes = await mlFetch('/advertising/advertisers?product_id=PADS');
+        const lista = (anunciantes && anunciantes.advertisers) || [];
+        const conta = lista.find(a => a.site_id === 'MLB') || lista[0];
+        if (!conta || conta.advertiser_id == null) {
+          console.warn('[ads] Conta sem Product Ads habilitado — investimento fica em 0. Use o campo manual.');
+          return;
+        }
+
+        let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null;
+        // Ate 4 paginas de 50. Sem o agregado, somar so a primeira pagina
+        // devolveria um investimento MENOR que o real, sem ninguem perceber.
+        for (let pagina = 0; pagina < 4; pagina++) {
+          const resp = await mlFetch(
+            `/marketplace/advertising/MLB/advertisers/${conta.advertiser_id}/product_ads/campaigns/search` +
+            `?date_from=${dateFrom}&date_to=${dateTo}&limit=50&offset=${offset}`);
+
+          const results = (resp && resp.results) || [];
+          if (pagina === 0) {
+            resumo = valorDeCusto(resp && resp.metrics_summary);
+            amostra = results[0] || null;
+          }
+          results.forEach(c => { somaCampanhas += custoDaCampanha(c); });
+          campanhas += results.length;
+
+          // O agregado ja cobre o periodo inteiro: paginar de novo so gastaria
+          // requisicao (e somar as duas fontes contaria duas vezes).
+          if (resumo !== null) break;
+
+          const totalPaging = resp && resp.paging ? resp.paging.total : 0;
+          offset += 50;
+          if (results.length < 50 || offset >= (totalPaging || 0)) break;
+        }
+
+        adCostTotal = resumo !== null ? resumo : somaCampanhas;
+        const fonte = resumo !== null ? 'metrics_summary' : 'soma por campanha';
+        console.log(`[ads] ${campanhas} campanha(s) em ${dateFrom}..${dateTo} → investimento ` +
+          `${adCostTotal.toFixed(2)} (fonte: ${fonte})`);
+
+        // Diagnostico so quando o resultado e suspeito: campanha existe e custo
+        // zerado pode ser periodo sem veiculacao, mas tambem pode ser nome de
+        // campo diferente na resposta. Os nomes dos campos dizem qual dos dois.
+        if (adCostTotal === 0 && amostra) {
+          console.warn('[ads] custo 0 com campanha na lista — campos da 1a campanha:',
+            Object.keys(amostra).join(','),
+            '| metrics:', Object.keys((amostra && amostra.metrics) || {}).join(',') || '(ausente)');
         }
       } catch (e) {
         console.warn('[ads] Erro:', e.message);
       }
 
       if (adCostTotal === 0) {
-        console.warn('[ads] Nenhum endpoint retornou dados de publicidade. Verifique o console para detalhes.');
+        console.warn('[ads] Sem investimento apurado no periodo. Se houve, informe no campo manual.');
       }
+    }
+
+    /**
+     * Custo de UMA campanha. O bloco de metrica pode vir como objeto do periodo
+     * ou como lista de dias; nos dois casos o campo e `cost`, e so ele.
+     */
+    function custoDaCampanha(c) {
+      if (!c) return 0;
+      if (Array.isArray(c.metrics)) return c.metrics.reduce((s, d) => s + valorDeCustoOuZero(d), 0);
+      const doBloco = valorDeCusto(c.metrics);
+      return doBloco !== null ? doBloco : valorDeCustoOuZero(c);
+    }
+
+    /**
+     * Le `cost` de um objeto de metrica. Devolve null quando o campo nao existe
+     * — null e "nao informado", diferente de zero, que e "nao gastou". Nenhum
+     * outro campo serve de substituto: orcamento e receita atribuida nao sao gasto.
+     */
+    function valorDeCusto(m) {
+      if (!m || typeof m !== 'object' || m.cost == null) return null;
+      const n = Math.abs(Number(m.cost));
+      return Number.isFinite(n) ? n : null;
+    }
+
+    function valorDeCustoOuZero(m) {
+      const v = valorDeCusto(m);
+      return v === null ? 0 : v;
     }
 
     // ══════════════════════════════════════
