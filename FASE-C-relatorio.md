@@ -47,7 +47,7 @@ O arquivo enviado nesta conversa **NÃO corresponde** ao HEAD do GitHub:
 | Função | Linha (patchado) | Mudança |
 |---|---|---|
 | `mlFetch(path)` | 3600 | mesmo nome/assinatura/retorno; agora traduz o path via `mlPathToOp` e chama o proxy com Bearer de sessão. Erros mantêm o formato `API <status>: <path>` |
-| `loadAdCost()` | 3862 | cascata de 4 endpoints → operação única `ads-billing` (aggregate); parsing da resposta preservado |
+| `loadAdCost()` | 6503 | reescrita para a API ATUAL de Product Ads: `pub-anunciantes` descobre o `advertiser_id` e `pub-campanhas` traz as campanhas do período JÁ COM métricas. O investimento sai de `metrics_summary.cost` (agregado do período, todas as campanhas) e, na falta dele, da soma de `cost` por campanha — paginada. `ads-billing` não é mais chamada nem mapeada |
 | `posBuscar()` (trecho da busca geral) | 6543 | fetch direto com Bearer ML → `mlFetch('/sites/MLB/search...')`; fallback local preservado |
 | `rlPost(path, data)` | 7089 | traduz para `POST /api/ml/promotion-item-set`; injeta `id` no payload; erro preserva `{status, data.cause}` que a aba Relâmpago consome |
 | `rlDelete(path)` | 7102 | traduz para `DELETE /api/ml/promotion-item-remove?id&promotion_type&promotion_id` |
@@ -64,7 +64,7 @@ O arquivo enviado nesta conversa **NÃO corresponde** ao HEAD do GitHub:
 
 ## 6. Rotas internas usadas pelo dashboard patchado
 
-`POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/session` · `GET /api/ml/items-search` · `GET /api/ml/items` · `GET /api/ml/orders` · `GET /api/ml/order` · `GET /api/ml/order-discounts` · `GET /api/ml/shipment` · `GET /api/ml/reputation` · `GET /api/ml/visits` · `GET /api/ml/sites-search` · `GET /api/ml/product-items` · `GET /api/ml/promotions` · `GET /api/ml/promotion-items` · `GET /api/ml/ads-billing` · `POST /api/ml/promotion-item-set` · `DELETE /api/ml/promotion-item-remove`
+`POST /api/auth/login` · `POST /api/auth/logout` · `GET /api/auth/session` · `GET /api/ml/items-search` · `GET /api/ml/items` · `GET /api/ml/orders` · `GET /api/ml/order` · `GET /api/ml/order-discounts` · `GET /api/ml/shipment` · `GET /api/ml/reputation` · `GET /api/ml/visits` · `GET /api/ml/sites-search` · `GET /api/ml/product-items` · `GET /api/ml/promotions` · `GET /api/ml/promotion-items` · `GET /api/ml/pub-anunciantes` · `GET /api/ml/pub-campanhas` · `POST /api/ml/promotion-item-set` · `DELETE /api/ml/promotion-item-remove`
 
 ## 7. Resultado dos testes — 40/40 OK
 
@@ -89,7 +89,12 @@ curl -si -X OPTIONS https://overwine-assistant.vercel.app/api/auth/login \
 
 1. **Arquivo local ≠ GitHub HEAD** (item 0) — o push levará o módulo Copiloto junto.
 2. **Cancelados:** dashboard enviava `status=cancelled`; o backend envia `order.status=cancelled` (parâmetro documentado do ML). A paridade do resultado final é garantida pelo filtro client-side `filter(o => o.status === 'cancelled')` que permanece intacto; se o parâmetro antigo era ignorado pelo ML, a versão nova pode inclusive trazer cancelamentos MAIS completos. Ponto de checagem na homologação: comparar a contagem da aba Cancelamentos antes/depois.
-3. **ML Ads:** cascata de 4 endpoints → só o `aggregate` (os outros 3 eram diagnóstico de console, sem alimentar UI). Já documentado na Etapa 2.1.
+3. **ML Ads:** duas correções encadeadas, depois do teste manual de 25/08/2026.
+   - A cascata de 4 endpoints virou o `aggregate` único na migração BFF (Etapa 2.1), mas essa geração de Product Ads foi desligada pelo ML em 27/05/2026: o console mostrava `[ads] Erro: API 404: /advertising/product_ads/billing/aggregate`.
+   - Trocada pela rota atual, a consulta passou a listar as campanhas e somar `custo 0,00`: na API atual a campanha só vem com bloco de métrica quando as métricas são pedidas por parâmetro. Quem pede é o BFF, com lista fixa de servidor (`metrics=clicks,prints,cost&metrics_summary=true`) — o cliente não escolhe métrica, como não escolhe URL.
+   - Fonte do gasto, em ordem: `metrics_summary.cost` (agregado do período) e, na falta dele, a soma de `cost` por campanha. **Só `cost`**: `total_amount` é receita atribuída e `budget` é orçamento configurado — usar qualquer um dos dois inflaria a margem em silêncio.
+   - Limites do ML respeitados: janela de 90 dias (período maior é truncado) e métrica do dia corrente só consolidada às 10h (GMT-3), então hoje pode vir parcial.
+   - `adCostByItem` fica vazio: a consulta por campanha não quebra custo por anúncio. O campo manual de publicidade continua sendo o fallback para conta sem Product Ads, período sem veiculação e falha da API.
 4. **Token manual removido:** a regra "nenhuma chamada direta autenticada ao ML" torna o fallback de token manual inviável — divergência da decisão antiga da auditoria, exigida pela sua revisão BFF.
 5. **Reload pede senha:** o `ow_viewer_ok` do sessionStorage foi removido; sessão vive só em memória (trade-off aceito na revisão).
 6. **Visitas com `last>150`:** antes o ML rejeitava; agora o zod do backend rejeita com 400 — mesmo caminho de falha, mensagem diferente.
