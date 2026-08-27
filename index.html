@@ -5476,6 +5476,7 @@
       SESSION_TOKEN = null;
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
+      clearInterval(snapshotPollTimer);
       hideLoading();
       document.getElementById('main-header').style.display = 'none';
       document.getElementById('main-content').style.display = 'none';
@@ -5598,6 +5599,10 @@
       const btn = document.getElementById('btn-refresh');
       btn.disabled = true;
       btn.textContent = 'Carregando...';
+      // Sinaliza para o poll do snapshot que ja ha uma carga em andamento.
+      // Sem isso, uma carga longa e um poll de 45s se sobreporiam e o
+      // dashboard repaginaria os mesmos milhares de pedidos duas vezes.
+      _loadAllEmCurso = true;
 
       try {
         setLoadingText('Carregando catalogo e metricas...');
@@ -5656,6 +5661,8 @@
         // para startDashboard tratar (esconder loading e mostrar setup).
         if (!allItems || allItems.length === 0) throw e;
         return;
+      } finally {
+        _loadAllEmCurso = false;
       }
 
       btn.disabled = false;
@@ -13597,9 +13604,31 @@
     // ══════════════════════════════════════
     const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
+    /**
+     * Poll LEVE do snapshot de pedidos.
+     *
+     * O backend passou a atualizar o snapshot por notificacao do Mercado Livre,
+     * em segundos. Sem este poll a tela continuaria enxergando a venda so no
+     * refresh de 30 minutos — o gargalo teria mudado de lugar, nao sumido.
+     *
+     * O que este poll NAO faz, e nao pode passar a fazer:
+     *  - NAO fala com a API do Mercado Livre. Nenhuma linha do navegador
+     *    fala; o host sequer aparece neste arquivo, e ha teste que garante.
+     *  - NAO baixa pedido nenhum. Ele consulta /api/orders/status, que le
+     *    manifesto e telemetria e nao toca em chunk: alguns bytes por chamada.
+     *  - So dispara loadAll quando a VERSAO do snapshot mudou. Em um dia sem
+     *    venda o custo e um GET barato a cada 45 segundos e mais nada.
+     *
+     * 45s: metade do que um operador tolera esperando uma venda aparecer, e
+     * folgado o bastante para nao concorrer com o refresh de 30 minutos.
+     */
+    const SNAPSHOT_POLL_MS = 45 * 1000;
+
     let refreshTimer = null;
     let countdown = 0;
     let countdownTimer = null;
+    let snapshotPollTimer = null;
+    let _loadAllEmCurso = false;
 
     async function apiLogin(password) {
       const res = await backendFetch('/api/auth/login', {
@@ -13625,7 +13654,54 @@
       } catch (e) { return false; }
     }
 
+    /**
+     * Uma passada do poll. Silenciosa de proposito: um erro de rede aqui nao
+     * merece toast — a proxima passada tenta de novo em 45 segundos, e o
+     * refresh de 30 minutos continua valendo como piso.
+     */
+    async function pollSnapshot() {
+      if (!SESSION_TOKEN) return;
+      if (_loadAllEmCurso) return;
+      // Aba em segundo plano nao precisa de dado fresco. Ao voltar ao primeiro
+      // plano o listener de visibilitychange abaixo faz uma passada imediata.
+      if (typeof document !== 'undefined' && document.hidden) return;
+      // Sem uma versao ancorada ainda nao houve carga: nada com que comparar.
+      if (_snapVersaoAtivos === null) return;
+
+      let body;
+      try {
+        const res = await backendFetch('/api/orders/status?alvo=ativos');
+        if (!res.ok) return;                 // 401 ja tratado por backendFetch
+        body = await res.json();
+      } catch (e) {
+        return;                              // rede instavel: tenta na proxima
+      }
+      if (!body || !Number.isInteger(body.versao)) return;
+      if (body.versao === _snapVersaoAtivos) return;   // nada mudou
+
+      console.info('[poll] snapshot mudou de versao', _snapVersaoAtivos, '->', body.versao);
+      await loadAll();
+    }
+
+    let _pollVisibilidadeLigado = false;
+
+    function scheduleSnapshotPoll() {
+      clearInterval(snapshotPollTimer);
+      snapshotPollTimer = setInterval(() => { pollSnapshot(); }, SNAPSHOT_POLL_MS);
+
+      // Voltar para a aba nao deve custar ate 45 segundos de espera: uma
+      // passada imediata resolve. Registrado UMA vez — scheduleAutoRefresh e
+      // chamado de novo a cada "Atualizar agora".
+      if (!_pollVisibilidadeLigado && typeof document !== 'undefined') {
+        _pollVisibilidadeLigado = true;
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) pollSnapshot();
+        });
+      }
+    }
+
     function scheduleAutoRefresh() {
+      scheduleSnapshotPoll();
       clearInterval(refreshTimer);
       refreshTimer = setInterval(async () => {
         // Valida a sessao antes da rajada de chamadas do loadAll —
@@ -13687,6 +13763,7 @@
     async function doLogout() {
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
+      clearInterval(snapshotPollTimer);
       await apiLogout();
       document.getElementById('main-header').style.display = 'none';
       document.getElementById('main-content').style.display = 'none';
