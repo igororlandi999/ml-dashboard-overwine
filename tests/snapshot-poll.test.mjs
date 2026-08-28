@@ -75,9 +75,22 @@ describe('poll do snapshot — quando ele recarrega', () => {
   const corpo = extrairFuncao('pollSnapshot');
 
   test('so recarrega quando a versao mudou', () => {
-    assert.match(corpo, /body\.versao === _snapVersaoAtivos/);
+    assert.match(corpo, /body\.versao === _pollVersaoVista/);
     assert.match(corpo, /return;/);
     assert.match(corpo, /await loadAll\(\)/);
+  });
+
+  test('a ancora do poll NAO e a do historico completo', () => {
+    // _snapVersaoAtivos so e escrita por loadAllOrders, que virou carga sob
+    // demanda: depender dela deixava o poll mudo numa sessao que so abriu a
+    // Visao Geral. O poll mantem a sua propria.
+    assert.ok(!corpo.includes('_snapVersaoAtivos'),
+      'o poll nao pode depender da ancora do historico completo');
+    assert.match(corpo, /_pollVersaoVista/);
+  });
+
+  test('a primeira passada apenas ancora, sem recarregar', () => {
+    assert.match(corpo, /_pollVersaoVista === null.*_pollVersaoVista = body\.versao/s);
   });
 
   test('versao que nao e inteiro nao dispara recarga', () => {
@@ -111,8 +124,20 @@ describe('poll do snapshot — ciclo de vida do temporizador', () => {
     assert.match(html, /const REFRESH_INTERVAL_MS = 30 \* 60 \* 1000;/);
   });
 
-  test('scheduleAutoRefresh liga o poll', () => {
-    assert.match(extrairFuncao('scheduleAutoRefresh'), /scheduleSnapshotPoll\(\)/);
+  test('startDashboard liga o poll explicitamente, com sessao valida', () => {
+    assert.match(extrairFuncao('startDashboard'), /scheduleSnapshotPoll\(\)/);
+  });
+
+  test('o poll NAO depende do ciclo de vida do refresh de 30 minutos', () => {
+    // Os dois mecanismos sao independentes: um nasceu como piso de 30 min, o
+    // outro precisa enxergar uma venda em segundos.
+    assert.ok(!extrairFuncao('scheduleAutoRefresh').includes('scheduleSnapshotPoll'),
+      'scheduleAutoRefresh nao pode ser o dono do poll');
+  });
+
+  test('sessao expirada e logout zeram a ancora do poll', () => {
+    assert.match(extrairFuncao('handleSessionExpired'), /_pollVersaoVista = null;/);
+    assert.match(extrairFuncao('doLogout'), /_pollVersaoVista = null;/);
   });
 
   test('sessao expirada desliga o poll', () => {

@@ -5477,6 +5477,7 @@
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
       clearInterval(snapshotPollTimer);
+      _pollVersaoVista = null;
       hideLoading();
       document.getElementById('main-header').style.display = 'none';
       document.getElementById('main-content').style.display = 'none';
@@ -13629,6 +13630,14 @@
     let countdownTimer = null;
     let snapshotPollTimer = null;
     let _loadAllEmCurso = false;
+    /**
+     * Versao de snapshot que o POLL ja viu. Separada de `_snapVersaoAtivos` de
+     * proposito: aquela pertence ao historico completo (`loadAllOrders`), que
+     * virou carga sob demanda e nao roda no login. Enquanto o poll dependia
+     * dela, saia antes de chamar /api/orders/status e o mecanismo inteiro
+     * ficava mudo numa sessao que so abriu a Visao Geral.
+     */
+    let _pollVersaoVista = null;
 
     /**
      * Auto-refresh: acima desta idade (segundos) do ultimo check do backend, a
@@ -13676,9 +13685,6 @@
       // Aba em segundo plano nao precisa de dado fresco. Ao voltar ao primeiro
       // plano o listener de visibilitychange abaixo faz uma passada imediata.
       if (typeof document !== 'undefined' && document.hidden) return;
-      // Sem uma versao ancorada ainda nao houve carga: nada com que comparar.
-      if (_snapVersaoAtivos === null) return;
-
       let body;
       try {
         const res = await backendFetch('/api/orders/status?alvo=ativos');
@@ -13700,9 +13706,13 @@
       // sempre, e usa-lo aqui pediria sincronizacao eternamente.
       pedirRefreshSeVelho(body);
 
-      if (body.versao === _snapVersaoAtivos) return;   // nada mudou
+      // Primeira passada da sessao: apenas ancora. A tela acabou de carregar
+      // com esta versao, entao nao ha o que recarregar.
+      if (_pollVersaoVista === null) { _pollVersaoVista = body.versao; return; }
+      if (body.versao === _pollVersaoVista) return;   // nada mudou
 
-      console.info('[poll] snapshot mudou de versao', _snapVersaoAtivos, '->', body.versao);
+      console.info('[poll] snapshot mudou de versao', _pollVersaoVista, '->', body.versao);
+      _pollVersaoVista = body.versao;
       await loadAll();
     }
 
@@ -13754,23 +13764,35 @@
 
     let _pollVisibilidadeLigado = false;
 
+    /**
+     * Liga o poll do snapshot. IDEMPOTENTE: limpa antes de agendar, entao
+     * chamadas repetidas nunca acumulam temporizador.
+     *
+     * Sonda uma vez de imediato, sem aguardar: esperar 45 segundos para
+     * descobrir se o mecanismo esta vivo foi exatamente o que escondeu a falha
+     * anterior por horas. A aba em segundo plano nao sonda (pollSnapshot sai
+     * no `document.hidden`), mas o temporizador FICA armado — `hidden` adia a
+     * sondagem, nunca a inicializacao.
+     */
     function scheduleSnapshotPoll() {
       clearInterval(snapshotPollTimer);
       snapshotPollTimer = setInterval(() => { pollSnapshot(); }, SNAPSHOT_POLL_MS);
 
-      // Voltar para a aba nao deve custar ate 45 segundos de espera: uma
-      // passada imediata resolve. Registrado UMA vez — scheduleAutoRefresh e
-      // chamado de novo a cada "Atualizar agora".
+      // Voltar para a aba nao deve custar ate 45 segundos de espera. Rearmar
+      // aqui tambem cobre o caso em que o temporizador morreu com a aba em
+      // segundo plano. Registrado UMA vez.
       if (!_pollVisibilidadeLigado && typeof document !== 'undefined') {
         _pollVisibilidadeLigado = true;
         document.addEventListener('visibilitychange', () => {
-          if (!document.hidden) pollSnapshot();
+          if (document.hidden) return;
+          scheduleSnapshotPoll();   // rearma e ja sonda
         });
       }
+
+      pollSnapshot();   // sem await: o poll nunca bloqueia quem o ligou
     }
 
     function scheduleAutoRefresh() {
-      scheduleSnapshotPoll();
       clearInterval(refreshTimer);
       refreshTimer = setInterval(async () => {
         // Valida a sessao antes da rajada de chamadas do loadAll —
@@ -13833,6 +13855,7 @@
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
       clearInterval(snapshotPollTimer);
+      _pollVersaoVista = null;
       await apiLogout();
       document.getElementById('main-header').style.display = 'none';
       document.getElementById('main-content').style.display = 'none';
@@ -13849,6 +13872,10 @@
         // pelo catch interno (falha nao-critica com allItems ja carregado).
         revelarInterface();
         scheduleAutoRefresh();
+        // Explicito, e nao como efeito colateral do timer de 30 minutos: o
+        // poll do snapshot e o unico mecanismo que enxerga uma venda em
+        // segundos, e nao pode depender de outro ciclo de vida para nascer.
+        scheduleSnapshotPoll();
       } catch (e) {
         console.error('[start]', e);
         hideLoading();
