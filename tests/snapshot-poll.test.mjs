@@ -150,3 +150,68 @@ describe('loadAll — a bandeira que o poll observa', () => {
     assert.match(corpo, /finally \{\s*_loadAllEmCurso = false;\s*\}/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Auto-refresh: a aba pede sincronizacao quando o snapshot esta velho.
+ *
+ * Existe porque as duas fontes de atualizacao falharam juntas — o agendador do
+ * GitHub Actions descartando quase todos os ticks e a notificacao do Mercado
+ * Livre sem autenticar. O risco desta feature e carga: cada aba aberta pode
+ * virar uma sincronizacao. Por isso os testes olham principalmente os freios.
+ */
+describe('auto-refresh — quando a aba pede sincronizacao', () => {
+  const corpo = extrairFuncao('pedirRefreshSeVelho');
+  const idade = extrairFuncao('_idadeDoUltimoCheck');
+
+  test('chama POST /api/orders/refresh, e so isso', () => {
+    assert.match(corpo, /backendFetch\('\/api\/orders\/refresh', \{ method: 'POST'/);
+  });
+
+  test('NAO fala com o Mercado Livre', () => {
+    assert.ok(!corpo.includes('mercadolibre'), 'o navegador nunca fala com o ML');
+    assert.ok(!corpo.includes('/api/ml/'), 'nem pelo proxy');
+  });
+
+  test('NAO baixa pedidos: quem recarrega e o poll, ao ver versao nova', () => {
+    for (const rota of ['/api/orders/list', '/api/orders/metrics', '/api/orders/margin']) {
+      assert.ok(!corpo.includes(rota), 'refresh nao pode chamar ' + rota);
+    }
+    assert.ok(!corpo.includes('loadAll'), 'o refresh nao recarrega por conta propria');
+  });
+
+  test('nao aguarda o resultado para liberar o poll', () => {
+    // pollSnapshot dispara sem await: a deteccao vem da rodada seguinte.
+    const poll = extrairFuncao('pollSnapshot');
+    assert.match(poll, /\n\s*pedirRefreshSeVelho\(body\);/);
+    assert.ok(!/await\s+pedirRefreshSeVelho/.test(poll), 'nao pode aguardar o refresh');
+  });
+
+  test('freio: nao dispara com refresh em curso', () => {
+    assert.match(corpo, /if \(_refreshEmCurso\) return;/);
+  });
+
+  test('freio: cooldown local entre chamadas', () => {
+    assert.match(corpo, /_ultimoRefreshMs < REFRESH_COOLDOWN_LOCAL_MS/);
+    assert.match(html, /const REFRESH_COOLDOWN_LOCAL_MS = 60 \* 1000;/);
+  });
+
+  test('freio: so acima do limite de idade', () => {
+    assert.match(corpo, /idade <= SNAPSHOT_IDADE_MAX_S/);
+    assert.match(html, /const SNAPSHOT_IDADE_MAX_S = 90;/);
+  });
+
+  test('libera a bandeira num finally — falha nao trava o mecanismo', () => {
+    assert.match(corpo, /finally \{\s*_refreshEmCurso = false;\s*\}/);
+  });
+
+  test('erro de rede e silencioso: sem toast, sem quebrar o poll', () => {
+    assert.ok(!corpo.includes('showToast'), 'nada de toast no caminho automatico');
+  });
+
+  test('a idade vem de lastSyncAt (quando checou), nao de updatedAt (quando mudou)', () => {
+    assert.match(idade, /body\.lastSyncAt/);
+    assert.ok(!idade.includes('updatedAt'), 'updatedAt fica parado em dia sem venda');
+    assert.match(idade, /body\.idadeSegundos/); // fallback conservador
+  });
+});

@@ -13630,6 +13630,17 @@
     let snapshotPollTimer = null;
     let _loadAllEmCurso = false;
 
+    /**
+     * Auto-refresh: acima desta idade (segundos) do ultimo check do backend, a
+     * aba pede uma sincronizacao incremental. 90s casa com a meta operacional
+     * de o pedido novo aparecer em 1 a 2 minutos.
+     */
+    const SNAPSHOT_IDADE_MAX_S = 90;
+    /** Freio LOCAL. O que realmente segura carga e o cooldown global do backend. */
+    const REFRESH_COOLDOWN_LOCAL_MS = 60 * 1000;
+    let _refreshEmCurso = false;
+    let _ultimoRefreshMs = 0;
+
     async function apiLogin(password) {
       const res = await backendFetch('/api/auth/login', {
         method: 'POST',
@@ -13677,10 +13688,68 @@
         return;                              // rede instavel: tenta na proxima
       }
       if (!body || !Number.isInteger(body.versao)) return;
+
+      // Snapshot velho: pede ao BACKEND uma sincronizacao incremental. Isso
+      // existe porque as duas fontes de atualizacao falharam juntas — o
+      // agendador do GitHub Actions passou a descartar quase todos os ticks e
+      // a notificacao do Mercado Livre ainda nao autentica. A aba aberta e o
+      // unico componente vivo em todos os cenarios, entao ela virou o piso.
+      //
+      // A idade vem de lastSyncAt (quando o backend CHECOU), nao de updatedAt
+      // (quando MUDOU): num dia sem vendas o updatedAt fica parado para
+      // sempre, e usa-lo aqui pediria sincronizacao eternamente.
+      pedirRefreshSeVelho(body);
+
       if (body.versao === _snapVersaoAtivos) return;   // nada mudou
 
       console.info('[poll] snapshot mudou de versao', _snapVersaoAtivos, '->', body.versao);
       await loadAll();
+    }
+
+    /**
+     * Idade, em segundos, do ultimo CHECK do backend. Sem lastSyncAt, cai para
+     * a idade do snapshot publicado — melhor um gatilho conservador do que
+     * nenhum.
+     */
+    function _idadeDoUltimoCheck(body) {
+      if (body.lastSyncAt) {
+        const t = Date.parse(body.lastSyncAt);
+        if (Number.isFinite(t)) return Math.max(0, (Date.now() - t) / 1000);
+      }
+      return Number.isFinite(body.idadeSegundos) ? body.idadeSegundos : null;
+    }
+
+    /**
+     * Dispara POST /api/orders/refresh quando vale a pena.
+     *
+     * NAO aguarda o resultado: quem detecta a mudanca e a proxima rodada do
+     * poll, comparando `versao`. Assim o refresh nunca atrasa o poll nem
+     * bloqueia a interface.
+     *
+     * Tres freios, e o mais importante nao esta aqui: o backend tem um
+     * cooldown GLOBAL no Redis, entao dez abas abertas produzem uma unica
+     * sincronizacao. Os freios locais abaixo apenas evitam gastar requisicao
+     * que o backend ja recusaria.
+     */
+    async function pedirRefreshSeVelho(body) {
+      if (_refreshEmCurso) return;
+      if (Date.now() - _ultimoRefreshMs < REFRESH_COOLDOWN_LOCAL_MS) return;
+      const idade = _idadeDoUltimoCheck(body);
+      if (idade === null || idade <= SNAPSHOT_IDADE_MAX_S) return;
+
+      _refreshEmCurso = true;
+      _ultimoRefreshMs = Date.now();
+      try {
+        const res = await backendFetch('/api/orders/refresh', { method: 'POST', body: '{}' });
+        if (!res.ok) return;
+        const r = await res.json().catch(() => null);
+        if (r) console.info('[refresh] idade=' + Math.round(idade) + 's acao=' + r.acao);
+      } catch (e) {
+        // Silencioso de proposito: a proxima rodada do poll tenta de novo, e o
+        // dashboard segue servindo o snapshot que ja tinha.
+      } finally {
+        _refreshEmCurso = false;
+      }
     }
 
     let _pollVisibilidadeLigado = false;
@@ -14529,10 +14598,24 @@
       var owcConversationId = null;   // Fase 5d: gerado uma vez, em memoria
       var owcPreviousQuery = null;    // Fase 5g: continuidade em memoria, nunca em storage
 
-      // Respostas MOCK — inequivocamente visuais, sem números que pareçam dados reais.
-      // Fase 5c: roteia por atalho. Chips "Resumo do dia" e "Risco de ruptura" usam
-      // contexto REAL calculado no codigo. Demais atalhos informam proxima etapa.
-      // Pergunta livre continua sem interpretacao por IA.
+      // Roteamento dos atalhos (chips). A regra e uma so: quando ja existe um
+      // service no backend que define aquele numero, o atalho pergunta a ele.
+      //
+      //  - "Resumo do dia" responde LOCALMENTE. E o unico que fala do estado
+      //    carregado NA TELA (pedidos de hoje, da semana e do mes ja baixados),
+      //    e os numeros sao os mesmos dos cards.
+      //
+      //  - "Top produtos 30d" e "Margem por produto" vao ao BACKEND, onde o
+      //    product-ranking.service agrupa por SKU, usa frete real rateado e
+      //    tarifa de tabela, e declara cobertura de custo linha a linha.
+      //
+      //  - "Risco de ruptura" vai ao BACKEND, onde o inventory service
+      //    classifica sobre o saldo TOTAL (proprio + Full) nas perguntas
+      //    genericas. A aba Estoque desta tela classifica so sobre o proprio, o
+      //    que e certo para decidir reposicao do deposito e errado para dizer
+      //    se algo esta acabando (ver o bloco do atalho, mais abaixo).
+      //
+      // Pergunta livre continua indo ao backend sem interpretacao local.
       function owChatResponder(texto) {
         // Normaliza para comparar com os rotulos EXATOS dos chips (sem regex ampla):
         // minusculas, acentos removidos, espacos colapsados.
@@ -14550,39 +14633,92 @@
             return { texto: 'Os pedidos ainda nao terminaram de carregar (ou a origem e desconhecida). Assim que o dashboard concluir a carga, mostro o resumo real.', tag: 'aguardando' };
           }
           var p = ctx.pedidos;
+          // Cada linha carrega o ticket da PROPRIA janela, derivado dos dois
+          // numeros que a linha ja mostra (ver owcTicket). O ticket geral sai
+          // do bloco de janelas e vira uma linha separada, rotulada com o
+          // periodo que ele realmente cobre — misturado ali em cima, ele era
+          // lido como "ticket de hoje", que e outro numero.
           var linhas = [
             'Resumo de hoje (' + ctx.periodo.hojeBRT + ', horario de Brasilia):',
-            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento pago hoje: ' + owcMoeda(p.hoje.faturamento),
-            '- Ultimos 7 dias: ' + p.ultimos7.qtd + ' pedidos | ' + owcMoeda(p.ultimos7.faturamento),
-            '- Mes atual: ' + p.mesAtual.qtd + ' pedidos | ' + owcMoeda(p.mesAtual.faturamento),
-            '- Ticket medio (geral, pagos): ' + (p.ticketMedioGeral == null ? 'sem pedidos pagos' : owcMoeda(p.ticketMedioGeral))
+            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento pago hoje: ' + owcMoeda(p.hoje.faturamento) +
+              ' | Ticket medio: ' + owcTicket(p.hoje.qtd, p.hoje.faturamento),
+            '- Ultimos 7 dias: ' + p.ultimos7.qtd + ' pedidos | ' + owcMoeda(p.ultimos7.faturamento) +
+              ' | Ticket medio: ' + owcTicket(p.ultimos7.qtd, p.ultimos7.faturamento),
+            '- Mes atual: ' + p.mesAtual.qtd + ' pedidos | ' + owcMoeda(p.mesAtual.faturamento) +
+              ' | Ticket medio: ' + owcTicket(p.mesAtual.qtd, p.mesAtual.faturamento),
+            '',
+            '- Ticket medio de todo o historico carregado (pedidos pagos): ' +
+              (p.ticketMedioGeral == null ? 'sem pedidos pagos' : owcMoeda(p.ticketMedioGeral))
           ];
           if (ctx.origem.snapshotPartial) linhas.push('(sincronizacao mais recente em andamento; usando a ultima versao publicada.)');
           if (ctx.origem.ordersServedFrom === 'proxy_fallback') linhas.push('(origem: proxy/fallback — sem versao de snapshot.)');
           return { texto: linhas.join('\n'), tag: 'calculado localmente' };
         }
 
+        // "Risco de ruptura" tambem vai ao BACKEND, e por um motivo de base de
+        // calculo, nao de comodidade.
+        //
+        // A aba Estoque classifica sobre o estoque PROPRIO (exclui o Full).
+        // Para a tela isso e correto: ela existe para decidir reposicao do
+        // deposito. Para a pergunta generica "estou correndo risco de ruptura?"
+        // isso e ERRADO, e erra para o lado caro: um SKU com 0 em casa e 300 no
+        // Full nao esta acabando, mas apareceria como ruptura e levaria a uma
+        // compra desnecessaria.
+        //
+        // O backend ja resolveu isso com `classification.basis`: pergunta
+        // generica classifica sobre o TOTAL (proprio + Full); so quem pergunta
+        // explicitamente por "proprio" ou por "Full" recebe a base estreita.
+        // Reproduzir a classificacao aqui seria uma segunda fonte de verdade —
+        // e seria justamente a fonte com a base errada.
+        //
+        // Os limites nao mudam em lugar nenhum: <30 dias ruptura, 30-90 alerta,
+        // ate 365 ok, acima excesso, velocidade zero sem venda. Sao os mesmos
+        // de LIMITES_CLASSIFICACAO no backend e os mesmos da aba Estoque; o que
+        // muda e apenas SOBRE QUAL SALDO eles sao aplicados.
         if (norm === 'risco de ruptura') {
-          var cx = owChatBuildContext();
-          var e = cx.estoque;
-          if (e.riscoRuptura.disponivel) {
-            return {
-              texto: 'Risco de ruptura: ' + e.riscoRuptura.qtdSkus + ' SKU(s) com cobertura baixa. ' +
-                'Anuncios ativos: ' + e.ativos + ' | sem estoque: ' + e.semEstoque + '.', tag: 'calculado localmente'
-            };
-          }
-          return { texto: 'Ainda nao ha dados suficientes (pedidos e anuncios) para calcular o risco de ruptura. Assim que o dashboard carregar, mostro os SKUs em risco.', tag: 'aguardando' };
+          // Aqui a expansao NAO e por incompreensao: 'risco de ruptura' e
+          // entendido pelo backend, e ja com escopo `ambos`. So que ele cai em
+          // inventory_list FILTRADO em `ruptura`, e uma lista so de ruptura
+          // apaga a faixa de alerta — os SKUs de 30 a 90 dias de cobertura, que
+          // sao exatamente os que dao tempo de reagir.
+          //
+          // `resumo do estoque` cai em inventory_summary, tambem com escopo
+          // `ambos`, e devolve `classification.basis: 'total'` com a contagem
+          // de TODAS as faixas (ruptura, alerta, ok, excesso, sem venda) ja
+          // calculada pelo inventory service, mais os saldos proprio/Full. E a
+          // resposta que o atalho sempre quis dar, agora sobre a base certa.
+          //
+          // A janela de velocidade continua a de 30 dias, padrao do backend
+          // para estoque — a mesma da aba Estoque.
+          return { backend: true, consulta: 'resumo do estoque' };
         }
 
+        // Os dois chips abaixo mandam uma CONSULTA CANONICA no lugar do rotulo.
+        // O rotulo sozinho nao e interpretavel pelo parser do backend, e isso e
+        // verificavel: 'top produtos 30d' devolve out_of_scope/sem_intencao_de_
+        // vendas (nao ha metrica nem periodo reconheciveis — "30d" nao e um
+        // periodo do vocabulario) e 'margem por produto' devolve ambiguous/
+        // periodo_ausente. A bolha do usuario continua exibindo o rotulo do
+        // chip; o que viaja no POST e a pergunta equivalente por extenso.
+        //
+        // Os textos abaixo sao os MESMOS que um usuario pode digitar a mao — nao
+        // ha rota, parametro nem atalho privilegiado para o chip.
         if (norm === 'top produtos 30d') {
-          return { texto: 'O ranking de produtos (Top 30d) sera conectado em uma proxima etapa desta implementacao.', tag: 'proxima etapa' };
+          // Sem limite explicito o servico usaria RANKING_LIMITE_PADRAO (5). O
+          // "5" fica escrito para o numero de linhas ser previsivel a partir do
+          // texto, nao de um padrao que pode mudar no backend.
+          return { backend: true, consulta: 'top 5 produtos por faturamento nos ultimos 30 dias' };
         }
 
         if (norm === 'margem por produto') {
-          return { texto: 'A analise de margem por produto exige o modulo analitico especifico, que sera conectado em uma etapa posterior.', tag: 'proxima etapa' };
+          // Ranking por margem: o unico caminho que devolve faturamento, custo,
+          // margem em R$ e margem % por SKU, e que ordena por margem. O servico
+          // exclui da ORDENACAO as linhas de custo incompleto e declara quantas
+          // ficaram de fora — por isso a pergunta e de ranking, nao de resumo.
+          return { backend: true, consulta: 'ranking de produtos por margem nos ultimos 30 dias' };
         }
 
-        // Qualquer outra pergunta digitada livremente vai ao backend (mock).
+        // Qualquer outra pergunta digitada livremente vai ao backend.
         return { backend: true };
       }
 
@@ -14629,7 +14765,9 @@
       function owChatRenderInicial() {
         if (inicialRenderizada) return;
         inicialRenderizada = true;
-        owChatAppendMsg('bot', 'Sou o Assistente Overwine. Pergunte sobre vendas, pedidos, ticket medio ou estoque — respondo com base nos dados agregados do seu dashboard. Os atalhos abaixo sao calculados localmente.');
+        // O texto precisa acompanhar o roteamento: so "Resumo do dia" sai da
+        // tela; os outros tres consultam o servidor.
+        owChatAppendMsg('bot', 'Sou o Assistente Overwine. Pergunte sobre vendas, pedidos, ticket medio, margem ou estoque. Resumo do dia sai dos dados ja carregados na tela; Top produtos, Margem por produto e Risco de ruptura sao calculados no servidor.');
         var chips = ['Resumo do dia', 'Risco de ruptura', 'Top produtos 30d', 'Margem por produto'];
         var wrap = document.createElement('div');
         wrap.className = 'owc-msg owc-msg--bot';
@@ -14800,11 +14938,13 @@
           return;
         }
 
-        // Atalhos (chips) respondem LOCALMENTE, sem rede.
+        // Atalhos (chips) de estado do dashboard respondem LOCALMENTE, sem rede.
         var resp = owChatResponder(texto);
         if (resp && resp.backend) {
-          // Pergunta livre: unica via que chama POST /api/chat.
-          owChatChamarBackend(texto);
+          // Unica via que chama POST /api/chat. `consulta` so existe nos chips
+          // que expandem para a pergunta canonica (ver owChatResponder); a
+          // pergunta digitada a mao segue exatamente como o usuario escreveu.
+          owChatChamarBackend(resp.consulta || texto);
           return;
         }
         owChatTyping(true);
@@ -14982,6 +15122,19 @@
           });
         }
 
+        /**
+         * ATENCAO ao ler este campo: `riscoRuptura` conta a faixa `ruptura` da
+         * aba Estoque, e a aba Estoque classifica sobre o estoque PROPRIO
+         * (`consolidarEstoqueGrupo(...).proprio`, sem o Full). Ele NAO e a
+         * classificacao que o Assistente usa para responder sobre ruptura —
+         * essa vem do backend, sobre a base TOTAL (`classification.basis`).
+         *
+         * O campo continua aqui porque o schema 1.0.0 do contexto o exige:
+         * `validarContexto` recusa a requisicao INTEIRA quando `riscoRuptura`
+         * falta ou traz chave fora de RUPTURA_KEYS ({disponivel, qtdSkus}).
+         * Trocar a base ou o formato dele exige subir o schema nos dois lados
+         * ao mesmo tempo — esta em backlog, e nao afeta o atalho.
+         */
         var risco = { disponivel: false, qtdSkus: null };
         var itemsOk = anunciosTotais > 0;
         var ordersOk = (typeof allOrders !== 'undefined' && Array.isArray(allOrders) && allOrders.length > 0);
@@ -15077,6 +15230,23 @@
       function owcMoeda(n) {
         try { return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
         catch (e) { return 'R$ ' + (Number(n) || 0).toFixed(2); }
+      }
+
+      /**
+       * Ticket medio de UMA janela, derivado dos dois numeros que a propria
+       * linha exibe. E a mesma definicao do backend — `receita / pedidos` do
+       * sales-metrics, incluindo o `null` quando nao ha pedido pago (divisao
+       * por zero nao vira R$ 0,00, que seria lido como "vendemos a zero").
+       *
+       * Derivar da linha, em vez de buscar um ticket calculado a parte, e o que
+       * garante o que se pede aqui: o ticket exibido cobre EXATAMENTE o mesmo
+       * universo de pedidos e faturamento da linha em que aparece. Duas fontes
+       * para o mesmo par poderiam divergir na tela sem ninguem notar.
+       */
+      function owcTicket(qtd, faturamento) {
+        var n = Number(qtd) || 0;
+        if (n <= 0) return 'sem pedidos pagos';
+        return owcMoeda((Number(faturamento) || 0) / n);
       }
 
       // Visibilidade do root espelha #main-content (visível só com o dashboard aberto).
