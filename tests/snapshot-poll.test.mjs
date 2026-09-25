@@ -2,8 +2,9 @@
  * Contrato do poll leve do snapshot de pedidos.
  *
  * O backend passou a atualizar o snapshot por notificação do Mercado Livre, em
- * segundos. Esta tela consulta `/api/orders/status` a cada 45 segundos e só
- * recarrega quando a VERSÃO do snapshot mudou.
+ * segundos. Esta tela consulta `/api/orders/status` a cada 15 segundos e só
+ * recarrega quando a VERSÃO do snapshot mudou — ou quando o próprio refresh
+ * que ela pediu responde que publicou uma versão nova.
  *
  * O que estes testes travam, e por quê:
  *
@@ -74,6 +75,20 @@ describe('poll do snapshot — o que ele consulta', () => {
 describe('poll do snapshot — quando ele recarrega', () => {
   const corpo = extrairFuncao('pollSnapshot');
 
+  /**
+   * A recarga por versao nova precisa chegar aos CARDS. loadMetrics guarda o
+   * agregado por periodo e devolvia o cache dentro de loadAll: o snapshot
+   * avancava, a tela "recarregava", e o faturamento ficava o de antes. Foi
+   * assim que o dashboard mostrou faturamento defasado com o poll funcionando.
+   */
+  test('loadAll invalida o cache de metricas antes de pedir de novo', () => {
+    const corpo = extrairFuncao('loadAll');
+    const inval = corpo.indexOf('_metricsLoadState = "idle"; _metricsPeriodoKey = null;');
+    const pede = corpo.indexOf('loadMetrics(currentPeriodoDias)');
+    assert.ok(inval !== -1, 'loadAll precisa invalidar o cache de metricas');
+    assert.ok(pede !== -1 && inval < pede, 'a invalidacao vem ANTES do loadMetrics');
+  });
+
   test('so recarrega quando a versao mudou', () => {
     assert.match(corpo, /body\.versao === _pollVersaoVista/);
     assert.match(corpo, /return;/);
@@ -116,8 +131,8 @@ describe('poll do snapshot — quando ele recarrega', () => {
 });
 
 describe('poll do snapshot — ciclo de vida do temporizador', () => {
-  test('o intervalo e de 45 segundos', () => {
-    assert.match(html, /const SNAPSHOT_POLL_MS = 45 \* 1000;/);
+  test('o intervalo e de 15 segundos', () => {
+    assert.match(html, /const SNAPSHOT_POLL_MS = 15 \* 1000;/);
   });
 
   test('o refresh de 30 minutos continua existindo como piso', () => {
@@ -198,11 +213,15 @@ describe('auto-refresh — quando a aba pede sincronizacao', () => {
     assert.ok(!corpo.includes('/api/ml/'), 'nem pelo proxy');
   });
 
-  test('NAO baixa pedidos: quem recarrega e o poll, ao ver versao nova', () => {
+  test('NAO baixa pedidos por conta propria: so recarrega (loadAll) quando o backend PUBLICOU', () => {
     for (const rota of ['/api/orders/list', '/api/orders/metrics', '/api/orders/margin']) {
       assert.ok(!corpo.includes(rota), 'refresh nao pode chamar ' + rota);
     }
-    assert.ok(!corpo.includes('loadAll'), 'o refresh nao recarrega por conta propria');
+    // A recarga imediata existe, mas e condicionada: publicou === true, versao
+    // inteira, diferente da ja vista, e nenhuma carga em curso.
+    assert.match(corpo, /r\.publicou === true && Number\.isInteger\(r\.versao\)/);
+    assert.match(corpo, /publicouVersao !== null && publicouVersao !== _pollVersaoVista && !_loadAllEmCurso/);
+    assert.match(corpo, /_pollVersaoVista = publicouVersao;\s*await loadAll\(\);/);
   });
 
   test('nao aguarda o resultado para liberar o poll', () => {
@@ -218,16 +237,16 @@ describe('auto-refresh — quando a aba pede sincronizacao', () => {
 
   test('freio: cooldown local entre chamadas', () => {
     assert.match(corpo, /_ultimoRefreshMs < REFRESH_COOLDOWN_LOCAL_MS/);
-    assert.match(html, /const REFRESH_COOLDOWN_LOCAL_MS = 60 \* 1000;/);
+    assert.match(html, /const REFRESH_COOLDOWN_LOCAL_MS = 15 \* 1000;/);
   });
 
-  test('freio: so acima do limite de idade', () => {
+  test('freio: so acima do limite de idade — o mesmo do backend (25s)', () => {
     assert.match(corpo, /idade <= SNAPSHOT_IDADE_MAX_S/);
-    assert.match(html, /const SNAPSHOT_IDADE_MAX_S = 90;/);
+    assert.match(html, /const SNAPSHOT_IDADE_MAX_S = 25;/);
   });
 
   test('libera a bandeira num finally — falha nao trava o mecanismo', () => {
-    assert.match(corpo, /finally \{\s*_refreshEmCurso = false;\s*\}/);
+    assert.match(corpo, /finally \{\s*_refreshEmCurso = false;/);
   });
 
   test('erro de rede e silencioso: sem toast, sem quebrar o poll', () => {
@@ -238,5 +257,12 @@ describe('auto-refresh — quando a aba pede sincronizacao', () => {
     assert.match(idade, /body\.lastSyncAt/);
     assert.ok(!idade.includes('updatedAt'), 'updatedAt fica parado em dia sem venda');
     assert.match(idade, /body\.idadeSegundos/); // fallback conservador
+  });
+
+  test('a idade prefere o relogio do SERVIDOR (idadeCheckSegundos) ao relogio do PC', () => {
+    // Um PC com o relogio errado nao pode fazer a aba pedir sincronizacao sem
+    // parar (adiantado) nem nunca (atrasado).
+    assert.match(idade, /^[^]*?if \(Number\.isFinite\(body\.idadeCheckSegundos\)\) return body\.idadeCheckSegundos;/);
+    assert.ok(idade.indexOf('idadeCheckSegundos') < idade.indexOf('lastSyncAt'), 'servidor primeiro');
   });
 });

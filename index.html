@@ -5477,6 +5477,7 @@
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
       clearInterval(snapshotPollTimer);
+      clearInterval(_pedidosIndicadorTimer);
       _pollVersaoVista = null;
       hideLoading();
       document.getElementById('main-header').style.display = 'none';
@@ -5607,6 +5608,13 @@
 
       try {
         setLoadingText('Carregando catalogo e metricas...');
+        // loadAll e SEMPRE um pedido de dado novo: login, botao Atualizar
+        // agora, refresh de 30 min, e a recarga do poll quando o snapshot ganha
+        // versao nova. loadMetrics guarda o agregado por periodo e devolvia o
+        // cache aqui — o snapshot avancava de versao, a tela recarregava, e o
+        // faturamento continuava o de antes. Invalidar antes de pedir.
+        // Uma carga em voo e reaproveitada: ela ja vai trazer a versao atual.
+        if (!_metricsPromise) { _metricsLoadState = "idle"; _metricsPeriodoKey = null; }
         const [rCat, rMet] = await Promise.allSettled([
           loadCatalogSnapshot(!!forcarCatalogo),
           loadMetrics(currentPeriodoDias),
@@ -5632,21 +5640,10 @@
         renderDashboard();
         atualizarIndicadorFrescor();
 
-        // Fase 4c.2: horario vem do snapshot de ativos (status.updatedAt), nao do relogio local.
-        (function () {
-          var el = document.getElementById('last-update');
-          if (!el) return;
-          var hhmm = null;
-          if (_ultimoUpdatedAt) {
-            var d = new Date(_ultimoUpdatedAt);
-            if (!isNaN(d)) hhmm = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-          }
-          if (hhmm) {
-            el.textContent = 'Pedidos atualizados as ' + hhmm + (_ultimoPartial ? ' \u00b7 sincronizacao em andamento' : '');
-          } else {
-            el.textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-          }
-        })();
+        // O cabecalho mostra quando o backend CHECOU (relogio do servidor) e,
+        // como complemento, quando o snapshot MUDOU (_ultimoUpdatedAt, vindo
+        // de /api/orders/metrics). Uma so funcao para os dois caminhos.
+        atualizarIndicadorPedidos();
 
         revelarInterface();                    // libera a tela sem esperar os secundarios
         carregarSecundariosEmSegundoPlano();   // nao aguardado de proposito
@@ -13620,10 +13617,12 @@
      *  - So dispara loadAll quando a VERSAO do snapshot mudou. Em um dia sem
      *    venda o custo e um GET barato a cada 45 segundos e mais nada.
      *
-     * 45s: metade do que um operador tolera esperando uma venda aparecer, e
-     * folgado o bastante para nao concorrer com o refresh de 30 minutos.
+     * 15s: com o backend checando o Mercado Livre em uma pagina (passo rapido)
+     * e o refresh recarregando a tela no ato quando publica, e o intervalo
+     * que deixa uma venda aparecer em menos de meio minuto na maior parte
+     * das vezes. Cada passada custa um GET de alguns bytes.
      */
-    const SNAPSHOT_POLL_MS = 45 * 1000;
+    const SNAPSHOT_POLL_MS = 15 * 1000;
 
     let refreshTimer = null;
     let countdown = 0;
@@ -13641,14 +13640,26 @@
 
     /**
      * Auto-refresh: acima desta idade (segundos) do ultimo check do backend, a
-     * aba pede uma sincronizacao incremental. 90s casa com a meta operacional
-     * de o pedido novo aparecer em 1 a 2 minutos.
+     * aba pede uma sincronizacao. 25s, com o poll de 15s, da uma checagem no
+     * Mercado Livre a cada ~30s enquanto houver uma aba visivel — e uma venda
+     * aparece em ~15s na media, ~35s no pior caso. Mesmo valor do backend
+     * (ORDERS_REFRESH_IDADE_MAX_S): abaixo dele o backend responde `fresco`.
      */
-    const SNAPSHOT_IDADE_MAX_S = 90;
+    const SNAPSHOT_IDADE_MAX_S = 25;
     /** Freio LOCAL. O que realmente segura carga e o cooldown global do backend. */
-    const REFRESH_COOLDOWN_LOCAL_MS = 60 * 1000;
+    const REFRESH_COOLDOWN_LOCAL_MS = 15 * 1000;
     let _refreshEmCurso = false;
     let _ultimoRefreshMs = 0;
+
+    /**
+     * Estado do indicador "Pedidos atualizados ha Ns". A idade vem do
+     * SERVIDOR (`idadeCheckSegundos`, calculada com o relogio dele no momento
+     * da resposta) e anda daqui para frente com o relogio local — assim um PC
+     * com o relogio errado nao mostra idade negativa nem de horas.
+     */
+    let _pedidosCheckRecebidoEmMs = 0;   // Date.now() local quando o status chegou
+    let _pedidosIdadeCheckS = null;       // idade do ultimo check, segundo o servidor
+    let _pedidosIndicadorTimer = null;
 
     async function apiLogin(password) {
       const res = await backendFetch('/api/auth/login', {
@@ -13695,11 +13706,14 @@
       }
       if (!body || !Number.isInteger(body.versao)) return;
 
-      // Snapshot velho: pede ao BACKEND uma sincronizacao incremental. Isso
-      // existe porque as duas fontes de atualizacao falharam juntas — o
-      // agendador do GitHub Actions passou a descartar quase todos os ticks e
-      // a notificacao do Mercado Livre ainda nao autentica. A aba aberta e o
-      // unico componente vivo em todos os cenarios, entao ela virou o piso.
+      registrarStatusPedidos(body);
+
+      // Snapshot velho: pede ao BACKEND uma sincronizacao. Isso existe porque
+      // as duas fontes de atualizacao falharam juntas — o agendador do GitHub
+      // Actions passou a descartar quase todos os ticks e a notificacao do
+      // Mercado Livre chega mas e recusada por segredo divergente. A aba
+      // aberta e o unico componente vivo em todos os cenarios, entao ela
+      // virou o piso — e o piso precisa bastar sozinho.
       //
       // A idade vem de lastSyncAt (quando o backend CHECOU), nao de updatedAt
       // (quando MUDOU): num dia sem vendas o updatedAt fica parado para
@@ -13717,11 +13731,17 @@
     }
 
     /**
-     * Idade, em segundos, do ultimo CHECK do backend. Sem lastSyncAt, cai para
-     * a idade do snapshot publicado — melhor um gatilho conservador do que
-     * nenhum.
+     * Idade, em segundos, do ultimo CHECK do backend.
+     *
+     * Preferimos `idadeCheckSegundos`, calculada pelo SERVIDOR com o relogio
+     * dele: comparar `lastSyncAt` com Date.now() daqui depende de o PC do
+     * operador estar certo, e um relogio adiantado em um minuto faria a aba
+     * pedir sincronizacao a cada passada (ou nunca, se atrasado). Backend
+     * antigo, sem o campo: cai para lastSyncAt e, sem ele, para a idade do
+     * snapshot publicado — melhor um gatilho conservador do que nenhum.
      */
     function _idadeDoUltimoCheck(body) {
+      if (Number.isFinite(body.idadeCheckSegundos)) return body.idadeCheckSegundos;
       if (body.lastSyncAt) {
         const t = Date.parse(body.lastSyncAt);
         if (Number.isFinite(t)) return Math.max(0, (Date.now() - t) / 1000);
@@ -13730,11 +13750,84 @@
     }
 
     /**
+     * Guarda o que o indicador precisa a partir de uma resposta de status:
+     * idade do check (relogio do servidor) e o instante local em que chegou.
+     * `updatedAt` (quando o snapshot MUDOU) segue em `_ultimoUpdatedAt`.
+     */
+    function registrarStatusPedidos(body) {
+      const idade = _idadeDoUltimoCheck(body);
+      _pedidosIdadeCheckS = (idade === null) ? null : idade;
+      _pedidosCheckRecebidoEmMs = Date.now();
+      if (body.updatedAt) _ultimoUpdatedAt = body.updatedAt;
+      atualizarIndicadorPedidos();
+    }
+
+    /** Idade atual do ultimo check, em segundos, andando com o relogio local. */
+    function _idadePedidosAgoraS() {
+      if (_pedidosIdadeCheckS === null || !_pedidosCheckRecebidoEmMs) return null;
+      return _pedidosIdadeCheckS + Math.max(0, (Date.now() - _pedidosCheckRecebidoEmMs) / 1000);
+    }
+
+    /** Acima desta idade o indicador avisa que os dados estao atrasados. */
+    const PEDIDOS_ATRASO_AVISO_S = 180;
+
+    /**
+     * Indicador de frescor dos pedidos no cabecalho.
+     *
+     * "Pedidos atualizados as 14:00" dizia quando o snapshot MUDOU pela ultima
+     * vez — num dia parado, ou com o mecanismo morto, era o mesmo texto. Agora
+     * a linha principal e quando o backend CHECOU o Mercado Livre, andando
+     * segundo a segundo, e a hora da ultima mudanca vai como complemento. Um
+     * check com mais de 3 minutos vira aviso: e o sinal de que a cadeia
+     * (poll → refresh → sync) parou, e nao de que nao houve venda.
+     */
+    function atualizarIndicadorPedidos() {
+      const el = (typeof document !== 'undefined') ? document.getElementById('last-update') : null;
+      if (!el) return;
+      let mudou = '';
+      if (_ultimoUpdatedAt) {
+        const d = new Date(_ultimoUpdatedAt);
+        if (!isNaN(d)) mudou = ' \u00b7 \u00faltima venda registrada ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }
+      const idade = _idadePedidosAgoraS();
+      let texto;
+      let atrasado = false;
+      if (_refreshEmCurso) {
+        texto = 'Sincronizando pedidos...';
+      } else if (idade === null) {
+        texto = _ultimoUpdatedAt ? ('Pedidos atualizados' + mudou.replace(' \u00b7 \u00faltima venda registrada', ' \u00e0s')) : ('Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+        mudou = '';
+      } else if (idade < 5) {
+        texto = 'Pedidos atualizados agora';
+      } else if (idade < 60) {
+        texto = 'Pedidos atualizados h\u00e1 ' + Math.round(idade) + 's';
+      } else if (idade < PEDIDOS_ATRASO_AVISO_S) {
+        texto = 'Pedidos atualizados h\u00e1 ' + Math.floor(idade / 60) + 'min';
+      } else {
+        atrasado = true;
+        const min = Math.floor(idade / 60);
+        texto = 'Pedidos atrasados h\u00e1 ' + (min >= 120 ? Math.floor(min / 60) + 'h' : min + 'min') + ' \u2014 tentando sincronizar';
+      }
+      if (_ultimoPartial && !atrasado) texto += ' \u00b7 sincronizacao em andamento';
+      el.textContent = texto + mudou;
+      el.style.color = atrasado ? 'var(--amber)' : '';
+      el.title = _ultimoUpdatedAt ? ('Ultima mudanca no snapshot: ' + _ultimoUpdatedAt) : '';
+    }
+
+    /** Liga o tique de 1s do indicador. Idempotente, como o poll. */
+    function scheduleIndicadorPedidos() {
+      clearInterval(_pedidosIndicadorTimer);
+      _pedidosIndicadorTimer = setInterval(atualizarIndicadorPedidos, 1000);
+    }
+
+    /**
      * Dispara POST /api/orders/refresh quando vale a pena.
      *
-     * NAO aguarda o resultado: quem detecta a mudanca e a proxima rodada do
-     * poll, comparando `versao`. Assim o refresh nunca atrasa o poll nem
-     * bloqueia a interface.
+     * Quem chama NAO aguarda o resultado, entao o refresh nunca atrasa o poll
+     * nem bloqueia a interface. Mas a resposta e aproveitada: quando o backend
+     * diz que PUBLICOU uma versao nova, a tela recarrega no ato, em vez de
+     * esperar a proxima rodada do poll descobrir a versao — sao ate 15s a
+     * menos entre a venda e o card de faturamento.
      *
      * Tres freios, e o mais importante nao esta aqui: o backend tem um
      * cooldown GLOBAL no Redis, entao dez abas abertas produzem uma unica
@@ -13749,16 +13842,39 @@
 
       _refreshEmCurso = true;
       _ultimoRefreshMs = Date.now();
+      atualizarIndicadorPedidos();
+      let publicouVersao = null;
       try {
         const res = await backendFetch('/api/orders/refresh', { method: 'POST', body: '{}' });
         if (!res.ok) return;
         const r = await res.json().catch(() => null);
-        if (r) console.info('[refresh] idade=' + Math.round(idade) + 's acao=' + r.acao);
+        if (!r) return;
+        console.info('[refresh] idade=' + Math.round(idade) + 's acao=' + r.acao +
+          (r.modo ? ' modo=' + r.modo : '') + (r.publicou !== undefined ? ' publicou=' + r.publicou : '') +
+          (Number.isInteger(r.versao) ? ' versao=' + r.versao : ''));
+        // O backend acabou de checar: a idade volta a zero para o indicador,
+        // mesmo sem esperar o proximo status. `erro` e `sem_snapshot` nao
+        // contam como check.
+        if (r.acao === 'sincronizado' || r.acao === 'fresco') {
+          _pedidosIdadeCheckS = (r.acao === 'fresco' && Number.isFinite(r.idadeSegundos)) ? r.idadeSegundos : 0;
+          _pedidosCheckRecebidoEmMs = Date.now();
+        }
+        if (r.acao === 'sincronizado' && r.publicou === true && Number.isInteger(r.versao)) {
+          publicouVersao = r.versao;
+        }
       } catch (e) {
         // Silencioso de proposito: a proxima rodada do poll tenta de novo, e o
         // dashboard segue servindo o snapshot que ja tinha.
       } finally {
         _refreshEmCurso = false;
+        atualizarIndicadorPedidos();
+      }
+
+      // Recarga imediata, fora do try: um erro do loadAll e dele, nao do refresh.
+      if (publicouVersao !== null && publicouVersao !== _pollVersaoVista && !_loadAllEmCurso) {
+        console.info('[refresh] versao publicada', publicouVersao, '- recarregando');
+        _pollVersaoVista = publicouVersao;
+        await loadAll();
       }
     }
 
@@ -13777,6 +13893,7 @@
     function scheduleSnapshotPoll() {
       clearInterval(snapshotPollTimer);
       snapshotPollTimer = setInterval(() => { pollSnapshot(); }, SNAPSHOT_POLL_MS);
+      scheduleIndicadorPedidos();
 
       // Voltar para a aba nao deve custar ate 45 segundos de espera. Rearmar
       // aqui tambem cobre o caso em que o temporizador morreu com a aba em
@@ -13855,6 +13972,7 @@
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
       clearInterval(snapshotPollTimer);
+      clearInterval(_pedidosIndicadorTimer);
       _pollVersaoVista = null;
       await apiLogout();
       document.getElementById('main-header').style.display = 'none';
