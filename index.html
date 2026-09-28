@@ -14295,9 +14295,16 @@
       sessionStorage.removeItem('ow_viewer_ok');
       sessionStorage.removeItem('oauth_state');
 
-      // Resto de ?code= do fluxo OAuth antigo: apenas limpar da URL.
-      if (new URLSearchParams(window.location.search).get('code')) {
-        window.history.replaceState({}, document.title, window.location.pathname);
+      // Retorno OAuth do Mercado Livre nesta URL:
+      // - COM `state` (autorizacao de uma conta nova, ex.: Degustar), a URL fica
+      //   intacta para ser copiada e entregue ao seed no backend. O front nunca
+      //   troca o code: isso e trabalho do backend, com o segredo do app.
+      // - SEM `state` (resto do fluxo OAuth antigo), so limpar da URL.
+      {
+        const qsRetorno = new URLSearchParams(window.location.search);
+        if (qsRetorno.get('code') && !qsRetorno.get('state')) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       }
 
       // Sessao persistida? Valida com a tela de carregamento visivel; o login
