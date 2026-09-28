@@ -59,14 +59,14 @@ const drenar = () => new Promise(r => setTimeout(r, 0));
  */
 function montarAmbiente({
   sessao = 'tok', hidden = false, versao = 7, lastSyncAt = null,
-  idadeCheckSegundos, updatedAt = null, refreshResposta = null,
+  idadeCheckSegundos, updatedAt = null, newestDate = null, refreshResposta = null,
 } = {}) {
   const chamadas = [];          // toda chamada de rede, em ordem
   const recargas = [];          // toda chamada a loadAll
   const timers = new Map();     // id -> { fn, ms }  — somente os VIVOS
   const ouvintes = {};
   let proximoId = 1;
-  let resposta = { versao, lastSyncAt, updatedAt };
+  let resposta = { versao, lastSyncAt, updatedAt, newestDate };
   if (idadeCheckSegundos !== undefined) resposta.idadeCheckSegundos = idadeCheckSegundos;
   let respostaRefresh = refreshResposta || { ok: true, acao: 'sincronizado', modo: 'rapido', publicou: false, versao };
 
@@ -106,6 +106,7 @@ function montarAmbiente({
     'let _pedidosCheckRecebidoEmMs = 0;',
     'let _pedidosIdadeCheckS = null;',
     'let _pedidosIndicadorTimer = null;',
+    'let _ultimoNewestDate = null;',
     'let _ultimoUpdatedAt = null;',
     'let _ultimoPartial = false;',
     'let SESSION_TOKEN = _sessaoInicial;',
@@ -456,13 +457,25 @@ describe('aba em segundo plano e de volta', () => {
 });
 
 describe('indicador "Pedidos atualizados ha Ns"', () => {
-  test('mostra a idade do CHECK vinda do servidor, nao a hora da ultima mudanca', async () => {
-    const amb = montarAmbiente({ idadeCheckSegundos: 12, updatedAt: '2026-09-23T17:00:00.000Z' });
+  test('mostra a idade do CHECK vinda do servidor, e a hora da VENDA (newestDate), nao a da publicacao', async () => {
+    // Venda as 08:43, snapshot publicado as 08:48: a tela tem de dizer 08:43,
+    // a mesma hora que a aba Pedidos mostra para o pedido.
+    const venda = new Date(); venda.setHours(8, 43, 0, 0);
+    const publicacao = new Date(); publicacao.setHours(8, 48, 0, 0);
+    const amb = montarAmbiente({ idadeCheckSegundos: 12, updatedAt: publicacao.toISOString(), newestDate: venda.toISOString() });
     amb.scheduleSnapshotPoll();
     await drenar();
     assert.match(amb.indicador.textContent, /^Pedidos atualizados h\u00e1 12s/);
-    assert.match(amb.indicador.textContent, /\u00faltima venda registrada \d\d:\d\d$/);
+    assert.match(amb.indicador.textContent, /\u00faltima venda 08:43$/);
+    assert.ok(!amb.indicador.textContent.includes('08:48'), 'a hora da publicacao nao e a hora da venda');
     assert.equal(amb.indicador.style.color, '');
+  });
+
+  test('sem newestDate (backend antigo) cai para a hora da publicacao, rotulada como registro', async () => {
+    const amb = montarAmbiente({ idadeCheckSegundos: 12, updatedAt: '2026-09-23T17:00:00.000Z' });
+    amb.scheduleSnapshotPoll();
+    await drenar();
+    assert.match(amb.indicador.textContent, /\u00faltima venda registrada \d\d:\d\d$/);
   });
 
   test('"agora" abaixo de 5s, minutos acima de 60s', async () => {
@@ -542,5 +555,103 @@ describe('entrada no dashboard — os caminhos que ligam o poll', () => {
     const corpo = extrairFuncao('startDashboard');
     assert.ok(corpo.indexOf('await loadAll()') < corpo.indexOf('scheduleSnapshotPoll()'),
       'primeiro a carga inicial, depois o poll');
+  });
+});
+
+/**
+ * A aba Pedidos guardava o historico da primeira carga para sempre: a versao
+ * avancava, os cards mudavam, e a tabela ficava a de antes. Estes testes
+ * executam `atualizarPedidosEmMemoria` com rede falsa e afirmam o que sai.
+ */
+function montarPedidos({ allOrders = [], snapVersao = 3, previewState = 'idle', status = {}, pagina = null, abaAtiva = true } = {}) {
+  const chamadas = [];
+  const renders = [];
+  const estado = { allOrders, snapVersao, previewState, preview: [{ id: 1 }], previewVersao: 3, forceLoads: 0, updatedAt: null, newestDate: null };
+  const st = Object.assign({ versao: 3, origem: 'dashboard_refresh', updatedAt: '2026-09-25T12:00:00.000Z', newestDate: '2026-09-25T11:43:00.000Z' }, status);
+  async function backendFetch(caminho) {
+    chamadas.push(caminho);
+    if (caminho.indexOf('/api/orders/status') === 0) return { ok: true, json: async () => st };
+    if (caminho.indexOf('/api/orders/list') === 0) return { ok: !!pagina, json: async () => pagina };
+    return { ok: false, json: async () => ({}) };
+  }
+  const doc = { getElementById: (id) => id === 'tab-pedidos' ? { classList: { contains: () => abaAtiva } } : null };
+  const fonte = [
+    extrairConstante('ORDERS_PAGE_SIZE'),
+    'let allOrders = _e.allOrders;',
+    'let _snapVersaoAtivos = _e.snapVersao;',
+    'let ordersPreviewState = _e.previewState;',
+    'let ordersPreview = _e.preview;',
+    'let _ordersPreviewVersao = _e.previewVersao;',
+    'let _ultimoUpdatedAt = null; let _ultimoPartial = false; let _ultimoNewestDate = null;',
+    'function pedidosEmMemoria() { return Array.isArray(allOrders) && allOrders.length > 0; }',
+    'async function loadAllOrders(o) { _e.forceLoads++; allOrders = [{ id: "full" }]; _snapVersaoAtivos = 99; }',
+    'function renderPedidosKPIs() { _r.push("kpis"); }',
+    'function renderPedidos() { _r.push("pedidos"); }',
+    extrairFuncao('atualizarPedidosEmMemoria'),
+    'return { run: atualizarPedidosEmMemoria, estado: () => ({ allOrders, _snapVersaoAtivos, ordersPreviewState, ordersPreview, _ordersPreviewVersao, _ultimoNewestDate, _ultimoUpdatedAt }) };',
+  ].join('\n');
+  const api = new Function('_e', '_r', 'document', 'backendFetch', 'console', fonte)(estado, renders, doc, backendFetch, { info() {}, warn() {} });
+  return Object.assign(api, { chamadas, renders, interno: estado });
+}
+
+describe('aba Pedidos acompanha a versao nova', () => {
+  test('nada em memoria: nao faz nada, nem chama o backend', async () => {
+    const a = montarPedidos({ allOrders: [], previewState: 'idle' });
+    await a.run();
+    assert.equal(a.chamadas.length, 0);
+  });
+
+  test('versao igual: uma consulta de status e mais nada', async () => {
+    const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 3 } });
+    await a.run();
+    assert.deepEqual(a.chamadas, ['/api/orders/status?alvo=ativos']);
+    assert.equal(a.renders.length, 0);
+  });
+
+  test('venda pelo passo rapido: mescla a PRIMEIRA pagina por id, sem repaginar o historico', async () => {
+    const velho = { id: 1, status: 'paid', date_created: '2026-09-25T10:00:00Z' };
+    const a = montarPedidos({
+      allOrders: [velho, { id: 2, date_created: '2026-09-25T09:00:00Z' }], snapVersao: 3,
+      status: { versao: 4, origem: 'dashboard_refresh' },
+      pagina: { versao: 4, items: [{ id: 9, date_created: '2026-09-25T11:43:00Z' }, { ...velho, status: 'cancelled' }] },
+    });
+    await a.run();
+    const e = a.estado();
+    assert.equal(a.chamadas.length, 2);
+    assert.match(a.chamadas[1], /^\/api\/orders\/list\?alvo=ativos&pageSize=500$/);
+    assert.deepEqual(e.allOrders.map(o => o.id), [9, 1, 2], 'novo na frente, ordem por data');
+    assert.equal(e.allOrders[1].status, 'cancelled', 'pedido que mudou foi substituido, nao duplicado');
+    assert.equal(e._snapVersaoAtivos, 4);
+    assert.equal(e._ultimoNewestDate, '2026-09-25T11:43:00.000Z');
+    assert.equal(a.interno.forceLoads, 0, 'historico NAO foi repaginado');
+    assert.deepEqual(a.renders, ['kpis', 'pedidos']);
+  });
+
+  test('versao da reconciliacao (incremental/full): repagina o historico inteiro', async () => {
+    const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 4, origem: 'incremental' } });
+    await a.run();
+    assert.equal(a.interno.forceLoads, 1);
+    assert.equal(a.chamadas.length, 1, 'nao pediu a primeira pagina');
+  });
+
+  test('primeira pagina falha: cai para a repaginacao completa', async () => {
+    const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 4 }, pagina: null });
+    await a.run();
+    assert.equal(a.interno.forceLoads, 1);
+  });
+
+  test('so o preview em memoria: invalida para a proxima abertura da aba', async () => {
+    const a = montarPedidos({ allOrders: [], previewState: 'loaded', status: { versao: 4 } });
+    await a.run();
+    const e = a.estado();
+    assert.equal(e.ordersPreviewState, 'idle');
+    assert.deepEqual(e.ordersPreview, []);
+    assert.equal(a.interno.forceLoads, 0);
+  });
+
+  test('aba Pedidos fechada: atualiza a memoria e os KPIs, sem renderizar a tabela', async () => {
+    const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 4 }, pagina: { versao: 4, items: [] }, abaAtiva: false });
+    await a.run();
+    assert.deepEqual(a.renders, ['kpis']);
   });
 });

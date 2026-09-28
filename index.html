@@ -5077,6 +5077,7 @@
     // preview, senao Margem/Giro/Consolidado abririam com 25 pedidos.
     let ordersPreview = [];
     let ordersPreviewState = "idle";  // "idle" | "loading" | "loaded" | "error"
+    let _ordersPreviewVersao = null;  // versao do snapshot que gerou o preview
     let _ordersPreviewPromise = null;
 
     let reputacaoData = null;
@@ -5640,6 +5641,12 @@
         renderDashboard();
         atualizarIndicadorFrescor();
 
+        // A aba Pedidos (e todo modulo que le allOrders) guardava o historico
+        // da primeira carga: a versao do snapshot avancava, os cards mudavam,
+        // e a tabela de pedidos ficava a de antes. Atualiza em segundo plano,
+        // proporcional ao que mudou; a interface nao espera.
+        atualizarPedidosEmMemoria().catch(e => console.warn('[orders] atualizacao em memoria falhou:', e && e.message));
+
         // O cabecalho mostra quando o backend CHECOU (relogio do servidor) e,
         // como complemento, quando o snapshot MUDOU (_ultimoUpdatedAt, vindo
         // de /api/orders/metrics). Uma so funcao para os dois caminhos.
@@ -5834,6 +5841,7 @@
         }
         ordersPreview = body.items;
         ordersPreviewState = "loaded";
+        _ordersPreviewVersao = Number.isInteger(body.versao) ? body.versao : null;
         return ordersPreview;
       })().catch(err => {
         ordersPreviewState = "error";
@@ -6409,6 +6417,68 @@
         _ordersLoadState = "error"; // Fase 5c: terminou em falha sem fonte valida
         throw e;
       }
+    }
+
+    /**
+     * Traz os pedidos EM MEMORIA para a versao publicada, sem repaginar o
+     * historico a cada venda.
+     *
+     * - Nada em memoria: nada a fazer (a aba carrega ao abrir).
+     * - Versao igual a que temos: nada a fazer.
+     * - Versao nova publicada pelo passo rapido ou pelo webhook (origem
+     *   `dashboard_refresh` / `webhook`): so a PRIMEIRA pagina do snapshot
+     *   (os mais recentes) mudou. Baixa essa pagina e mescla por id em
+     *   allOrders — pedido novo entra, pedido que mudou de status e substituido.
+     * - Versao nova da reconciliacao (`incremental` / `full`): o snapshot foi
+     *   republicado inteiro; ai sim repagina tudo.
+     *
+     * A primeira pagina da aba (preview) e sempre invalidada: e barata e
+     * sera pedida de novo ao abrir a aba.
+     */
+    async function atualizarPedidosEmMemoria() {
+      const temHistorico = pedidosEmMemoria();
+      if (!temHistorico && ordersPreviewState !== "loaded") return;
+
+      const stRes = await backendFetch('/api/orders/status?alvo=ativos');
+      if (!stRes.ok) return;
+      const st = await stRes.json().catch(() => null);
+      if (!st || !Number.isInteger(st.versao)) return;
+      if (st.newestDate) _ultimoNewestDate = st.newestDate;
+
+      const versaoEmMemoria = temHistorico ? _snapVersaoAtivos : _ordersPreviewVersao;
+      if (st.versao === versaoEmMemoria) return;
+
+      // Preview: invalida; quem abrir a aba pede de novo.
+      ordersPreviewState = "idle";
+      ordersPreview = [];
+      _ordersPreviewVersao = null;
+
+      if (temHistorico) {
+        const soRecentes = st.origem === 'dashboard_refresh' || st.origem === 'webhook';
+        let mesclou = false;
+        if (soRecentes) {
+          const res = await backendFetch('/api/orders/list?alvo=ativos&pageSize=' + ORDERS_PAGE_SIZE);
+          const body = res.ok ? await res.json().catch(() => null) : null;
+          if (body && Array.isArray(body.items) && Number.isInteger(body.versao)) {
+            const porId = new Map(allOrders.map(o => [String(o.id), o]));
+            let novos = 0;
+            for (const o of body.items) { if (!porId.has(String(o.id))) novos++; porId.set(String(o.id), o); }
+            const lista = Array.from(porId.values());
+            lista.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+            allOrders = lista;
+            _snapVersaoAtivos = body.versao;
+            _ultimoUpdatedAt = st.updatedAt || _ultimoUpdatedAt;
+            _ultimoPartial = !!st.partial;
+            mesclou = true;
+            console.info('[orders] versao', body.versao, '- primeira pagina mesclada:', novos, 'novo(s), total', allOrders.length);
+          }
+        }
+        if (!mesclou) await loadAllOrders({ force: true });
+      }
+
+      renderPedidosKPIs();
+      const abaPedidos = document.getElementById('tab-pedidos');
+      if (abaPedidos && abaPedidos.classList.contains('active')) renderPedidos();
     }
 
     // Fallback ESTRITO: carga de ativos pelo proxy ML. Qualquer pagina que falhar
@@ -13660,6 +13730,13 @@
     let _pedidosCheckRecebidoEmMs = 0;   // Date.now() local quando o status chegou
     let _pedidosIdadeCheckS = null;       // idade do ultimo check, segundo o servidor
     let _pedidosIndicadorTimer = null;
+    /**
+     * `date_created` do pedido mais novo do snapshot (status.newestDate). E a
+     * hora da VENDA, a mesma que a aba Pedidos mostra. `_ultimoUpdatedAt` e
+     * outra coisa: quando o snapshot foi publicado — pode vir minutos depois
+     * da venda, e mostra-lo como "ultima venda" deu horario errado na tela.
+     */
+    let _ultimoNewestDate = null;
 
     async function apiLogin(password) {
       const res = await backendFetch('/api/auth/login', {
@@ -13759,6 +13836,7 @@
       _pedidosIdadeCheckS = (idade === null) ? null : idade;
       _pedidosCheckRecebidoEmMs = Date.now();
       if (body.updatedAt) _ultimoUpdatedAt = body.updatedAt;
+      if (body.newestDate) _ultimoNewestDate = body.newestDate;
       atualizarIndicadorPedidos();
     }
 
@@ -13784,8 +13862,12 @@
     function atualizarIndicadorPedidos() {
       const el = (typeof document !== 'undefined') ? document.getElementById('last-update') : null;
       if (!el) return;
+      // Hora da VENDA (date_created do pedido mais novo), nao da publicacao.
       let mudou = '';
-      if (_ultimoUpdatedAt) {
+      if (_ultimoNewestDate) {
+        const d = new Date(_ultimoNewestDate);
+        if (!isNaN(d)) mudou = ' \u00b7 \u00faltima venda ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      } else if (_ultimoUpdatedAt) {
         const d = new Date(_ultimoUpdatedAt);
         if (!isNaN(d)) mudou = ' \u00b7 \u00faltima venda registrada ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       }
@@ -13811,7 +13893,8 @@
       if (_ultimoPartial && !atrasado) texto += ' \u00b7 sincronizacao em andamento';
       el.textContent = texto + mudou;
       el.style.color = atrasado ? 'var(--amber)' : '';
-      el.title = _ultimoUpdatedAt ? ('Ultima mudanca no snapshot: ' + _ultimoUpdatedAt) : '';
+      el.title = (_ultimoNewestDate ? ('Pedido mais recente: ' + _ultimoNewestDate + '\n') : '') +
+        (_ultimoUpdatedAt ? ('Ultima publicacao do snapshot: ' + _ultimoUpdatedAt) : '');
     }
 
     /** Liga o tique de 1s do indicador. Idempotente, como o poll. */

@@ -89,6 +89,12 @@ describe('poll do snapshot — quando ele recarrega', () => {
     assert.ok(pede !== -1 && inval < pede, 'a invalidacao vem ANTES do loadMetrics');
   });
 
+  test('loadAll manda os pedidos em memoria acompanharem a versao nova, sem bloquear a tela', () => {
+    const corpo = extrairFuncao('loadAll');
+    assert.match(corpo, /\n\s*atualizarPedidosEmMemoria\(\)\.catch\(/);
+    assert.ok(!/await\s+atualizarPedidosEmMemoria/.test(corpo), 'em segundo plano');
+  });
+
   test('so recarrega quando a versao mudou', () => {
     assert.match(corpo, /body\.versao === _pollVersaoVista/);
     assert.match(corpo, /return;/);
