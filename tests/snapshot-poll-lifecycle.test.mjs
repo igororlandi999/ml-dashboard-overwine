@@ -541,14 +541,17 @@ describe('entrada no dashboard — os caminhos que ligam o poll', () => {
     assert.match(extrairFuncao('startDashboard'), /scheduleSnapshotPoll\(\)/);
   });
 
-  test('a sessao vive so em memoria: nao existe restauracao silenciosa', () => {
-    // Se um dia passar a existir, este teste quebra e obriga a ligar o poll la
-    // tambem — que e exatamente o buraco que este hotfix fecha.
+  test('sessao restaurada ao abrir entra por startDashboard — o mesmo caminho que liga o poll', () => {
+    // A restauracao silenciosa passou a existir (sessao persistente). Ela nao
+    // pode ter um caminho proprio para dentro do dashboard: entra pelo mesmo
+    // startDashboard do login manual, que e quem arma o poll.
     const init = html.slice(html.indexOf("window.addEventListener('DOMContentLoaded'"));
     const corpo = init.slice(0, init.indexOf('\n    });'));
-    assert.ok(!corpo.includes('startDashboard'),
-      'carregamento nao entra no dashboard sozinho');
-    assert.match(corpo, /showSetup\(\)/);
+    assert.match(corpo, /restaurarSessaoAoAbrir\(\)/);
+    const restaurar = extrairFuncao('restaurarSessaoAoAbrir');
+    assert.match(restaurar, /await checkSession\(\)/, 'valida no backend antes de entrar');
+    assert.match(restaurar, /await startDashboard\(\)/, 'entra pelo caminho que liga o poll');
+    assert.ok(restaurar.indexOf('checkSession()') < restaurar.indexOf('startDashboard()'), 'validar primeiro');
   });
 
   test('o poll e ligado depois da carga inicial, com sessao ja validada', () => {

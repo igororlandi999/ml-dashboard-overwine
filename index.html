@@ -3005,6 +3005,11 @@
         <input type="password" id="viewer-pass" placeholder="••••••••"
           onkeydown="if(event.key==='Enter') checkViewerPass()" autofocus />
       </div>
+      <label for="viewer-keep"
+        style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:-6px 0 18px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="viewer-keep" checked style="accent-color:var(--gold);width:14px;height:14px;margin:0">
+        Manter conectado neste navegador
+      </label>
       <button class="btn-primary" onclick="checkViewerPass()">Entrar</button>
       <div id="viewer-error" style="color:var(--red);font-size:12px;margin-top:10px;display:none">Senha incorreta.</div>
     </div>
@@ -5671,10 +5676,91 @@
     // pelo proxy com allowlist do backend.
     // ══════════════════════════════════════
     const BACKEND_URL = 'https://overwine-assistant.vercel.app';
-    let SESSION_TOKEN = null; // nunca em localStorage/sessionStorage
+    let SESSION_TOKEN = null;
+
+    // ══════════════════════════════════════
+    // SESSAO PERSISTENTE — so o token OPACO da sessao do dashboard
+    //
+    // O que vai para o storage e UMA string: o id de sessao emitido pelo
+    // backend (sess_ + 64 hex). Nunca a senha, nunca token do Mercado Livre,
+    // nunca chave de admin — nada disso existe no navegador. Revogar a sessao
+    // no backend (Sair, expiracao) torna o valor guardado inutil.
+    //
+    // "Manter conectado neste navegador" marcado: localStorage (sobrevive a
+    // F5, fechar a aba e reiniciar o navegador; o backend da a essa sessao 30
+    // dias deslizantes). Desmarcado: sessionStorage (morre com a sessao do
+    // navegador; sessao comum de 12h no backend). Nunca nos dois.
+    // ══════════════════════════════════════
+    const SESSAO_STORAGE_KEY = 'ow_sessao';
+
+    function _storage(tipo) {
+      try {
+        const st = tipo === 'local' ? window.localStorage : window.sessionStorage;
+        return st || null;
+      } catch (e) { return null; }   // storage bloqueado (privacidade): segue so em memoria
+    }
+    function _tokenValido(v) {
+      return typeof v === 'string' && /^sess_[0-9a-f]{40,}$/.test(v);
+    }
+
+    /** Guarda o token no storage escolhido e garante que NAO fica no outro. */
+    function sessaoPersistir(token, manter) {
+      if (!_tokenValido(token)) return;
+      const alvo = _storage(manter ? 'local' : 'session');
+      const outro = _storage(manter ? 'session' : 'local');
+      try { if (outro) outro.removeItem(SESSAO_STORAGE_KEY); } catch (e) { }
+      try { if (alvo) alvo.setItem(SESSAO_STORAGE_KEY, token); } catch (e) { }
+    }
+
+    /** Token persistido, se houver e tiver a forma certa. Lixo e descartado. */
+    function sessaoRestaurar() {
+      for (const tipo of ['local', 'session']) {
+        const st = _storage(tipo);
+        if (!st) continue;
+        let v = null;
+        try { v = st.getItem(SESSAO_STORAGE_KEY); } catch (e) { continue; }
+        if (_tokenValido(v)) return v;
+        if (v !== null) { try { st.removeItem(SESSAO_STORAGE_KEY); } catch (e) { } }
+      }
+      return null;
+    }
+
+    function sessaoLimpar() {
+      for (const tipo of ['local', 'session']) {
+        const st = _storage(tipo);
+        try { if (st) st.removeItem(SESSAO_STORAGE_KEY); } catch (e) { }
+      }
+    }
+
+    /**
+     * Ao abrir a pagina: se ha sessao persistida, valida no backend com a tela
+     * de carregamento (que ja esta visivel desde o HTML) — o login SO aparece
+     * se a validacao falhar. Sem sessao persistida, login direto. Nada de
+     * piscar a senha por meio segundo antes de o dashboard entrar.
+     */
+    async function restaurarSessaoAoAbrir() {
+      const token = sessaoRestaurar();
+      if (!token) { hideLoading(); showSetup(); return false; }
+      showLoading('Restaurando sessao...');
+      SESSION_TOKEN = token;
+      let ok = false;
+      try { ok = await checkSession(); } catch (e) { ok = false; }
+      if (!ok) {
+        // Expirada, revogada ou invalida: apaga e pede a senha. backendFetch ja
+        // pode ter chamado handleSessionExpired num 401; repetir e inofensivo.
+        SESSION_TOKEN = null;
+        sessaoLimpar();
+        hideLoading();
+        showSetup();
+        return false;
+      }
+      await startDashboard();
+      return true;
+    }
 
     function handleSessionExpired() {
       SESSION_TOKEN = null;
+      sessaoLimpar();   // token morto nao fica no navegador
       clearInterval(refreshTimer);
       clearInterval(countdownTimer);
       clearInterval(snapshotPollTimer);
@@ -13832,20 +13918,25 @@
      */
     let _ultimoNewestDate = null;
 
-    async function apiLogin(password) {
+    async function apiLogin(password, manter) {
       const res = await backendFetch('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ password, persistent: manter === true })
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error || `Login falhou (${res.status})`);
       SESSION_TOKEN = body.session_token;
+      // So o token opaco vai para o storage — a senha nunca sai desta funcao.
+      sessaoPersistir(SESSION_TOKEN, manter === true);
       return true;
     }
 
     async function apiLogout() {
+      // Revoga no backend primeiro (o token ainda esta no header), depois
+      // apaga o que houver no navegador.
       try { await backendFetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* melhor esforco */ }
       SESSION_TOKEN = null;
+      sessaoLimpar();
     }
 
     async function checkSession() {
@@ -14130,9 +14221,10 @@
       const val = input.value.trim();
       if (!val) return;
       errEl.style.display = 'none';
+      const manter = !!(document.getElementById('viewer-keep') && document.getElementById('viewer-keep').checked);
       try {
         showLoading('Autenticando...');
-        await apiLogin(val);
+        await apiLogin(val, manter);
         input.value = '';
         await startDashboard();
       } catch (e) {
@@ -14208,9 +14300,9 @@
         window.history.replaceState({}, document.title, window.location.pathname);
       }
 
-      // A sessao vive somente em memoria — todo carregamento comeca pela senha.
-      hideLoading();
-      showSetup();
+      // Sessao persistida? Valida com a tela de carregamento visivel; o login
+      // so aparece se nao houver sessao ou se ela nao valer mais.
+      restaurarSessaoAoAbrir();
     });
 
 
