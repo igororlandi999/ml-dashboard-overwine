@@ -84,7 +84,7 @@ describe('poll do snapshot — quando ele recarrega', () => {
   test('loadAll invalida o cache de metricas antes de pedir de novo', () => {
     const corpo = extrairFuncao('loadAll');
     const inval = corpo.indexOf('_metricsLoadState = "idle"; _metricsPeriodoKey = null;');
-    const pede = corpo.indexOf('loadMetrics(currentPeriodoDias)');
+    const pede = corpo.indexOf('loadMetrics(null, _g.from, _g.toEfetivo)');
     assert.ok(inval !== -1, 'loadAll precisa invalidar o cache de metricas');
     assert.ok(pede !== -1 && inval < pede, 'a invalidacao vem ANTES do loadMetrics');
   });

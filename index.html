@@ -2406,6 +2406,41 @@
       border-bottom-color: var(--gold);
     }
 
+    /* Filtro GLOBAL de periodo: vive na barra de secoes, a direita. */
+    .section-nav { align-items: center; }
+    .gdr {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+      flex-shrink: 0;
+    }
+    .gdr-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .gdr-select {
+      background: var(--surface2);
+      border: 1px solid var(--border-strong);
+      color: var(--gold);
+      padding: 6px 10px;
+      font-family: var(--font-body);
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      cursor: pointer;
+      min-width: 190px;
+    }
+    .gdr-select:focus { border-color: var(--gold); }
+    .gdr-custom { display: none; align-items: center; gap: 6px; }
+    .gdr-custom.aberto { display: flex; }
+    .gdr-loading { font-size: 11px; color: var(--muted); display: none; }
+
     /* Barra de abas (agora dentro da seção) */
     .tabs {
       display: flex;
@@ -3040,13 +3075,7 @@
     <!-- KPIs Periodo (API) -->
     <div class="section-title" style="margin-top:8px">
       <span>Performance do Periodo</span>
-      <div class="periodo-selector">
-        <input type="date" id="periodo-de" class="periodo-date-input">
-        <span class="periodo-date-sep">ate</span>
-        <input type="date" id="periodo-ate" class="periodo-date-input">
-        <button class="periodo-apply-btn" id="periodo-apply-btn" onclick="aplicarPeriodoCustom()">Aplicar</button>
-        <span class="periodo-loading" id="periodo-loading" style="display:none">carregando...</span>
-      </div>
+      <span class="card-meta" id="periodo-titulo-label" data-gdr-label>-</span>
     </div>
     <div class="kpi-grid" id="kpi-periodo" style="margin-bottom:12px;grid-template-columns:repeat(4,1fr)">
       <div class="kpi-card highlight">
@@ -3114,6 +3143,18 @@
       <button class="section-nav-btn active" onclick="switchSection('visaogeral')">Visao Geral</button>
       <button class="section-nav-btn" onclick="switchSection('marketing')">Marketing e Ads</button>
       <button class="section-nav-btn" onclick="switchSection('financeiro')">Analise Financeira</button>
+      <!-- FILTRO GLOBAL DE PERIODO: fonte temporal unica de todas as abas -->
+      <div class="gdr" id="gdr">
+        <span class="gdr-label">Periodo</span>
+        <select class="gdr-select" id="gdr-preset" onchange="gdrOnChange()"></select>
+        <div class="gdr-custom" id="gdr-custom">
+          <input type="date" id="gdr-de" class="periodo-date-input">
+          <span class="periodo-date-sep">ate</span>
+          <input type="date" id="gdr-ate" class="periodo-date-input">
+          <button class="periodo-apply-btn" id="gdr-apply" onclick="gdrAplicarCustom()">Aplicar</button>
+        </div>
+        <span class="gdr-loading" id="gdr-loading">carregando...</span>
+      </div>
     </nav>
 
     <!-- Abas: Visao Geral -->
@@ -3555,15 +3596,7 @@
               <button class="filter-btn" onclick="setOrdFilter('paid',this)">Pagos</button>
               <button class="filter-btn" onclick="setOrdFilter('cancelled',this)">Cancelados</button>
             </div>
-            <!-- Filtro por data -->
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="font-size:11px;color:var(--muted)">De</span>
-              <input type="date" id="ord-data-de" class="date-input" onchange="applyOrdDateFilter()">
-              <span style="font-size:11px;color:var(--muted)">Ate</span>
-              <input type="date" id="ord-data-ate" class="date-input" onchange="applyOrdDateFilter()">
-              <button class="filter-btn" onclick="clearOrdDateFilter()"
-                style="padding:5px 10px;font-size:11px">Limpar</button>
-            </div>
+            <div class="card-meta" id="ord-periodo-label" data-gdr-label>-</div>
             <div class="card-meta" id="ord-historico-aviso" style="display:none"></div>
             <div class="card-meta" id="ord-meta">-</div>
           </div>
@@ -3705,16 +3738,9 @@
           <div class="metric-sub">por pedido</div>
         </div>
       </div>
-      <!-- Filtro de data compartilhado -->
+      <!-- Periodo: vem do filtro global. Aqui so o status. -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-        <span
-          style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">Filtrar
-          por data</span>
-        <span style="font-size:11px;color:var(--muted)">De</span>
-        <input type="date" id="tp-data-de" class="date-input" onchange="renderTipoPedido()">
-        <span style="font-size:11px;color:var(--muted)">Ate</span>
-        <input type="date" id="tp-data-ate" class="date-input" onchange="renderTipoPedido()">
-        <button class="filter-btn" onclick="clearTpDateFilter()" style="padding:5px 10px;font-size:11px">Limpar</button>
+        <span class="card-meta" id="tp-periodo-label" data-gdr-label>-</span>
         <div style="display:flex;gap:6px" id="tp-status-filtros">
           <button class="filter-btn active" onclick="setTpStatusFilter('all',this)">Todos</button>
           <button class="filter-btn" onclick="setTpStatusFilter('paid',this)">Pagos</button>
@@ -3851,24 +3877,8 @@
           <div class="card-meta" id="mg-meta">periodo selecionado · baseado nos pedidos</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <!-- Filtros rápidos -->
-          <div style="display:flex;gap:4px">
-            <button class="filter-btn active" id="mg-btn-7" onclick="setMgPeriodo(7,   this)">7 dias</button>
-            <button class="filter-btn" id="mg-btn-14" onclick="setMgPeriodo(14,  this)">14 dias</button>
-            <button class="filter-btn" id="mg-btn-30" onclick="setMgPeriodo(30,  this)">30 dias</button>
-            <button class="filter-btn" id="mg-btn-60" onclick="setMgPeriodo(60,  this)">60 dias</button>
-            <button class="filter-btn" id="mg-btn-custom" onclick="toggleMgCustom()">Personalizado</button>
-          </div>
-          <!-- Range personalizado (oculto por padrão) -->
-          <div id="mg-custom-range" style="display:none;align-items:center;gap:6px">
-            <input type="date" id="mg-date-de"
-              style="background:var(--surface2);border:1px solid var(--border);color:var(--cream);padding:5px 8px;font-size:12px;font-family:var(--font-body)"
-              onchange="applyMgCustom()">
-            <span style="color:var(--muted);font-size:12px">até</span>
-            <input type="date" id="mg-date-ate"
-              style="background:var(--surface2);border:1px solid var(--border);color:var(--cream);padding:5px 8px;font-size:12px;font-family:var(--font-body)"
-              onchange="applyMgCustom()">
-          </div>
+          <!-- Periodo: vem do filtro global -->
+          <span class="card-meta" id="mg-periodo-label" data-gdr-label>-</span>
           <!-- Input publicidade manual -->
           <div
             style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border-strong);padding:5px 12px">
@@ -4254,13 +4264,8 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <label
-            style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">De</label>
-          <input type="date" id="ap-data-de" class="date-input" onchange="apRender()">
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          <label
-            style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Ate</label>
-          <input type="date" id="ap-data-ate" class="date-input" onchange="apRender()">
+            style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Periodo</label>
+          <span class="card-meta" id="ap-periodo-label" data-gdr-label style="padding:9px 0">-</span>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px">
           <label
@@ -4271,7 +4276,6 @@
             <option value="antigos">Mais antigo primeiro</option>
           </select>
         </div>
-        <button class="filter-btn" onclick="apLimparPeriodo()" style="padding:9px 14px">Limpar datas</button>
       </div>
     </div>
 
@@ -4369,15 +4373,8 @@
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:6px">
             <label
-              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Mes</label>
-            <select id="pv-mes" onchange="renderPrevisao()"
-              style="background:var(--surface3);border:1px solid var(--border);color:var(--cream);padding:9px 12px;font-size:13px;outline:none;font-family:var(--font-body)"></select>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <label
-              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Ano</label>
-            <select id="pv-ano" onchange="renderPrevisao()"
-              style="background:var(--surface3);border:1px solid var(--border);color:var(--cream);padding:9px 12px;font-size:13px;outline:none;font-family:var(--font-body)"></select>
+              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Periodo</label>
+            <span class="card-meta" id="pv-periodo-label" data-gdr-label style="padding:9px 0">-</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
             <label
@@ -4490,15 +4487,9 @@
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
           <div style="display:flex;flex-direction:column;gap:6px">
             <label
-              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Inicio
-              do ciclo</label>
-            <input type="date" id="gr-inicio" class="date-input" onchange="renderGiro()">
-          </div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <label
-              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Fim
-              do ciclo</label>
-            <input type="date" id="gr-fim" class="date-input" onchange="renderGiro()">
+              style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Ciclo
+              (periodo global)</label>
+            <span class="card-meta" id="gr-periodo-label" data-gdr-label style="padding:9px 0">-</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:6px">
             <label
@@ -5067,8 +5058,6 @@
 
     let ordFilter = 'all';
     let ordPage = 1;
-    let ordDateDe = null;
-    let ordDateAte = null;
     const ORD_PAGE_SIZE = 25;
 
     // ── Onda F: primeira pagina da aba Pedidos ──
@@ -5083,7 +5072,9 @@
     let reputacaoData = null;
     let visitasPorDia = [];
 
-    let currentPeriodoDias = 7; // periodo selecionado para metricas
+    // Dias DECORRIDOS do periodo global (derivado de gdrGet(); nunca editado a
+    // mao). Continua existindo porque a extrapolacao de publicidade e por dia.
+    let currentPeriodoDias = 7;
     // Range de datas do periodo selecionado na Visao Geral (objetos Date, em horario do Brasil)
     let periodoDateInicio = null; // Date — inicio do dia (00:00:00.000 BRT)
     let periodoDateFim = null; // Date — fim do dia (23:59:59.999 BRT)
@@ -5121,6 +5112,220 @@
     }
     // "Hoje" em BRT como YYYY-MM-DD
     function hojeBRT() { return ymdBRT(new Date()); }
+
+    // ══════════════════════════════════════
+    // FILTRO GLOBAL DE PERIODO (globalDateRange)
+    //
+    // UMA fonte temporal para o dashboard inteiro. Ate aqui cada aba tinha o
+    // seu proprio par de datas (Visao Geral, Pedidos, Full vs Proprio, Margem,
+    // Analise de Preco, Previsao com mes/ano, Giro com inicio/fim de ciclo):
+    // trocar de aba obrigava a escolher o periodo de novo, e duas abas nunca
+    // falavam do mesmo intervalo. Agora todas leem gdrGet().
+    //
+    // Presets: 'mes_atual' | 'mes:YYYY-MM' | 'ultimos:N' (meses) | 'ano:YYYY'
+    // | 'custom'. `from`/`to` sao "YYYY-MM-DD" (BRT). `to` pode estar no
+    // futuro (mes atual termina no fim do mes); quem chama API usa `toEfetivo`,
+    // que nunca passa de hoje.
+    // ══════════════════════════════════════
+    const MESES_GDR = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    const globalDateRange = { preset: 'mes_atual', from: null, to: null };
+
+    function gdrUltimoDia(ano, mes1a12) { return new Date(Date.UTC(ano, mes1a12, 0)).getUTCDate(); }
+    function gdrYmd(ano, mes1a12, dia) { return `${ano}-${String(mes1a12).padStart(2, '0')}-${String(dia).padStart(2, '0')}`; }
+    function gdrDiasEntre(fromYmd, toYmd) {
+      return Math.round((Date.UTC(...toYmd.split('-').map(Number).map((v, i) => i === 1 ? v - 1 : v)) -
+        Date.UTC(...fromYmd.split('-').map(Number).map((v, i) => i === 1 ? v - 1 : v))) / 86400000) + 1;
+    }
+
+    /**
+     * Calcula { from, to } de um preset. PURA: recebe `hojeYmd` para ser
+     * testavel. `custom` usa os dois valores dados.
+     */
+    function gdrCalcularRange(preset, hojeYmd, customDe, customAte) {
+      const [hy, hm] = hojeYmd.split('-').map(Number);
+      if (preset === 'mes_atual') return { from: gdrYmd(hy, hm, 1), to: gdrYmd(hy, hm, gdrUltimoDia(hy, hm)) };
+      let m;
+      if ((m = /^mes:(\d{4})-(\d{2})$/.exec(preset))) {
+        const a = Number(m[1]), me = Number(m[2]);
+        return { from: gdrYmd(a, me, 1), to: gdrYmd(a, me, gdrUltimoDia(a, me)) };
+      }
+      if ((m = /^ultimos:(\d+)$/.exec(preset))) {
+        const n = Math.max(1, Number(m[1]));
+        let a = hy, me = hm - (n - 1);
+        while (me <= 0) { me += 12; a -= 1; }
+        return { from: gdrYmd(a, me, 1), to: hojeYmd };
+      }
+      if ((m = /^ano:(\d{4})$/.exec(preset))) return { from: `${m[1]}-01-01`, to: `${m[1]}-12-31` };
+      if (preset === 'custom' && customDe && customAte && customDe <= customAte) return { from: customDe, to: customAte };
+      // preset desconhecido ou custom invalido: mes atual
+      return { from: gdrYmd(hy, hm, 1), to: gdrYmd(hy, hm, gdrUltimoDia(hy, hm)) };
+    }
+
+    function gdrRotulo(preset, from, to) {
+      const fmt = ymd => { const [y, m, d] = ymd.split('-'); return `${d}/${m}/${y.slice(2)}`; };
+      let m;
+      if (preset === 'mes_atual') { const [y, mo] = from.split('-').map(Number); return `${MESES_GDR[mo - 1]} ${y}`; }
+      if ((m = /^mes:(\d{4})-(\d{2})$/.exec(preset))) return `${MESES_GDR[Number(m[2]) - 1]} ${m[1]}`;
+      if ((m = /^ultimos:(\d+)$/.exec(preset))) return `\u00daltimos ${m[1]} meses`;
+      if ((m = /^ano:(\d{4})$/.exec(preset))) return `Ano ${m[1]}`;
+      return `${fmt(from)} a ${fmt(to)}`;
+    }
+
+    /**
+     * Quantos MESES cabem no intervalo, somando fracoes: um mes inteiro conta
+     * 1 exato; 10 dias de um mes de 30 contam 0,333. E o que converte a meta
+     * MENSAL na meta do periodo, na Previsao de Vendas.
+     */
+    function gdrMesesNoIntervalo(fromYmd, toYmd) {
+      let [y, m, d] = fromYmd.split('-').map(Number);
+      const [ty, tm, td] = toYmd.split('-').map(Number);
+      let total = 0;
+      while (y < ty || (y === ty && m <= tm)) {
+        const dim = gdrUltimoDia(y, m);
+        const ini = (y === Number(fromYmd.slice(0, 4)) && m === Number(fromYmd.slice(5, 7))) ? d : 1;
+        const fim = (y === ty && m === tm) ? td : dim;
+        total += (fim - ini + 1) / dim;
+        m++; if (m > 12) { m = 1; y++; }
+      }
+      return total;
+    }
+
+    /** A leitura que TODAS as abas fazem. Nunca devolve datas nulas. */
+    function gdrGet() {
+      if (!globalDateRange.from || !globalDateRange.to) {
+        const r = gdrCalcularRange('mes_atual', hojeBRT());
+        globalDateRange.from = r.from; globalDateRange.to = r.to;
+      }
+      const hoje = hojeBRT();
+      const from = globalDateRange.from, to = globalDateRange.to;
+      const toEfetivo = to < hoje ? to : hoje;
+      return {
+        preset: globalDateRange.preset,
+        from, to, toEfetivo,
+        fromDate: brtStartOfDay(from),
+        toDate: brtEndOfDay(to),
+        toDateEfetivo: brtEndOfDay(toEfetivo),
+        // dias DECORRIDOS do periodo (ate hoje) — base de extrapolacoes por dia
+        dias: from > hoje ? 0 : gdrDiasEntre(from, toEfetivo),
+        diasCalendario: gdrDiasEntre(from, to),
+        label: gdrRotulo(globalDateRange.preset, from, to),
+      };
+    }
+
+    /** Preenche o <select> com os presets. Idempotente. */
+    function gdrMontarSelect() {
+      const sel = document.getElementById('gdr-preset');
+      if (!sel || sel.options.length) return;
+      const hoje = hojeBRT();
+      const [hy, hm] = hoje.split('-').map(Number);
+      const ops = [['mes_atual', `M\u00eas atual (${MESES_GDR[hm - 1]} ${hy})`]];
+      let a = hy, me = hm;
+      for (let i = 0; i < 12; i++) {
+        me--; if (me <= 0) { me = 12; a--; }
+        ops.push([`mes:${a}-${String(me).padStart(2, '0')}`, `${MESES_GDR[me - 1]} ${a}`]);
+      }
+      ops.push(['ultimos:3', '\u00daltimos 3 meses'], ['ultimos:6', '\u00daltimos 6 meses'], ['ultimos:12', '\u00daltimos 12 meses']);
+      ops.push([`ano:${hy}`, `Ano ${hy}`], [`ano:${hy - 1}`, `Ano ${hy - 1}`]);
+      ops.push(['custom', 'Personalizado...']);
+      sel.innerHTML = ops.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+      sel.value = globalDateRange.preset;
+    }
+
+    /** Escreve o rotulo do periodo em todo elemento [data-gdr-label]. */
+    function gdrAtualizarRotulos() {
+      const g = gdrGet();
+      document.querySelectorAll('[data-gdr-label]').forEach(el => { el.textContent = g.label; });
+    }
+
+    /** Define o periodo (estado + rotulos). NAO recarrega dados: quem chama decide. */
+    function gdrDefinir(preset, customDe, customAte) {
+      const r = gdrCalcularRange(preset, hojeBRT(), customDe, customAte);
+      globalDateRange.preset = (preset === 'custom' && !(customDe && customAte && customDe <= customAte)) ? 'mes_atual' : preset;
+      globalDateRange.from = r.from;
+      globalDateRange.to = r.to;
+      currentPeriodoDias = Math.max(1, gdrGet().dias);
+      const sel = document.getElementById('gdr-preset');
+      if (sel && sel.value !== globalDateRange.preset) sel.value = globalDateRange.preset;
+      const custom = document.getElementById('gdr-custom');
+      if (custom) custom.classList.toggle('aberto', globalDateRange.preset === 'custom');
+      gdrAtualizarRotulos();
+    }
+
+    function gdrInit() {
+      gdrMontarSelect();
+      gdrDefinir('mes_atual');
+      ['gdr-de', 'gdr-ate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') gdrAplicarCustom(); });
+      });
+    }
+
+    /** onchange do <select>. Personalizado so abre os campos; aplica no botao. */
+    function gdrOnChange() {
+      const sel = document.getElementById('gdr-preset');
+      const preset = sel ? sel.value : 'mes_atual';
+      if (preset === 'custom') {
+        const custom = document.getElementById('gdr-custom');
+        if (custom) custom.classList.add('aberto');
+        const g = gdrGet();
+        const de = document.getElementById('gdr-de'), ate = document.getElementById('gdr-ate');
+        if (de && !de.value) de.value = g.from;
+        if (ate && !ate.value) ate.value = g.toEfetivo;
+        return;
+      }
+      gdrDefinir(preset);
+      gdrAplicar();
+    }
+
+    function gdrAplicarCustom() {
+      const de = document.getElementById('gdr-de')?.value, ate = document.getElementById('gdr-ate')?.value;
+      if (!de || !ate) { showToast('Selecione a data inicial e final', 'error'); return; }
+      if (de > ate) { showToast('Data inicial nao pode ser maior que a final', 'error'); return; }
+      gdrDefinir('custom', de, ate);
+      gdrAplicar();
+    }
+
+    let _gdrAplicando = false;
+    /**
+     * Trocar o periodo: recarrega a base da Visao Geral (metricas, visitas,
+     * publicidade) e re-renderiza a aba ATIVA. As outras abas leem gdrGet()
+     * ao abrir, entao ja nascem no periodo certo.
+     */
+    async function gdrAplicar() {
+      if (!SESSION_TOKEN) return;
+      const loading = document.getElementById('gdr-loading');
+      const sel = document.getElementById('gdr-preset');
+      if (loading) loading.style.display = 'inline';
+      if (sel) sel.disabled = true;
+      _gdrAplicando = true;
+      try {
+        await aplicarPeriodoGlobal();
+      } finally {
+        _gdrAplicando = false;
+        if (loading) loading.style.display = 'none';
+        if (sel) sel.disabled = false;
+      }
+      gdrRerenderAbaAtiva();
+    }
+
+    function gdrAbaAtiva() {
+      const el = document.querySelector('.tab-content.active');
+      return el ? el.id.replace(/^tab-/, '') : null;
+    }
+
+    function gdrRerenderAbaAtiva() {
+      const aba = gdrAbaAtiva();
+      try {
+        if (aba === 'pedidos') { ordPage = 1; renderPedidos(); }
+        else if (aba === 'tipopedido') { tpFullPage = tpPropPage = 1; renderTipoPedido(); }
+        else if (aba === 'margem') renderMargem();
+        else if (aba === 'analisepreco' && _apInited) apRender();
+        else if (aba === 'previsao' && _pvInited) renderPrevisao();
+        else if (aba === 'giro' && _grInited) renderGiro();
+      } catch (e) {
+        console.warn('[gdr] re-render da aba', aba, 'falhou:', e && e.message);
+      }
+    }
 
     // ══════════════════════════════════════
     // STATUS DE VENDA — espelho de src/lib/status-venda.ts do backend.
@@ -5349,11 +5554,6 @@
       };
     }
 
-    // Filtro de data independente da aba Margem
-    let mgPeriodoDias = 7;    // periodo rapido (dias)
-    let mgDateDe = null; // Date — inicio do range customizado
-    let mgDateAte = null; // Date — fim do range customizado
-    let mgCustomActive = false;
     let mgPubManual = parseFloat(localStorage.getItem('mg_pub_manual') || '0') || 0;
     let kpiPubManual = parseFloat(localStorage.getItem('kpi_pub_manual') || '0') || 0;
 
@@ -5616,9 +5816,10 @@
         // faturamento continuava o de antes. Invalidar antes de pedir.
         // Uma carga em voo e reaproveitada: ela ja vai trazer a versao atual.
         if (!_metricsPromise) { _metricsLoadState = "idle"; _metricsPeriodoKey = null; }
+        const _g = gdrGet();
         const [rCat, rMet] = await Promise.allSettled([
           loadCatalogSnapshot(!!forcarCatalogo),
-          loadMetrics(currentPeriodoDias),
+          loadMetrics(null, _g.from, _g.toEfetivo),
         ]);
 
         if (rCat.status === 'rejected') {
@@ -5913,10 +6114,6 @@
         b.style.opacity = completo ? '' : '0.45';
         b.style.cursor = completo ? '' : 'not-allowed';
       });
-      ['ord-data-de', 'ord-data-ate'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) { el.disabled = !completo; el.style.opacity = completo ? '' : '0.45'; }
-      });
 
       const aviso = document.getElementById('ord-historico-aviso');
       if (aviso) {
@@ -5996,13 +6193,14 @@
 
       // Onda D: os numeros do periodo ja vieram no agregado; o que falta aqui
       // sao as VISITAS (unica chamada de rede de loadPeriodoData).
+      const _g = gdrGet();
       _periodoLoadState = "loading";
-      Promise.resolve(loadPeriodoData(currentPeriodoDias))
+      Promise.resolve(loadPeriodoData(_g.from, _g.toEfetivo))
         .then(() => { _periodoLoadState = "loaded"; }, () => { _periodoLoadState = "error"; })
         .then(() => { renderKPIsPeriodo(); renderVisaoGeral(); });
 
       _adsLoadState = "loading";
-      Promise.resolve(loadAdCost(currentPeriodoDias))
+      Promise.resolve(loadAdCost(_g.from, _g.toEfetivo))
         .then(() => { _adsLoadState = "loaded"; }, () => { _adsLoadState = "error"; })
         .then(() => { renderKPIsPeriodo(); });
     }
@@ -6589,16 +6787,16 @@
      * `adCostByItem` fica vazio de proposito: a consulta por campanha nao quebra
      * o custo por anuncio, e o agregado antigo que prometia isso nao existe mais.
      */
-    async function loadAdCost(dias) {
+    async function loadAdCost(fromYmd, toYmd) {
       adCostTotal = 0;
       adCostByItem = {};
 
-      const hoje = new Date();
-      const inicio = new Date(hoje);
-      inicio.setDate(inicio.getDate() - Math.min(Math.max(dias || 0, 1), 90));
-
-      const dateFrom = inicio.toISOString().slice(0, 10);
-      const dateTo = hoje.toISOString().slice(0, 10);
+      // A API de campanhas aceita ate 90 dias: num periodo maior, os ultimos 90.
+      let dateFrom = fromYmd, dateTo = toYmd;
+      if (gdrDiasEntre(dateFrom, dateTo) > 90) {
+        const fim = brtStartOfDay(dateTo); fim.setDate(fim.getDate() - 89);
+        dateFrom = ymdBRT(fim);
+      }
 
       try {
         const anunciantes = await mlFetch('/advertising/advertisers?product_id=PADS');
@@ -6717,34 +6915,28 @@
       return out;
     }
 
-    async function loadPeriodoData(dias, customFrom, customTo) {
+    async function loadPeriodoData(fromYmd, toYmd) {
       periodoData = [];
 
-      // Datas do periodo — usar customFrom/customTo se fornecidos.
-      // Guardamos o range como objetos Date (BRT) em globais, para que
+      // Range do periodo global como objetos Date (BRT) em globais, para que
       // renderKPIsPeriodo / calcLiquidoPeriodo usem exatamente o mesmo intervalo.
-      let fromYmd, toYmd;
-      if (customFrom && customTo) {
-        fromYmd = customFrom;
-        toYmd = customTo;
-      } else {
-        const hoje = new Date();
-        const inicio = new Date(hoje);
-        inicio.setDate(inicio.getDate() - dias);
-        fromYmd = ymdBRT(inicio);
-        toYmd = ymdBRT(hoje);
-      }
       periodoDateInicio = brtStartOfDay(fromYmd); // 00:00:00.000 BRT
       periodoDateFim = brtEndOfDay(toYmd);     // 23:59:59.999 BRT
-      const dateFrom = fromYmd + 'T00:00:00.000-03:00';
-      const dateTo = toYmd + 'T23:59:59.999-03:00';
 
-      // Buscar total de visitas do período via endpoint que funciona
+      // Visitas: a API so aceita "ultimos N dias ate hoje" (N <= 150). Pedimos
+      // do inicio do periodo ate hoje e somamos SO os dias dentro do periodo —
+      // exato para qualquer intervalo dos ultimos 150 dias; alem disso, o
+      // inicio e truncado e a conversao fica subestimada (declarado no rotulo).
       const visitasMap = {};
       let totalVisitasAPI = 0;
       try {
-        const vData = await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${dias}&unit=day`);
-        totalVisitasAPI = vData.total_visits || (vData.results || []).reduce((s, d) => s + (d.total || 0), 0);
+        const last = Math.min(150, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
+        const vData = await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`);
+        const porDia = (vData.results || []).filter(d => d && d.date);
+        totalVisitasAPI = porDia.length
+          ? porDia.filter(d => { const y = String(d.date).slice(0, 10); return y >= fromYmd && y <= toYmd; })
+            .reduce((s, d) => s + (d.total || 0), 0)
+          : (vData.total_visits || 0);
 
         // Distribuir visitas por item proporcional às vendas históricas (sold_quantity)
         // pois a API não retorna visitas por item neste endpoint
@@ -6830,48 +7022,33 @@
       }
     }
 
-    // Seletor de periodo
-    async function aplicarPeriodoCustom() {
-      const deEl = document.getElementById('periodo-de');
-      const ateEl = document.getElementById('periodo-ate');
-      const btn = document.getElementById('periodo-apply-btn');
-
-      if (!deEl.value || !ateEl.value) {
-        showToast('Selecione a data inicial e final', 'error');
-        return;
-      }
-      if (deEl.value > ateEl.value) {
-        showToast('Data inicial nao pode ser maior que a final', 'error');
-        return;
-      }
-
-      const loadEl = document.getElementById('periodo-loading');
-      loadEl.style.display = 'inline';
-      btn.disabled = true;
-
-      // Calcular dias para compatibilidade com endpoints que usam "last N dias"
-      const msDay = 86400000;
-      const dias = Math.round((new Date(ateEl.value) - new Date(deEl.value)) / msDay) + 1;
-      currentPeriodoDias = dias;
-
-      // Onda D — opcao B: com o historico em memoria, recalcula LOCAL (nenhuma
-      // requisicao de metricas). Sem historico, busca o agregado do novo
-      // periodo. Nunca as duas coisas para a mesma interacao.
+    /**
+     * Recarrega a base da Visao Geral para o periodo global: agregado de
+     * metricas (quando o historico nao esta em memoria), visitas e
+     * publicidade. Chamada por gdrAplicar() ao trocar o periodo.
+     *
+     * Onda D — opcao B: com o historico em memoria, recalcula LOCAL (nenhuma
+     * requisicao de metricas). Sem historico, busca o agregado do novo
+     * periodo. Nunca as duas coisas para a mesma interacao.
+     */
+    async function aplicarPeriodoGlobal() {
+      const g = gdrGet();
       try {
-        if (!pedidosEmMemoria()) await loadMetrics(dias, deEl.value, ateEl.value);
-        await loadPeriodoData(dias, deEl.value, ateEl.value);
+        if (!pedidosEmMemoria()) await loadMetrics(null, g.from, g.toEfetivo);
+        _periodoLoadState = "loading";
+        await loadPeriodoData(g.from, g.toEfetivo);
         _periodoLoadState = "loaded";
       } catch (e) {
         _periodoLoadState = "error";
         showToast('Nao foi possivel carregar o periodo: ' + ((e && e.message) || 'erro'), 'error');
       }
+      _adsLoadState = "loading";
+      try { await loadAdCost(g.from, g.toEfetivo); _adsLoadState = "loaded"; } catch (e) { _adsLoadState = "error"; }
       renderKPIsPeriodo();
       renderQualidade();
       renderChartReceitaProduto();
       renderCardReputacao();
-
-      loadEl.style.display = 'none';
-      btn.disabled = false;
+      renderVisaoGeral();
     }
 
     // ══════════════════════════════════════
@@ -7506,8 +7683,7 @@
 
     function renderChartReceitaProduto() {
       const el = document.getElementById('chart-receita-produto');
-      const dias = currentPeriodoDias;
-      document.getElementById('receita-meta').textContent = `ultimos ${dias} dias`;
+      document.getElementById('receita-meta').textContent = gdrGet().label;
 
       const dados = [...periodoData]
         .filter(d => d.receita > 0)
@@ -7838,15 +8014,13 @@
     // Usa EXATAMENTE o mesmo range (periodoDateInicio/Fim) do resto da Visao Geral,
     // garantindo que o Faturamento Bruto bata com os pedidos pagos do periodo.
     function calcLiquidoPeriodo() {
-      // Fallback: se ainda nao houver range definido, usa ultimos N dias
+      // Fallback: se ainda nao houver range carregado, usa o periodo global
       let inicio = periodoDateInicio;
       let fim = periodoDateFim;
       if (!inicio || !fim) {
-        const hoje = new Date();
-        const ini = new Date(hoje);
-        ini.setDate(ini.getDate() - currentPeriodoDias);
-        inicio = brtStartOfDay(ymdBRT(ini));
-        fim = brtEndOfDay(ymdBRT(hoje));
+        const g = gdrGet();
+        inicio = g.fromDate;
+        fim = g.toDateEfetivo;
       }
 
       // Onda D: sem historico em memoria, o faturamento do periodo vem pronto
@@ -7946,7 +8120,7 @@
 
       // Tabela completa do periodo
       document.getElementById('periodo-meta').textContent =
-        `${periodoData.length} anuncios · ultimos ${currentPeriodoDias} dias`;
+        `${periodoData.length} anuncios · ${gdrGet().label}`;
 
       document.getElementById('periodo-table').innerHTML = periodoData.length
         ? periodoData.map(d => {
@@ -8529,29 +8703,10 @@
     function getFilteredOrders() {
       let orders = allOrders;
       if (ordFilter !== 'all') orders = orders.filter(o => o.status === ordFilter);
-      // Filtro de data: normaliza inicio (00:00) e fim (23:59:59.999) em BRT
-      // e compara como Date (nunca como string, para evitar bug de timezone).
-      const ini = brtStartOfDay(ordDateDe);
-      const fim = brtEndOfDay(ordDateAte);
-      if (ini || fim) {
-        orders = orders.filter(o => dentroDoPeriodo(o.date_created, ini, fim));
-      }
-      return orders;
-    }
-
-    function applyOrdDateFilter() {
-      ordDateDe = document.getElementById('ord-data-de').value || null;
-      ordDateAte = document.getElementById('ord-data-ate').value || null;
-      ordPage = 1;
-      renderOrdTable();
-    }
-
-    function clearOrdDateFilter() {
-      ordDateDe = ordDateAte = null;
-      document.getElementById('ord-data-de').value = '';
-      document.getElementById('ord-data-ate').value = '';
-      ordPage = 1;
-      renderOrdTable();
+      // Periodo GLOBAL: compara como Date (nunca como string, para evitar bug
+      // de timezone), do inicio do dia inicial ao fim do dia final em BRT.
+      const g = gdrGet();
+      return orders.filter(o => dentroDoPeriodo(o.date_created, g.fromDate, g.toDate));
     }
 
     function setOrdFilter(f, btn) {
@@ -8568,7 +8723,7 @@
       const pagos = orders.filter(o => o.status === 'paid');
       const fat = pagos.reduce((s, o) => s + (o.paid_amount || o.total_amount || 0), 0);
       const card = document.getElementById('ord-filtro-card');
-      const hasFilter = ordDateDe || ordDateAte || ordFilter !== 'all';
+      const hasFilter = ordFilter !== 'all';
 
       document.getElementById('ord-filtro-val').textContent =
         fat > 0 ? 'R$ ' + fat.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '-';
@@ -8587,7 +8742,7 @@
       const slice = orders.slice((ordPage - 1) * ORD_PAGE_SIZE, ordPage * ORD_PAGE_SIZE);
 
       document.getElementById('ord-meta').textContent =
-        `${total} pedido${total !== 1 ? 's' : ''} · p. ${ordPage}/${totalPages || 1} · total: ${allOrders.length}`;
+        `${total} pedido${total !== 1 ? 's' : ''} em ${gdrGet().label} · p. ${ordPage}/${totalPages || 1} · historico: ${allOrders.length}`;
 
       document.getElementById('pedidos-table').innerHTML = slice.length
         ? slice.map((o, idx) => ordLinhaHtml(o, (ordPage - 1) * ORD_PAGE_SIZE + idx + 1)).join('')
@@ -8991,13 +9146,6 @@
     const TP_PAGE_SIZE = 25;
     let tpStatusFilter = 'all';
 
-    function clearTpDateFilter() {
-      document.getElementById('tp-data-de').value = '';
-      document.getElementById('tp-data-ate').value = '';
-      tpFullPage = tpPropPage = 1;
-      renderTipoPedido();
-    }
-
     function setTpStatusFilter(f, btn) {
       tpStatusFilter = f;
       tpFullPage = tpPropPage = 1;
@@ -9014,9 +9162,12 @@
       // apenas como ultimo recurso. A versao anterior perguntava so ao anuncio
       // e por isso perdia 144 pedidos (R$ 17.118) cujo anuncio saiu do
       // catalogo: eles nao caiam em NENHUM dos dois grupos e sumiam da tela.
+      // Periodo GLOBAL: cards, tabelas e ticket olham a MESMA populacao.
+      const _g = gdrGet();
       const semClassificacao = [];
       const fullAll = [], propAll = [];
       allOrders.forEach(o => {
+        if (!dentroDoPeriodo(o.date_created, _g.fromDate, _g.toDate)) return;
         const lt = logisticaDoPedido(o, itemMap);
         if (lt === null) { semClassificacao.push(o); return; }
         (ehVendaFull(lt) ? fullAll : propAll).push(o);
@@ -9049,15 +9200,10 @@
           (logisticaCarregada ? '' : ' (mapa de envios nao carregado)'));
       }
 
-      // Aplicar filtros de data e status para as tabelas
-      const dataDe = document.getElementById('tp-data-de')?.value || null;
-      const dataAte = document.getElementById('tp-data-ate')?.value || null;
-
+      // Filtro de status para as tabelas (o periodo ja foi aplicado acima)
       const applyFilters = ords => {
         let r = ords;
         if (tpStatusFilter !== 'all') r = r.filter(o => o.status === tpStatusFilter);
-        if (dataDe) r = r.filter(o => (o.date_created || '') >= dataDe);
-        if (dataAte) r = r.filter(o => (o.date_created || '') <= dataAte + 'T23:59:59');
         return r;
       };
 
@@ -9082,9 +9228,7 @@
         const totalPages = Math.ceil(total / TP_PAGE_SIZE) || 1;
         if (page > totalPages) page = 1;
 
-        const filtroDesc = (dataDe || dataAte)
-          ? ` · ${dataDe || '...'} a ${dataAte || '...'}`
-          : '';
+        const filtroDesc = ` · ${_g.label}`;
         document.getElementById(metaId).textContent =
           `${total} pedido${total !== 1 ? 's' : ''} filtrados${filtroDesc}`;
 
@@ -10704,19 +10848,8 @@
         sel.innerHTML = '<option value="">Selecione um produto...</option>' +
           produtos.map(p => `<option value="${escHtml(p.sku)}">${escHtml(p.label)}${p.itemIds.size > 1 ? ' (' + p.itemIds.size + ' anuncios)' : ''}</option>`).join('');
 
-        // Periodo padrao: ultimos 90 dias
-        const hoje = new Date();
-        const inicio = new Date(hoje); inicio.setDate(inicio.getDate() - 90);
-        document.getElementById('ap-data-de').value = ymdBRT(inicio);
-        document.getElementById('ap-data-ate').value = ymdBRT(hoje);
         _apInited = true;
       }
-      apRender();
-    }
-
-    function apLimparPeriodo() {
-      document.getElementById('ap-data-de').value = '';
-      document.getElementById('ap-data-ate').value = '';
       apRender();
     }
 
@@ -10725,8 +10858,9 @@
       const sku = document.getElementById('ap-produto').value;
       if (!sku) return [];
 
-      const ini = brtStartOfDay(document.getElementById('ap-data-de').value);  // pode ser null
-      const fim = brtEndOfDay(document.getElementById('ap-data-ate').value);   // pode ser null
+      // Periodo GLOBAL
+      const _g = gdrGet();
+      const ini = _g.fromDate, fim = _g.toDate;
       const skuMap = apItemSkuMap();
 
       const vendas = [];
@@ -10780,7 +10914,7 @@
       if (!_apVendas.length) {
         empty.style.display = 'block';
         empty.querySelector('.empty-state').innerHTML =
-          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas pagas no intervalo selecionado. Ajuste as datas.</span>';
+          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas pagas em ' + escHtml(gdrGet().label) + '. Ajuste o periodo global, no topo.</span>';
         cont.style.display = 'none';
         return;
       }
@@ -10999,63 +11133,89 @@
       return 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
     }
 
-    // Agrupa pedidos pagos por dia (1..N) do mes/ano selecionado. Fonte: allOrders.
-    function pvGroupByDay(mes, ano) {
-      const porDia = {}; // diaDoMes -> total
+    // Agrupa pedidos pagos por dia (1..N) do PERIODO GLOBAL. Fonte: allOrders.
+    // O indice 1 e o primeiro dia do periodo; `datas[d]` da o "YYYY-MM-DD".
+    function pvGroupByDay(fromYmd, toYmd) {
+      const porDia = {}; // indice do dia no periodo -> total
       (allOrders || []).forEach(o => {
         if (o.status !== 'paid') return;                 // somente pagos
         const ymd = ymdBRT(o.date_created);              // "YYYY-MM-DD" BRT
-        if (!ymd) return;
-        const [y, m, d] = ymd.split('-').map(Number);
-        if (y !== ano || m !== mes) return;              // so o mes/ano selecionado
+        if (!ymd || ymd < fromYmd || ymd > toYmd) return; // so o periodo global
+        const d = gdrDiasEntre(fromYmd, ymd);
         porDia[d] = (porDia[d] || 0) + (o.paid_amount || o.total_amount || 0);
       });
       return porDia;
     }
 
-    // Calcula todas as metricas de previsao
-    function pvCalc(mes, ano, metaMensal) {
-      const diasDoMes = new Date(ano, mes, 0).getDate(); // dias do mes
-      const porDia = pvGroupByDay(mes, ano);
-
-      // diaAtual: se for o mes corrente, o dia de hoje; senao, o ultimo dia com venda
-      const hojeYmd = hojeBRT();
-      const [hy, hm, hd] = hojeYmd.split('-').map(Number);
-      const ehMesCorrente = (hy === ano && hm === mes);
-      const ehFuturo = (ano > hy) || (ano === hy && mes > hm);
-
-      let diaAtual;
-      if (ehFuturo) {
-        diaAtual = 0; // mes futuro: nada vendido ainda
-      } else if (ehMesCorrente) {
-        diaAtual = hd; // mes corrente: dia de hoje (nao conta dias futuros)
-      } else {
-        diaAtual = diasDoMes; // mes passado: mes inteiro decorrido
+    /**
+     * Calcula todas as metricas de previsao para o PERIODO GLOBAL.
+     *
+     * A meta continua sendo digitada por MES; a meta do periodo e a meta
+     * mensal vezes os meses (com fracoes) que cabem no intervalo: um mes
+     * inteiro = 1x, um ano = 12x, "ultimos 3 meses" = 2 meses inteiros mais a
+     * fracao do mes corrente. Assim setembro/2026 da exatamente o que dava
+     * antes com Mes/Ano, e um intervalo qualquer ganha uma meta proporcional.
+     *
+     * Mantem o shape anterior (`diasDoMes` = dias do periodo, `diaAtual` =
+     * dias decorridos) para o grafico e a tabela; `datas` traz o calendario.
+     */
+    function pvCalc(metaMensal) {
+      const g = gdrGet();
+      const diasDoMes = g.diasCalendario;                 // N dias do periodo
+      const porDia = pvGroupByDay(g.from, g.to);
+      const datas = [null];
+      for (let d = 1; d <= diasDoMes; d++) {
+        const dt = new Date(Date.UTC(...g.from.split('-').map(Number).map((v, i) => i === 1 ? v - 1 : v)) + (d - 1) * 86400000);
+        datas.push(dt.toISOString().slice(0, 10));
       }
+      const mesesNoIntervalo = gdrMesesNoIntervalo(g.from, g.to);
+      const metaPeriodo = metaMensal * mesesNoIntervalo;
+
+      // diaAtual: dias DECORRIDOS do periodo (periodo passado = inteiro; futuro = 0)
+      const hojeYmd = hojeBRT();
+      const ehFuturo = g.from > hojeYmd;
+      const ehMesCorrente = !ehFuturo && g.to >= hojeYmd;
+      let diaAtual;
+      if (ehFuturo) diaAtual = 0;
+      else if (ehMesCorrente) diaAtual = gdrDiasEntre(g.from, hojeYmd);
+      else diaAtual = diasDoMes;
 
       // vendidoAcumulado: soma das vendas ate o diaAtual
       let vendidoAcumulado = 0;
       for (let d = 1; d <= diaAtual; d++) vendidoAcumulado += porDia[d] || 0;
 
-      const metaDiariaIdeal = diasDoMes > 0 ? metaMensal / diasDoMes : 0;
+      const metaDiariaIdeal = diasDoMes > 0 ? metaPeriodo / diasDoMes : 0;
       const diasRestantes = Math.max(0, diasDoMes - diaAtual);
       const mediaDiariaAtual = diaAtual > 0 ? vendidoAcumulado / diaAtual : 0;
       const projecaoFinal = diaAtual > 0 ? mediaDiariaAtual * diasDoMes : 0;
-      const diferencaProjecao = projecaoFinal - metaMensal;
-      const percentualConcluido = metaMensal > 0 ? vendidoAcumulado / metaMensal * 100 : 0;
-      const valorRestanteParaMeta = Math.max(0, metaMensal - vendidoAcumulado);
+      const diferencaProjecao = projecaoFinal - metaPeriodo;
+      const percentualConcluido = metaPeriodo > 0 ? vendidoAcumulado / metaPeriodo * 100 : 0;
+      const valorRestanteParaMeta = Math.max(0, metaPeriodo - vendidoAcumulado);
 
       let mediaNecessaria = diasRestantes > 0 ? valorRestanteParaMeta / diasRestantes : 0;
       if (diasRestantes <= 0) mediaNecessaria = 0;
-      if (vendidoAcumulado >= metaMensal) mediaNecessaria = 0;
+      if (vendidoAcumulado >= metaPeriodo) mediaNecessaria = 0;
 
       return {
-        diasDoMes, diaAtual, diasRestantes, porDia,
+        diasDoMes, diaAtual, diasRestantes, porDia, datas,
+        metaPeriodo, metaMensal, mesesNoIntervalo,
         vendidoAcumulado, metaDiariaIdeal, mediaDiariaAtual,
         projecaoFinal, diferencaProjecao, percentualConcluido,
         valorRestanteParaMeta, mediaNecessaria,
         ehMesCorrente, ehFuturo,
+        label: g.label,
       };
+    }
+
+    /** Rotulo curto de um dia do periodo: "dd/mm" (ou o indice, em periodos de ate 31 dias). */
+    function pvRotuloDia(c, d) {
+      if (c.diasDoMes <= 31) return String(d);
+      const ymd = c.datas[d] || '';
+      return ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : String(d);
+    }
+    function pvRotuloData(c, d) {
+      const ymd = c.datas[d] || '';
+      return ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(2, 4)}` : `Dia ${d}`;
     }
 
     // Status de um dia conforme acumulado vs meta acumulada
@@ -11067,41 +11227,27 @@
     }
 
     function pvInit() {
-      if (!_pvInited) {
-        // Popular seletor de mes
-        const selM = document.getElementById('pv-mes');
-        selM.innerHTML = MESES_PT.map((nome, i) => `<option value="${i + 1}">${nome}</option>`).join('');
-        // Popular anos (atual -2 ate atual +1)
-        const anoAtual = new Date().getFullYear();
-        const selA = document.getElementById('pv-ano');
-        const anos = [];
-        for (let a = anoAtual - 2; a <= anoAtual + 1; a++) anos.push(a);
-        selA.innerHTML = anos.map(a => `<option value="${a}">${a}</option>`).join('');
-        // Default: mes/ano corrente (BRT)
-        const hoje = hojeBRT().split('-').map(Number);
-        selM.value = hoje[1];
-        selA.value = hoje[0];
-        _pvInited = true;
-      }
+      // O periodo vem do filtro global; aqui so a meta mensal e local.
+      _pvInited = true;
       renderPrevisao();
     }
 
     function renderPrevisao() {
-      const mes = parseInt(document.getElementById('pv-mes').value);
-      const ano = parseInt(document.getElementById('pv-ano').value);
-      const meta = parseFloat(document.getElementById('pv-meta').value) || 0;
-      const c = pvCalc(mes, ano, meta);
+      const metaMensal = parseFloat(document.getElementById('pv-meta').value) || 0;
+      const c = pvCalc(metaMensal);
+      const meta = c.metaPeriodo;   // meta do PERIODO (mensal x meses no intervalo)
 
       // ── Cards ──
-      document.getElementById('pv-c-meta').textContent = pvFmtBRL(meta);
-      document.getElementById('pv-c-periodo').textContent = `${MESES_PT[mes - 1]} ${ano}`;
-      document.getElementById('pv-c-diasrest').textContent = c.ehFuturo ? 'mes futuro'
+      document.getElementById('pv-c-meta').textContent = pvFmtBRL(meta) +
+        (Math.abs(c.mesesNoIntervalo - 1) > 0.001 ? ` (${c.mesesNoIntervalo.toFixed(1)} meses)` : '');
+      document.getElementById('pv-c-periodo').textContent = c.label;
+      document.getElementById('pv-c-diasrest').textContent = c.ehFuturo ? 'periodo futuro'
         : `${c.diasRestantes} dias restantes de ${c.diasDoMes}`;
 
       document.getElementById('pv-c-vendido').textContent = pvFmtBRL(c.vendidoAcumulado);
       document.getElementById('pv-c-pct').textContent = `${c.percentualConcluido.toFixed(1)}% da meta`;
       document.getElementById('pv-c-barra').style.width = Math.min(100, c.percentualConcluido) + '%';
-      document.getElementById('pv-c-dia').textContent = c.diaAtual > 0 ? `dia ${c.diaAtual} de ${c.diasDoMes}` : 'sem vendas ainda';
+      document.getElementById('pv-c-dia').textContent = c.diaAtual > 0 ? `dia ${c.diaAtual} de ${c.diasDoMes} (${pvRotuloData(c, c.diaAtual)})` : 'sem vendas ainda';
 
       document.getElementById('pv-c-media').textContent = pvFmtBRL(c.mediaDiariaAtual);
       document.getElementById('pv-c-ideal').textContent = `meta ideal: ${pvFmtBRL(c.metaDiariaIdeal)}/dia`;
@@ -11200,7 +11346,7 @@
         c.metaDiariaIdeal, 1
       ) * 1.15; // folga no topo
 
-      const xPos = d => pad.left + ((d - 1) / (N - 1)) * iW;
+      const xPos = d => pad.left + (N > 1 ? ((d - 1) / (N - 1)) * iW : iW / 2);
       const yPos = v => pad.top + iH - (v / maxAcum) * iH; // escala acumulada (linhas)
       const yBar = v => (v / maxDia) * iH;                 // altura de barra (escala diaria)
       const slotW = iW / N;
@@ -11237,7 +11383,7 @@
         // eixo X (dias)
         for (let d = 1; d <= N; d += Math.max(1, Math.floor(N / 8))) {
           ctx.font = '10px Plus Jakarta Sans, sans-serif'; ctx.fillStyle = C.muted; ctx.textAlign = 'center';
-          ctx.fillText(d, xPos(d), H - 8);
+          ctx.fillText(pvRotuloDia(c, d), xPos(d), H - 8);
         }
 
         // ── BARRAS de venda diaria (atras das linhas) ──
@@ -11287,12 +11433,12 @@
           const vendaDia = ehProj ? c.mediaDiariaAtual : (c.porDia[d] || 0);
           const refY = real != null ? real : (projecao[d - 1] != null ? projecao[d - 1] : metaA);
           ctx.fillStyle = C.gold; ctx.beginPath(); ctx.arc(x, yPos(refY), 4, 0, Math.PI * 2); ctx.fill();
-          const lines = [`Dia ${d}`];
+          const lines = [pvRotuloData(c, d)];
           lines.push(`${ehProj ? 'Venda prevista' : 'Venda'}: ${pvFmtBRL(vendaDia)}`);
           lines.push(`Meta/dia: ${pvFmtBRL(c.metaDiariaIdeal)}`);
           if (real != null) { lines.push(`Acumulado: ${pvFmtBRL(real)}`); lines.push(`Meta acum.: ${pvFmtBRL(metaA)}`); }
           else { lines.push(`Proj. acum.: ${pvFmtBRL(projecao[d - 1] || 0)}`); }
-          drawTooltipBox(ctx, `Dia ${d}`, lines, x, yPos(refY), W, H);
+          drawTooltipBox(ctx, pvRotuloData(c, d), lines, x, yPos(refY), W, H);
         }
       }
       draw(null);
@@ -11330,7 +11476,7 @@
         const st = pvDailyStatus(acc, metaAcum);
         linhas.push(`
       <tr>
-        <td>Dia ${d}</td>
+        <td>${pvRotuloData(c, d)}</td>
         <td style="text-align:right">${pvFmtBRL(venda)}</td>
         <td style="text-align:right;color:var(--gold-light)">${pvFmtBRL(acc)}</td>
         <td style="text-align:right;color:var(--muted)">${pvFmtBRL(metaAcum)}</td>
@@ -11432,10 +11578,11 @@
     // Monta a lista completa de SKUs com todas as metricas
     function grBuildData() {
       const semanasPadrao = Math.max(1, parseInt(document.getElementById('gr-semanas').value) || 24);
-      const iniStr = document.getElementById('gr-inicio').value;
-      const fimStr = document.getElementById('gr-fim').value;
-      const ini = brtStartOfDay(iniStr);
-      const fim = brtEndOfDay(fimStr);
+      // Ciclo = periodo GLOBAL. `fim` pode estar no futuro (mes atual); as
+      // semanas decorridas param em hoje, como ja faziam.
+      const _g = gdrGet();
+      const ini = _g.fromDate;
+      const fim = _g.toDate;
 
       // semanas decorridas: do inicio ate hoje (limitado ao fim do ciclo)
       const hoje = new Date();
@@ -11756,11 +11903,6 @@
 
     async function grInit() {
       if (!_grInited) {
-        const hoje = new Date();
-        const fim = new Date(hoje); fim.setDate(fim.getDate() + 24 * 7);
-        document.getElementById('gr-fim').value = ymdBRT(fim);
-        const ini = new Date(hoje); ini.setDate(ini.getDate() - 60);
-        document.getElementById('gr-inicio').value = ymdBRT(ini);
         _grInited = true;
         // carregar config compartilhada (semanas por SKU) e sazonalidade em cache
         await grLoadConfig();
@@ -12001,7 +12143,7 @@
       const el = document.getElementById('gr-curva');
       const N = l.semanasSku;
       const semDecorr = Math.max(1, Math.round(l.semanasDecorridas));
-      const iniCiclo = brtStartOfDay(document.getElementById('gr-inicio').value) || new Date();
+      const iniCiclo = gdrGet().fromDate || new Date();
 
       // data do inicio de cada semana do ciclo (para peso sazonal)
       const dataSemana = w => new Date(iniCiclo.getTime() + (w - 1) * 7 * 86400000);
@@ -13353,55 +13495,10 @@
     // ABA: MARGEM REAL POR PRODUTO
     // ══════════════════════════════════════
     // ── Controle do filtro de data da aba Margem ──────────────
-    function setMgPeriodo(dias, btn) {
-      mgPeriodoDias = dias;
-      mgCustomActive = false;
-      document.getElementById('mg-custom-range').style.display = 'none';
-      document.querySelectorAll('#mg-btn-7,#mg-btn-14,#mg-btn-30,#mg-btn-60,#mg-btn-custom')
-        .forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderMargem();
-    }
-
-    function toggleMgCustom() {
-      mgCustomActive = !mgCustomActive;
-      const wrap = document.getElementById('mg-custom-range');
-      wrap.style.display = mgCustomActive ? 'flex' : 'none';
-      document.getElementById('mg-btn-custom').classList.toggle('active', mgCustomActive);
-      if (mgCustomActive) {
-        // Preencher datas padrão (últimos 30 dias)
-        const hoje = new Date();
-        const inicio = new Date(hoje);
-        inicio.setDate(inicio.getDate() - 30);
-        document.getElementById('mg-date-de').value = inicio.toISOString().slice(0, 10);
-        document.getElementById('mg-date-ate').value = hoje.toISOString().slice(0, 10);
-        // Desativar botões rápidos
-        ['mg-btn-7', 'mg-btn-14', 'mg-btn-30', 'mg-btn-60'].forEach(id => {
-          document.getElementById(id).classList.remove('active');
-        });
-        applyMgCustom();
-      }
-    }
-
-    function applyMgCustom() {
-      const de = document.getElementById('mg-date-de').value;
-      const ate = document.getElementById('mg-date-ate').value;
-      if (!de || !ate) return;
-      mgDateDe = new Date(de + 'T00:00:00');
-      mgDateAte = new Date(ate + 'T23:59:59');
-      mgCustomActive = true;
-      renderMargem();
-    }
-
-    // Retorna { inicio, fim } Date objects conforme filtro ativo
+    // Retorna { inicio, fim } Date objects do periodo GLOBAL (fim nunca passa de hoje)
     function getMgDateRange() {
-      if (mgCustomActive && mgDateDe && mgDateAte) {
-        return { inicio: mgDateDe, fim: mgDateAte };
-      }
-      const fim = new Date();
-      const inicio = new Date(fim);
-      inicio.setDate(inicio.getDate() - mgPeriodoDias);
-      return { inicio, fim };
+      const g = gdrGet();
+      return { inicio: g.fromDate, fim: g.toDateEfetivo };
     }
 
     // ══════════════════════════════════════
@@ -13476,7 +13573,7 @@
         const totCusto = T.custoTotal;
 
         // Publicidade continua sendo assunto da tela.
-        const _mgAds = getAdsDataParaPeriodo(mgPeriodoDias || currentPeriodoDias);
+        const _mgAds = getAdsDataParaPeriodo(Math.max(1, gdrGet().dias));
         const totPub = mgPubManual > 0 ? mgPubManual :
           (_mgAds.totalInvestimento > 0 ? _mgAds.totalInvestimento : (adCostTotal || 0));
         const totMargem = T.margem - totPub;
@@ -13531,10 +13628,7 @@
           semVenda.sort((a, b) => b.vendidoTotal - a.vendidoTotal)
         );
 
-        const fmtDate = d => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-        const labelPeriodo = mgCustomActive && mgDateDe && mgDateAte
-          ? `${fmtDate(inicio)} a ${fmtDate(fim)}`
-          : `ultimos ${mgPeriodoDias} dias`;
+        const labelPeriodo = gdrGet().label;
         const avisoLog = dados.logistica && dados.logistica.fracao < 1
           ? ` · logistica ${(dados.logistica.fracao * 100).toFixed(0)}% conhecida (margem e piso)`
           : '';
@@ -14096,18 +14190,8 @@
     // INIT
     // ══════════════════════════════════════
     window.addEventListener('DOMContentLoaded', () => {
-      // Inicializar date range com os ultimos 7 dias
-      (function () {
-        const hoje = new Date();
-        const seteDiasAtras = new Date(hoje);
-        seteDiasAtras.setDate(seteDiasAtras.getDate() - 7);
-        const fmt = d => d.toISOString().slice(0, 10);
-        const deEl = document.getElementById('periodo-de');
-        const ateEl = document.getElementById('periodo-ate');
-        if (deEl) deEl.value = fmt(seteDiasAtras);
-        if (ateEl) ateEl.value = fmt(hoje);
-        [deEl, ateEl].forEach(el => { if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') aplicarPeriodoCustom(); }); });
-      })();
+      // Filtro global de periodo: padrao MES ATUAL, antes de qualquer carga.
+      gdrInit();
 
       // Higiene de migracao: apagar credenciais antigas deste dispositivo.
       // `gh_token` era um Personal Access Token do GitHub que a versao
