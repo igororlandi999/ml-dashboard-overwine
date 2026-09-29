@@ -432,3 +432,44 @@ describe('tarifa e frete reais, com cobertura', () => {
     assert.match(extrairFuncao('aplicarPeriodoGlobal'), /if \(!pedidosEmMemoria\(\) \|\| !selecaoLegada\(\)\) await loadMetrics\(/);
   });
 });
+
+describe('ressalva de validacao — reembolso parcial', () => {
+  function montar() {
+    const fonte = [
+      'function contaNome(id) { return id === "degustar-ml" ? "Degustar" : "Overwine"; }',
+      extrairFuncao('textoRessalvas'),
+      'return { textoRessalvas };',
+    ].join('\n');
+    return new Function(fonte)();
+  }
+  const comRessalva = { completo: true, ressalvas: [{ tipo: 'reembolso_parcial', conta: 'degustar-ml', pedidos: 1, receita: 99, tarifaCalculada: -27.72 }] };
+
+  test('sem ressalva o texto e vazio: nada aparece na tela', () => {
+    const m = montar();
+    assert.equal(m.textoRessalvas({ completo: true, ressalvas: [] }, true), '');
+    assert.equal(m.textoRessalvas({ completo: true }, false), '');
+    assert.equal(m.textoRessalvas(null, false), '');
+  });
+  test('curto, para o card: diz que ha ressalva e quantos pedidos', () => {
+    assert.equal(montar().textoRessalvas(comRessalva, true), 'com ressalva: 1 pedido com reembolso parcial');
+  });
+  test('por extenso: empresa, valor em duvida e o sentido do erro possivel', () => {
+    const t = montar().textoRessalvas(comRessalva, false);
+    assert.match(t, /Degustar/);
+    assert.match(t, /27,72/);
+    assert.match(t, /n.o conferida/);
+    assert.match(t, /acima do real/);
+  });
+  test('os cards que dependem da tarifa levam a ressalva; o de frete, nao', () => {
+    const corpo = extrairFuncao('renderKPIsPeriodo');
+    assert.match(corpo, /const rs = dependeDaTarifa \? textoRessalvas\(_k, true\) : '';/);
+    assert.match(corpo, /data-validacao/);
+    assert.match(corpo, /kpi-ressalva-financeiro/);
+  });
+  test('a area da ressalva existe na pagina e nasce escondida', () => {
+    assert.match(html, /<div id="kpi-ressalva-financeiro" style="display:none"><\/div>/);
+  });
+  test('a margem tambem leva a ressalva na receita liquida', () => {
+    assert.match(extrairFuncao('renderMargemSemFinanceiro'), /textoRessalvas\(k, true\)/);
+  });
+});

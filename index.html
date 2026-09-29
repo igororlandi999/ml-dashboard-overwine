@@ -3137,6 +3137,8 @@
         <div class="kpi-delta neutral" id="kpi-tarifa-env-pct">sobre o bruto</div>
       </div>
     </div>
+    <!-- Ressalva de VALIDACAO do financeiro apurado. Vazio na Overwine sozinha. -->
+    <div id="kpi-ressalva-financeiro" style="display:none"></div>
     <div class="kpi-grid" style="margin-bottom:32px;grid-template-columns:repeat(6,1fr)">
       <div class="kpi-card">
         <div class="kpi-label">Visitas Unicas</div>
@@ -8583,8 +8585,10 @@
           const v = document.getElementById(idVal), t = document.getElementById(idSub);
           const nv = _semProva && dependeDaTarifa;
           if (total !== null) {
-            if (v) v.textContent = fmt(Math.abs(total));
-            if (t) t.textContent = pct(total, _base) + ' do bruto \u00b7 ' + _met;
+            const rs = dependeDaTarifa ? textoRessalvas(_k, true) : '';
+            if (v) { v.textContent = fmt(Math.abs(total)); v.title = dependeDaTarifa ? textoRessalvas(_k, false) : ''; }
+            if (t) t.textContent = pct(total, _base) + ' do bruto \u00b7 ' + _met + (rs ? ' \u00b7 ' + rs : '');
+            if (v) v.setAttribute('data-validacao', rs ? 'com-ressalva' : 'sem-ressalva');
           } else {
             if (v) v.innerHTML = htmlIndisponivel(_ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo');
             if (t) t.textContent = _ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo';
@@ -8594,6 +8598,13 @@
         cardApurado('kpi-liq', 'kpi-liq-pct', liquido, _k && _k.liquido, 'l\u00edquido', true);
         cardApurado('kpi-tarifa-ml', 'kpi-tarifa-ml-pct', tarifaML, _k && _k.tarifaML, 'tarifa', true);
         cardApurado('kpi-tarifa-env', 'kpi-tarifa-env-pct', tarifaEnv, _k && _k.tarifaEnv, 'frete', false);
+        // A ressalva inteira, por extenso, logo abaixo dos cards.
+        const _avisoFin = document.getElementById('kpi-ressalva-financeiro');
+        if (_avisoFin) {
+          const txt = textoRessalvas(_k, false);
+          _avisoFin.style.display = txt ? 'block' : 'none';
+          _avisoFin.innerHTML = txt ? htmlAvisoSelecao('<b>Financeiro com ressalva.</b> ' + escHtml(txt)) : '';
+        }
       } else {
         document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
         document.getElementById('kpi-liq').textContent = fmt(liquido);
@@ -8677,6 +8688,25 @@
       if (metodo === 'apurado_pedidos_envios') return 'valor real dos pedidos e envios';
       if (metodo === 'misto') return 'Overwine estimada + demais apuradas';
       return 'estimado';
+    }
+
+    /**
+     * Ressalvas de VALIDACAO do apurado — outra coisa que cobertura. O pedido
+     * traz o dado (cobertura completa), mas a conta feita com ele ainda nao foi
+     * conferida contra o Mercado Livre. Hoje: pedido com reembolso parcial.
+     * Devolve '' quando nao ha ressalva.
+     */
+    function textoRessalvas(conhecido, curto) {
+      const rs = (conhecido && Array.isArray(conhecido.ressalvas)) ? conhecido.ressalvas : [];
+      if (!rs.length) return '';
+      const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const n = rs.reduce((s, r) => s + r.pedidos, 0);
+      const valor = rs.reduce((s, r) => s + Math.abs(r.tarifaCalculada), 0);
+      const pedidos = n + ' pedido' + (n === 1 ? '' : 's') + ' com reembolso parcial';
+      if (curto) return 'com ressalva: ' + pedidos;
+      const onde = rs.map(r => contaNome(r.conta)).filter((v, i, a) => a.indexOf(v) === i).join(' e ');
+      return 'Tarifa n\u00e3o conferida em ' + pedidos + ' (' + onde + '): foi calculada pela quantidade original, ' + fmt(valor) +
+        ', e o Mercado Livre pode ter devolvido parte. O total pode estar at\u00e9 ' + fmt(valor) + ' acima do real na tarifa.';
     }
 
     // Calcula receita bruta e líquida do período usando allOrders.
@@ -14313,8 +14343,9 @@
       const k = dados.financeiro && dados.financeiro.conhecido;
       const liqEl = document.getElementById('mg-liq'), liqPct = document.getElementById('mg-liq-pct');
       if (typeof T.receitaLiquida === 'number') {
-        if (liqEl) { liqEl.textContent = fmt(T.receitaLiquida); liqEl.style.color = ''; }
-        if (liqPct) liqPct.textContent = rotuloMetodo(k && k.metodo);
+        const rs = textoRessalvas(k, true);
+        if (liqEl) { liqEl.textContent = fmt(T.receitaLiquida); liqEl.style.color = ''; liqEl.title = textoRessalvas(k, false); }
+        if (liqPct) liqPct.textContent = rotuloMetodo(k && k.metodo) + (rs ? ' \u00b7 ' + rs : '');
       } else {
         const nv = !!(k && k.tarifaValidada === false);
         if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido', nv)); liqEl.style.color = ''; }
