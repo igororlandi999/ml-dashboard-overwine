@@ -2441,6 +2441,39 @@
     .gdr-custom.aberto { display: flex; }
     .gdr-loading { font-size: 11px; color: var(--muted); display: none; }
 
+    /* Seletores de EMPRESA e MARKETPLACE: mesmos controles do periodo, a esquerda dele. */
+    .gdr-conta { display: none; }
+    .gdr-conta.visivel { display: flex; }
+    .gdr-conta.visivel + .gdr { margin-left: 14px; }
+    .gdr-conta .gdr-select { min-width: 150px; }
+    /* Dado que nao existe para a selecao: texto, nunca zero. */
+    .indisp { color: var(--muted); font-style: italic; font-weight: 400; }
+    .kpi-value .indisp { font-size: 0.62em; }
+    .aviso-selecao {
+      margin: 0 0 16px 0;
+      padding: 12px 16px;
+      border: 1px solid var(--border-strong);
+      border-left: 3px solid var(--gold);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .aviso-selecao b { color: var(--gold); font-weight: 600; }
+    .tag-conta {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-left: 6px;
+      border: 1px solid var(--border-strong);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
     /* Barra de abas (agora dentro da seção) */
     .tabs {
       display: flex;
@@ -3148,6 +3181,13 @@
       <button class="section-nav-btn active" onclick="switchSection('visaogeral')">Visao Geral</button>
       <button class="section-nav-btn" onclick="switchSection('marketing')">Marketing e Ads</button>
       <button class="section-nav-btn" onclick="switchSection('financeiro')">Analise Financeira</button>
+      <!-- SELECAO DE CONTAS: empresa x marketplace. So aparece com mais de uma conta conectada. -->
+      <div class="gdr gdr-conta" id="conta-sel">
+        <span class="gdr-label">Empresa</span>
+        <select class="gdr-select" id="conta-empresa" onchange="contaOnChange()"></select>
+        <span class="gdr-label">Marketplace</span>
+        <select class="gdr-select" id="conta-canal" onchange="contaOnChange()"></select>
+      </div>
       <!-- FILTRO GLOBAL DE PERIODO: fonte temporal unica de todas as abas -->
       <div class="gdr" id="gdr">
         <span class="gdr-label">Periodo</span>
@@ -4478,6 +4518,7 @@
 
   <!-- TAB: GIRO DE ESTOQUE (Analytics ML) -->
   <div class="tab-content" id="tab-giro">
+    <div id="gr-aviso-selecao" style="display:none"></div>
 
     <!-- Header -->
     <div class="card" style="margin-bottom:20px">
@@ -5259,6 +5300,19 @@
     function gdrInit() {
       gdrMontarSelect();
       gdrDefinir('mes_atual');
+      // Pagina recarregada por troca de conta: o periodo que estava na tela volta.
+      const troca = trocaConsumir();
+      if (troca) {
+        if (typeof troca.preset === 'string') {
+          gdrDefinir(troca.preset, troca.de, troca.ate);
+          if (globalDateRange.preset === 'custom') {
+            const de = document.getElementById('gdr-de'), ate = document.getElementById('gdr-ate');
+            if (de) de.value = globalDateRange.from;
+            if (ate) ate.value = globalDateRange.to;
+          }
+        }
+        if (typeof troca.aba === 'string' && TAB_SECTION_MAP[troca.aba]) _abaAposTroca = troca.aba;
+      }
       ['gdr-de', 'gdr-ate'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') gdrAplicarCustom(); });
@@ -5486,10 +5540,30 @@
     }
 
     // SKU consolidado do anuncio (chave de agrupamento por produto).
+    //
+    // Na visao consolidada a chave leva a EMPRESA: o mesmo codigo de SKU em
+    // duas empresas sao dois produtos, com dois estoques. Sem isso, toda aba
+    // que agrupa por SKU (Estoque, Consolidado por produto, Giro, Analise de
+    // Preco) somaria o saldo de uma empresa no da outra. Fora do consolidado
+    // a chave e o SKU puro, como sempre.
     function itemSKU(i) {
-      return i.seller_custom_field
+      const sku = i.seller_custom_field
         || (i.attributes || []).find(a => a.id === 'SELLER_SKU')?.value_name
         || 'sem-sku-' + i.id;
+      if (selecaoConsolidada() && i.conta) return sku + ' \u00b7 ' + contaNome(i.conta);
+      return sku;
+    }
+
+    /** Etiqueta da empresa ao lado de um pedido ou anuncio. So existe no consolidado. */
+    function tagConta(obj) {
+      if (!selecaoConsolidada() || !obj || !obj.conta) return '';
+      return '<span class="tag-conta">' + escHtml(contaNome(obj.conta)) + '</span>';
+    }
+    /** Atributo `data-conta` da linha. Ausente na Overwine sozinha: a linha e a de sempre. */
+    function attrConta(obj) {
+      if (selecaoLegada()) return '';
+      const c = contaDe(obj);
+      return c ? ' data-conta="' + escHtml(c) + '"' : '';
     }
 
     // Chave UNICA de saldo fisico para dedup.
@@ -5559,8 +5633,10 @@
       };
     }
 
-    let mgPubManual = parseFloat(localStorage.getItem('mg_pub_manual') || '0') || 0;
-    let kpiPubManual = parseFloat(localStorage.getItem('kpi_pub_manual') || '0') || 0;
+    // Lidos em pubManualCarregar(), DEPOIS de a selecao de contas ser conhecida:
+    // a publicidade informada a mao e de uma empresa, e a chave leva a selecao.
+    let mgPubManual = 0;
+    let kpiPubManual = 0;
 
     // ── Repositório de relatórios ML Ads carregados ──
     // Cada entrada = um relatório importado, com seu período real
@@ -5623,23 +5699,40 @@
       };
     }
 
+    /**
+     * Publicidade informada a mao. A chave e DA SELECAO (chaveLocal): o valor
+     * digitado para a Overwine nunca aparece na Degustar. Na visao consolidada
+     * o campo fica fechado — um valor unico nao tem dono entre duas empresas.
+     */
+    function pubManualPermitida() { return !selecaoConsolidada(); }
+    function pubManualCarregar() {
+      let v = 0;
+      if (pubManualPermitida()) {
+        try { v = parseFloat(localStorage.getItem(chaveLocal('kpi_pub_manual')) || '0') || 0; } catch (e) { v = 0; }
+      }
+      kpiPubManual = v;
+      mgPubManual = v;
+    }
+
     function saveKpiPubManual() {
+      if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('kpi-pub-input')?.value || '0') || 0;
       kpiPubManual = val;
       mgPubManual = val; // sincroniza com aba Margem
-      localStorage.setItem('kpi_pub_manual', String(val));
-      localStorage.setItem('mg_pub_manual', String(val));
+      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
+      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
       // atualizar input da aba Margem se visível
       const mgEl = document.getElementById('mg-pub-manual');
       if (mgEl) mgEl.value = val > 0 ? val.toFixed(2) : '';
     }
 
     function saveMgPubManual() {
+      if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('mg-pub-manual')?.value || '0') || 0;
       mgPubManual = val;
       kpiPubManual = val; // sincroniza com KPI do período
-      localStorage.setItem('mg_pub_manual', String(val));
-      localStorage.setItem('kpi_pub_manual', String(val));
+      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
+      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
       // atualizar input do KPI se visível
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = val > 0 ? val.toFixed(2) : '';
@@ -5653,8 +5746,8 @@
       if (el) el.value = '';
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = '';
-      localStorage.removeItem('mg_pub_manual');
-      localStorage.removeItem('kpi_pub_manual');
+      localStorage.removeItem(chaveLocal('mg_pub_manual'));
+      localStorage.removeItem(chaveLocal('kpi_pub_manual'));
       renderMargem();
       renderKPIsPeriodo();
     }
@@ -5677,6 +5770,336 @@
     // ══════════════════════════════════════
     const BACKEND_URL = 'https://overwine-assistant.vercel.app';
     let SESSION_TOKEN = null;
+
+    // ══════════════════════════════════════
+    // SELECAO DE CONTAS (empresa x marketplace)
+    //
+    // Uma CONTA e uma empresa em um marketplace: `overwine-ml`, `degustar-ml`.
+    // A SELECAO e a lista de contas que a tela esta mostrando — uma conta, ou
+    // varias (visao consolidada). Quem decide o que cada conta pode e o
+    // backend; a tela so escolhe entre as que ele declara selecionaveis em
+    // GET /api/orders/contas.
+    //
+    // TRES REGRAS:
+    // 1. A Overwine sozinha e o comportamento de sempre: nenhuma requisicao
+    //    ganha parametro, nenhuma chave de storage muda de nome.
+    // 2. Trocar de selecao RECARREGA a pagina. Este arquivo guarda dezenas de
+    //    caches em memoria (pedidos, anuncios, envios, graficos, selects ja
+    //    preenchidos); zerar um por um e a receita para esquecer um e mostrar
+    //    pedido de uma empresa na tela da outra. Recarregar nao esquece nada:
+    //    a sessao e o periodo atravessam a recarga, os dados nao.
+    // 3. Toda resposta carrega a selecao com que foi PEDIDA. Se a selecao
+    //    mudou no meio do caminho, a resposta e descartada.
+    //
+    // A selecao vive no sessionStorage: e da ABA. Duas abas podem mostrar
+    // empresas diferentes ao mesmo tempo.
+    // ══════════════════════════════════════
+    const CONTA_LEGADA = 'overwine-ml';
+    const SELECAO_STORAGE_KEY = 'ow_selecao';
+    const TROCA_STORAGE_KEY = 'ow_troca';
+    let CONTAS_DISPONIVEIS = [];   // resposta de /api/orders/contas
+    let SELECAO = selecaoRestaurar();
+
+    function _idsDeConta(v) {
+      if (typeof v !== 'string') return [];
+      const vistos = [];
+      v.split(',').map(x => x.trim()).forEach(id => {
+        if (/^[a-z0-9-]{3,40}$/.test(id) && vistos.indexOf(id) === -1) vistos.push(id);
+      });
+      return vistos;
+    }
+
+    /** Selecao guardada nesta aba. Qualquer coisa invalida vira a conta legada. */
+    function selecaoRestaurar() {
+      let bruto = null;
+      try {
+        const st = (typeof window !== 'undefined') ? window.sessionStorage : null;
+        bruto = st ? st.getItem('ow_selecao') : null;
+      } catch (e) { bruto = null; }
+      const ids = _idsDeConta(bruto);
+      return ids.length ? ids : ['overwine-ml'];
+    }
+
+    function selecaoGravar(ids) {
+      SELECAO = (Array.isArray(ids) && ids.length) ? ids.slice() : [CONTA_LEGADA];
+      try {
+        const st = window.sessionStorage;
+        if (SELECAO.length === 1 && SELECAO[0] === CONTA_LEGADA) st.removeItem(SELECAO_STORAGE_KEY);
+        else st.setItem(SELECAO_STORAGE_KEY, SELECAO.join(','));
+      } catch (e) { /* storage bloqueado: a selecao vale ate fechar a pagina */ }
+    }
+
+    function selecaoChave() { return SELECAO.join(','); }
+    /** A Overwine sozinha: o caminho que nao pode mudar em nada. */
+    function selecaoLegada() { return SELECAO.length === 1 && SELECAO[0] === CONTA_LEGADA; }
+    function selecaoConsolidada() { return SELECAO.length > 1; }
+    function selecaoInclui(id) { return SELECAO.indexOf(id) !== -1; }
+    function contaInfo(id) {
+      for (let i = 0; i < CONTAS_DISPONIVEIS.length; i++) if (CONTAS_DISPONIVEIS[i].id === id) return CONTAS_DISPONIVEIS[i];
+      return null;
+    }
+
+    /** "Além Mar (Overwine)" → "Overwine". E o nome que a operacao usa. */
+    function empresaNome(rotulo) {
+      const m = /\(([^)]+)\)\s*$/.exec(String(rotulo || ''));
+      return m ? m[1] : String(rotulo || '');
+    }
+    function contaNome(id) {
+      const c = contaInfo(id);
+      if (c) return empresaNome(c.empresaRotulo);
+      return id === CONTA_LEGADA ? 'Overwine' : String(id || '');
+    }
+    function contaRotuloCompleto(id) {
+      const c = contaInfo(id);
+      return c ? (empresaNome(c.empresaRotulo) + ' \u00b7 ' + c.canalRotulo) : contaNome(id);
+    }
+    function selecaoRotulo() {
+      return SELECAO.map(contaRotuloCompleto).join(' + ');
+    }
+
+    /**
+     * Custos, tarifas medias, metas e publicidade informada a mao sao da
+     * OVERWINE. Uma selecao so tem "financeiro" quando TODAS as contas dela
+     * tem perfil proprio no backend. Sem isso, margem, liquido e custo
+     * aparecem como indisponiveis — nunca zero, nunca o numero da Overwine.
+     */
+    function selecaoTemFinanceiro() {
+      if (selecaoLegada()) return true;
+      return SELECAO.every(id => { const c = contaInfo(id); return !!(c && c.financeiro === true); });
+    }
+    function contasSemFinanceiro() {
+      return SELECAO.filter(id => { const c = contaInfo(id); return !(c && c.financeiro === true) && !(id === CONTA_LEGADA && !c); });
+    }
+
+    /**
+     * Chave de storage DA SELECAO. A Overwine sozinha usa a chave de sempre;
+     * qualquer outra selecao ganha sufixo, para que sazonalidade, termos
+     * salvos e publicidade manual de uma empresa nunca aparecam na outra.
+     */
+    function chaveLocal(base) { return selecaoLegada() ? base : (base + '::' + selecaoChave()); }
+
+    /**
+     * Contas para as consultas que so existem POR CONTA (proxy do Mercado
+     * Livre). `null` = a Overwine sozinha, sem parametro — a chamada de sempre.
+     */
+    function contasParaProxy() { return selecaoLegada() ? [null] : SELECAO.slice(); }
+
+    /** O vendedor e de uma conta da selecao? So a Overwine tem o id aqui; as demais se reconhecem pelos anuncios. */
+    function ehVendedorDaSelecao(sellerId) {
+      return selecaoInclui(CONTA_LEGADA) && String(sellerId) === String(USER_ID);
+    }
+
+    /** Conta de um pedido ou anuncio MARCADO pelo backend. Sem marca = a unica conta da selecao. */
+    function contaDe(obj) {
+      if (obj && typeof obj.conta === 'string' && obj.conta) return obj.conta;
+      return selecaoConsolidada() ? null : SELECAO[0];
+    }
+
+    /** Texto padrao de dado que nao existe para a selecao. */
+    const INDISPONIVEL = 'indispon\u00edvel';
+    function htmlIndisponivel(motivo) {
+      return '<span class="indisp"' + (motivo ? ' title="' + String(motivo).replace(/"/g, '&quot;') + '"' : '') + '>' + INDISPONIVEL + '</span>';
+    }
+    function motivoSemFinanceiro() {
+      const nomes = contasSemFinanceiro().map(contaNome);
+      return 'Custo dos produtos n\u00e3o cadastrado para ' + (nomes.join(' e ') || 'esta sele\u00e7\u00e3o') +
+        '. Sem ele n\u00e3o h\u00e1 margem; os custos da Overwine n\u00e3o s\u00e3o aplicados a outra empresa.';
+    }
+    function htmlAvisoSelecao(texto) {
+      return '<div class="aviso-selecao">' + texto + '</div>';
+    }
+
+    const RE_ROTA_LEITURA = /^\/api\/(orders\/(status|list|metrics|logistics|margin)|items\/(catalog|inventory))$/;
+
+    function _comParametro(path, nome, valor) {
+      return path + (path.indexOf('?') === -1 ? '?' : '&') + nome + '=' + encodeURIComponent(valor);
+    }
+
+    /**
+     * Acrescenta a conta a requisicao. `conta` explicita vale para UMA chamada
+     * (status por conta, detalhe de um pedido, envio); sem ela vale a selecao.
+     *  - leitura (`/api/orders/*`, `/api/items/*`): `contas=a,b`;
+     *  - proxy do ML (`/api/ml/*`): `conta=a`, uma so. Na visao consolidada
+     *    quem chama precisa dizer qual — nao ha "a conta" da selecao.
+     * A Overwine sozinha devolve o caminho intacto.
+     */
+    function aplicarSelecao(path, conta) {
+      const temConta = conta !== undefined && conta !== null;
+      if (!temConta && selecaoLegada()) return path;
+      const base = path.split('?')[0];
+      if (RE_ROTA_LEITURA.test(base)) {
+        const v = temConta ? conta : selecaoChave();
+        return v === CONTA_LEGADA ? path : _comParametro(path, 'contas', v);
+      }
+      if (base.indexOf('/api/ml/') === 0) {
+        if (!temConta && selecaoConsolidada()) {
+          throw new Error('Vis\u00e3o consolidada: selecione uma empresa para esta consulta.');
+        }
+        const c = temConta ? conta : SELECAO[0];
+        return c === CONTA_LEGADA ? path : _comParametro(path, 'conta', c);
+      }
+      return path;
+    }
+
+    /** Busca as contas no backend e valida a selecao guardada. Backend antigo (sem a rota) = so a legada. */
+    async function carregarContas() {
+      let lista = [];
+      try {
+        const res = await backendFetch('/api/orders/contas');
+        if (res.ok) {
+          const b = await res.json().catch(() => null);
+          if (b && Array.isArray(b.contas)) lista = b.contas;
+        }
+      } catch (e) {
+        if (SESSION_TOKEN === null) throw e;   // sessao expirada: quem chamou trata
+      }
+      CONTAS_DISPONIVEIS = lista;
+      if (!selecaoLegada()) {
+        const todasValidas = SELECAO.every(id => { const c = contaInfo(id); return !!(c && c.selecionavel); });
+        if (!todasValidas) {
+          // A conta guardada deixou de existir para o backend. Voltar a legada
+          // EXIGE recarregar: a selecao antiga ja pode ter sido usada.
+          selecaoGravar([CONTA_LEGADA]);
+          if (typeof window !== 'undefined') { window.location.reload(); return new Promise(() => { }); }
+        }
+      }
+      contaMontarSeletores();
+    }
+
+    function _contasSelecionaveis() { return CONTAS_DISPONIVEIS.filter(c => c.selecionavel); }
+
+    /** Preenche Empresa e Marketplace. Com uma conta so, os seletores nem aparecem. */
+    function contaMontarSeletores() {
+      const wrap = document.getElementById('conta-sel');
+      const selE = document.getElementById('conta-empresa');
+      const selC = document.getElementById('conta-canal');
+      if (!wrap || !selE || !selC) return;
+      const ok = _contasSelecionaveis();
+      if (ok.length < 2) { wrap.classList.remove('visivel'); return; }
+
+      const empresas = [], canais = [];
+      ok.forEach(c => {
+        if (!empresas.some(e => e.id === c.empresa)) empresas.push({ id: c.empresa, nome: empresaNome(c.empresaRotulo) });
+        if (!canais.some(e => e.id === c.canal)) canais.push({ id: c.canal, nome: c.canalRotulo });
+      });
+      // Marketplaces declarados mas ainda sem conta conectada: visiveis e desabilitados.
+      const futuros = [];
+      CONTAS_DISPONIVEIS.forEach(c => {
+        if (!canais.some(e => e.id === c.canal) && !futuros.some(e => e.id === c.canal)) futuros.push({ id: c.canal, nome: c.canalRotulo });
+      });
+
+      const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      selE.innerHTML = empresas.map(e => '<option value="' + esc(e.id) + '">' + esc(e.nome) + '</option>').join('') +
+        (empresas.length > 1 ? '<option value="*">Todas (consolidado)</option>' : '');
+      selC.innerHTML = canais.map(e => '<option value="' + esc(e.id) + '">' + esc(e.nome) + '</option>').join('') +
+        (canais.length > 1 ? '<option value="*">Todos (consolidado)</option>' : '') +
+        futuros.map(e => '<option value="' + esc(e.id) + '" disabled>' + esc(e.nome) + ' (n\u00e3o conectado)</option>').join('');
+
+      const sel = SELECAO.map(contaInfo).filter(Boolean);
+      const umaSo = (campo) => sel.length && sel.every(c => c[campo] === sel[0][campo]) ? sel[0][campo] : '*';
+      selE.value = sel.length > 1 && empresas.length > 1 && umaSo('empresa') === '*' ? '*' : umaSo('empresa');
+      selC.value = sel.length > 1 && canais.length > 1 && umaSo('canal') === '*' ? '*' : umaSo('canal');
+      wrap.dataset.empresa = selE.value;
+      wrap.dataset.canal = selC.value;
+      wrap.classList.add('visivel');
+      wrap.title = selecaoRotulo();
+    }
+
+    function contaOnChange() {
+      const wrap = document.getElementById('conta-sel');
+      const selE = document.getElementById('conta-empresa');
+      const selC = document.getElementById('conta-canal');
+      if (!wrap || !selE || !selC) return;
+      const e = selE.value, c = selC.value;
+      const ids = _contasSelecionaveis()
+        .filter(x => (e === '*' || x.empresa === e) && (c === '*' || x.canal === c))
+        .map(x => x.id);
+      if (!ids.length) {
+        showToast('Nenhuma conta conectada para essa combina\u00e7\u00e3o de empresa e marketplace.', 'error');
+        selE.value = wrap.dataset.empresa; selC.value = wrap.dataset.canal;
+        return;
+      }
+      trocarSelecao(ids);
+    }
+
+    /**
+     * Troca a selecao e RECARREGA. O periodo e a aba aberta atravessam a
+     * recarga por um bilhete de uso unico no sessionStorage; a sessao ja
+     * atravessava. A partir de `selecaoGravar`, toda resposta pendente da
+     * selecao antiga e descartada por backendFetch.
+     */
+    function trocarSelecao(ids) {
+      if (!Array.isArray(ids) || !ids.length) return;
+      if (ids.join(',') === selecaoChave()) return;
+      try {
+        const g = globalDateRange;
+        window.sessionStorage.setItem(TROCA_STORAGE_KEY, JSON.stringify({
+          preset: g.preset, de: g.from, ate: g.to, aba: gdrAbaAtiva(),
+        }));
+      } catch (e) { }
+      clearInterval(refreshTimer);
+      clearInterval(countdownTimer);
+      clearInterval(snapshotPollTimer);
+      clearInterval(_pedidosIndicadorTimer);
+      selecaoGravar(ids);
+      ['conta-empresa', 'conta-canal', 'gdr-preset'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
+      showLoading('Carregando ' + selecaoRotulo() + '...');
+      window.location.reload();
+    }
+
+    /**
+     * Prepara a tela para a selecao, UMA vez, antes da primeira carga.
+     *
+     * A Overwine sozinha nao muda nada (so le a publicidade manual, como
+     * sempre). Para qualquer outra selecao, o que este arquivo tem EMBUTIDO da
+     * Overwine sai de cena: o relatorio de publicidade de marco/2026, a meta
+     * mensal de R$ 80.000, a cobertura alvo de 24 semanas. Ficam vazios, e a
+     * tela diz que faltam — nao herdam.
+     */
+    function aplicarSelecaoNaInterface() {
+      pubManualCarregar();
+      try { _posSavedTerms = JSON.parse(localStorage.getItem(chaveLocal('pos_saved_terms')) || '[]'); } catch (e) { _posSavedTerms = []; }
+      if (!Array.isArray(_posSavedTerms)) _posSavedTerms = [];
+      if (selecaoLegada()) return;
+
+      ADS_DATA = { periodo: null, totalInvestimento: 0, porMLB: {}, diasCobertos: 0 };
+
+      const lerNum = (chave) => { try { const v = parseFloat(localStorage.getItem(chaveLocal(chave)) || ''); return Number.isFinite(v) && v > 0 ? v : null; } catch (e) { return null; } };
+      const meta = document.getElementById('pv-meta');
+      if (meta) { const v = lerNum('pv_meta'); meta.value = v === null ? '' : String(v); meta.placeholder = 'informe a meta'; }
+      const semanas = document.getElementById('gr-semanas');
+      if (semanas) {
+        const v = lerNum('gr_semanas'); semanas.value = v === null ? '' : String(v); semanas.placeholder = 'informe';
+        semanas.addEventListener('change', () => { try { localStorage.setItem(chaveLocal('gr_semanas'), semanas.value || ''); } catch (e) { } });
+      }
+
+      if (!pubManualPermitida()) {
+        ['kpi-pub-input', 'mg-pub-manual'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) { el.value = ''; el.disabled = true; el.placeholder = 'por empresa'; el.title = 'Na vis\u00e3o consolidada a publicidade manual n\u00e3o se aplica: informe em cada empresa.'; }
+        });
+      }
+
+      // O nome no topo diz de quem sao os numeros.
+      const logo = document.querySelector('#main-header .logo');
+      if (logo) logo.innerHTML = selecaoConsolidada()
+        ? 'Consolidado <span>' + SELECAO.map(contaNome).join(' + ') + '</span>'
+        : contaNome(SELECAO[0]) + ' <span>Dashboard</span>';
+      if (typeof document !== 'undefined') document.title = (selecaoConsolidada() ? 'Consolidado' : contaNome(SELECAO[0])) + ' Dashboard';
+    }
+
+    /** Le e APAGA o bilhete da troca. `null` quando a pagina nao veio de uma troca. */
+    function trocaConsumir() {
+      try {
+        const st = window.sessionStorage;
+        const bruto = st.getItem(TROCA_STORAGE_KEY);
+        if (bruto === null) return null;
+        st.removeItem(TROCA_STORAGE_KEY);
+        const t = JSON.parse(bruto);
+        return (t && typeof t === 'object') ? t : null;
+      } catch (e) { return null; }
+    }
+    let _abaAposTroca = null;
 
     // ══════════════════════════════════════
     // SESSAO PERSISTENTE — so o token OPACO da sessao do dashboard
@@ -5777,10 +6200,21 @@
       const headers = Object.assign({}, init.headers || {});
       if (SESSION_TOKEN) headers['Authorization'] = 'Bearer ' + SESSION_TOKEN;
       if (init.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-      const res = await fetch(BACKEND_URL + path, Object.assign({}, init, { headers }));
+      // `conta` e opcao DESTA camada (uma chamada para uma conta), nao do fetch.
+      const opcoes = Object.assign({}, init, { headers });
+      delete opcoes.conta;
+      const destino = aplicarSelecao(path, init.conta);
+      const selecaoNoEnvio = selecaoChave();
+      const res = await fetch(BACKEND_URL + destino, opcoes);
       if (res.status === 401 && path.indexOf('/api/auth/login') === -1) {
         handleSessionExpired();
         throw new Error('Sessao expirada. Faca login novamente.');
+      }
+      // A selecao mudou enquanto a resposta viajava: ela e de outra empresa.
+      if (selecaoNoEnvio !== selecaoChave()) {
+        const e = new Error('Resposta descartada: a selecao de contas mudou.');
+        e.selecaoMudou = true;
+        throw e;
       }
       return res;
     }
@@ -5862,10 +6296,10 @@
       return null;
     }
 
-    async function mlFetch(path) {
+    async function mlFetch(path, conta) {
       const op = mlPathToOp(path);
       if (!op) throw new Error('Rota ML nao mapeada no backend: ' + path);
-      const res = await backendFetch(op);
+      const res = await backendFetch(op, conta === undefined ? {} : { conta });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         const extra = body && body.error ? ` — ${body.error}` : '';
@@ -6801,26 +7235,55 @@
       _ordersServedFrom = "proxy_fallback"; // Fase 5c
       _ordersLoadState = "loaded";         // Fase 5c
     }
+    /** `null` (a Overwine sozinha) vira "sem parametro": a chamada de sempre. */
+    function _contaProxy(c) { return c === null ? undefined : c; }
+
+    /** Conta de um pedido para o proxy. Fora da visao consolidada a selecao ja diz qual e. */
+    function contaDoPedido(o) {
+      return selecaoConsolidada() ? ((o && o.conta) || undefined) : undefined;
+    }
+
+    /** Cancelados de UMA conta (ate 500, como sempre). */
+    async function canceladosDaConta(c) {
+      const conta = _contaProxy(c);
+      const first = await mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=0`, conta);
+      const total = first.paging?.total || 0;
+      const allRes = [...(first.results || [])];
+      const offsets = [];
+      for (let o = 50; o < Math.min(total, 500); o += 50) offsets.push(o);
+      if (offsets.length > 0) {
+        const batches = await Promise.all(
+          offsets.map(o => mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=${o}`, conta)
+            .then(d => d.results || []).catch(() => []))
+        );
+        batches.forEach(b => allRes.push(...b));
+      }
+      const lista = allRes.filter(o => o.status === 'cancelled');
+      // Marca a conta: e ela que abre o detalhe com o vendedor certo.
+      if (c !== null) lista.forEach(o => { o.conta = c; });
+      return lista;
+    }
+
     async function loadCancelledOrders() {
       try {
         allCancelledOrders = [];
-        const first = await mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=0`);
-        const total = first.paging?.total || 0;
-        const allRes = [...(first.results || [])];
-        const offsets = [];
-        for (let o = 50; o < Math.min(total, 500); o += 50) offsets.push(o);
-        if (offsets.length > 0) {
-          const batches = await Promise.all(
-            offsets.map(o => mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=${o}`)
-              .then(d => d.results || []).catch(() => []))
-          );
-          batches.forEach(b => allRes.push(...b));
-        }
-        allCancelledOrders = allRes.filter(o => o.status === 'cancelled');
+        const partes = [];
+        // Uma conta por vez. Falhou uma, falhou a lista: cancelados de so uma
+        // empresa nao se apresentam como os da selecao.
+        for (const c of contasParaProxy()) partes.push(await canceladosDaConta(c));
+        const todos = [].concat(...partes);
+        if (partes.length > 1) todos.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+        allCancelledOrders = todos;
       } catch (e) { console.warn('Cancelamentos nao carregados:', e.message); allCancelledOrders = []; }
     }
 
+    /**
+     * Reputacao e do VENDEDOR. Duas empresas tem duas reputacoes, e nenhuma
+     * conta as funde: na visao consolidada o card declara a indisponibilidade.
+     */
+    let _repIndisponivelConsolidado = false;
     async function loadReputation() {
+      if (selecaoConsolidada()) { reputacaoData = null; _repIndisponivelConsolidado = true; return; }
       try {
         const data = await mlFetch(`/users/${USER_ID}`);
         reputacaoData = data.seller_reputation || null;
@@ -6829,9 +7292,34 @@
       }
     }
 
+    /**
+     * Visitas da selecao: uma consulta por conta, somadas POR DIA. Qualquer
+     * conta que falhe derruba o total — visita de uma empresa so nao e a
+     * visita da selecao.
+     */
+    async function visitasDaSelecao(last) {
+      const porDia = {};
+      let total = 0;
+      for (const c of contasParaProxy()) {
+        const d = await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`, _contaProxy(c));
+        (d.results || []).forEach(r => {
+          if (!r || !r.date) return;
+          const k = String(r.date).slice(0, 10);
+          porDia[k] = (porDia[k] || 0) + (r.total || 0);
+        });
+        total += d.total_visits || 0;
+      }
+      return {
+        results: Object.keys(porDia).sort().map(k => ({ date: k, total: porDia[k] })),
+        total_visits: total,
+      };
+    }
+
     async function loadVisitas() {
       try {
-        const data = await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=30&unit=day`);
+        const data = selecaoLegada()
+          ? await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=30&unit=day`)
+          : await visitasDaSelecao(30);
         visitasPorDia = (data.results || [])
           .map(d => ({ dia: d.date.slice(0, 10), total: d.total }))
           .sort((a, b) => a.dia.localeCompare(b.dia));
@@ -6873,7 +7361,28 @@
      * `adCostByItem` fica vazio de proposito: a consulta por campanha nao quebra
      * o custo por anuncio, e o agregado antigo que prometia isso nao existe mais.
      */
+    /**
+     * Soma o investimento de cada conta da selecao. `adCostDisponivel` vira
+     * false quando ALGUMA conta nao respondeu: ai o total nao e o da selecao
+     * e a tela mostra indisponivel, nao a parte que veio.
+     */
+    let adCostDisponivel = true;
     async function loadAdCost(fromYmd, toYmd) {
+      if (selecaoLegada()) { adCostDisponivel = true; return loadAdCostDaConta(fromYmd, toYmd, null); }
+      let soma = 0, ok = true;
+      for (const c of contasParaProxy()) {
+        const r = await loadAdCostDaConta(fromYmd, toYmd, c);
+        if (r === null) ok = false; else soma += r;
+      }
+      adCostDisponivel = ok;
+      adCostTotal = ok ? soma : 0;
+      adCostByItem = {};
+    }
+
+    /** Investimento de UMA conta. Devolve o valor, ou `null` se a consulta falhou. */
+    async function loadAdCostDaConta(fromYmd, toYmd, c) {
+      const _conta = _contaProxy(c);
+      let _falhou = false;
       adCostTotal = 0;
       adCostByItem = {};
 
@@ -6885,12 +7394,12 @@
       }
 
       try {
-        const anunciantes = await mlFetch('/advertising/advertisers?product_id=PADS');
+        const anunciantes = await mlFetch('/advertising/advertisers?product_id=PADS', _conta);
         const lista = (anunciantes && anunciantes.advertisers) || [];
         const conta = lista.find(a => a.site_id === 'MLB') || lista[0];
         if (!conta || conta.advertiser_id == null) {
           console.warn('[ads] Conta sem Product Ads habilitado — investimento fica em 0. Use o campo manual.');
-          return;
+          return 0;
         }
 
         let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null;
@@ -6899,7 +7408,7 @@
         for (let pagina = 0; pagina < 4; pagina++) {
           const resp = await mlFetch(
             `/marketplace/advertising/MLB/advertisers/${conta.advertiser_id}/product_ads/campaigns/search` +
-            `?date_from=${dateFrom}&date_to=${dateTo}&limit=50&offset=${offset}`);
+            `?date_from=${dateFrom}&date_to=${dateTo}&limit=50&offset=${offset}`, _conta);
 
           const results = (resp && resp.results) || [];
           if (pagina === 0) {
@@ -6933,11 +7442,13 @@
         }
       } catch (e) {
         console.warn('[ads] Erro:', e.message);
+        _falhou = true;
       }
 
       if (adCostTotal === 0) {
         console.warn('[ads] Sem investimento apurado no periodo. Se houve, informe no campo manual.');
       }
+      return _falhou ? null : adCostTotal;
     }
 
     /**
@@ -7017,7 +7528,9 @@
       let totalVisitasAPI = 0;
       try {
         const last = Math.min(150, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
-        const vData = await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`);
+        const vData = selecaoLegada()
+          ? await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`)
+          : await visitasDaSelecao(last);
         const porDia = (vData.results || []).filter(d => d && d.date);
         totalVisitasAPI = porDia.length
           ? porDia.filter(d => { const y = String(d.date).slice(0, 10); return y >= fromYmd && y <= toYmd; })
@@ -7120,7 +7633,10 @@
     async function aplicarPeriodoGlobal() {
       const g = gdrGet();
       try {
-        if (!pedidosEmMemoria()) await loadMetrics(null, g.from, g.toEfetivo);
+        // Fora da Overwine sozinha o agregado e pedido mesmo com o historico em
+        // memoria: tarifa e frete reais dependem do mapa de envios, que so o
+        // backend tem.
+        if (!pedidosEmMemoria() || !selecaoLegada()) await loadMetrics(null, g.from, g.toEfetivo);
         _periodoLoadState = "loading";
         await loadPeriodoData(g.from, g.toEfetivo);
         _periodoLoadState = "loaded";
@@ -7809,6 +8325,11 @@
 
     function renderCardReputacao() {
       const el = document.getElementById('card-reputacao');
+      if (_repIndisponivelConsolidado) {
+        el.innerHTML = '<div class="empty-state"><p>Reputa\u00e7\u00e3o ' + INDISPONIVEL + ' na vis\u00e3o consolidada</p>' +
+          '<span>A reputa\u00e7\u00e3o \u00e9 de cada vendedor. Selecione uma empresa para v\u00ea-la.</span></div>';
+        return;
+      }
       if (!reputacaoData) {
         // Onda A: distingue "ainda carregando" de "nao ha dados".
         el.innerHTML = (_repLoadState === 'loading')
@@ -8048,6 +8569,29 @@
         ['kpi-liq-pct', 'kpi-tarifa-ml-pct', 'kpi-tarifa-env-pct'].forEach(id => {
           const el = document.getElementById(id); if (el) el.textContent = MOD_PLACEHOLDER;
         });
+      } else if (_liq.apurado !== undefined) {
+        // Selecao sem tarifas medias proprias. Cada card mostra o TOTAL real
+        // quando a cobertura e completa; senao, indisponivel, com o subtotal
+        // conhecido ao lado — rotulado como subtotal, nunca no lugar do total.
+        document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
+        const _ap = _liq.apurado;
+        const _k = _ap && _ap.conhecido;
+        const _met = rotuloMetodo(_ap && _ap.metodo);
+        const _base = bruto || totalFaturamento;
+        const cardApurado = (idVal, idSub, total, sub, oQue) => {
+          const v = document.getElementById(idVal), t = document.getElementById(idSub);
+          if (total !== null) {
+            if (v) v.textContent = fmt(Math.abs(total));
+            if (t) t.textContent = pct(total, _base) + ' do bruto \u00b7 ' + _met;
+          } else {
+            if (v) v.innerHTML = htmlIndisponivel(_ap ? textoCobertura(sub, oQue) : 'aguardando o apurado do per\u00edodo');
+            if (t) t.textContent = _ap ? textoCobertura(sub, oQue) : 'aguardando o apurado do per\u00edodo';
+          }
+          if (v) v.setAttribute('data-cobertura', total !== null ? 'completa' : (sub && sub.receitaCoberta > 0 ? 'parcial' : 'nenhuma'));
+        };
+        cardApurado('kpi-liq', 'kpi-liq-pct', liquido, _k && _k.liquido, 'l\u00edquido');
+        cardApurado('kpi-tarifa-ml', 'kpi-tarifa-ml-pct', tarifaML, _k && _k.tarifaML, 'tarifa');
+        cardApurado('kpi-tarifa-env', 'kpi-tarifa-env-pct', tarifaEnv, _k && _k.tarifaEnv, 'frete');
       } else {
         document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
         document.getElementById('kpi-liq').textContent = fmt(liquido);
@@ -8063,7 +8607,9 @@
       const _adsMatch = _adsResult.match;
       const pubVal = kpiPubManual > 0 ? kpiPubManual :
         (_adsResult.totalInvestimento > 0 ? _adsResult.totalInvestimento : adCostTotal);
-      const pubFonteLabel = kpiPubManual > 0 ? 'manual' : _adsResult.label;
+      // Fora da Overwine nao ha relatorio embutido: o que vem da API e rotulado como tal.
+      const pubFonteLabel = kpiPubManual > 0 ? 'manual'
+        : (_adsResult.totalInvestimento > 0 || selecaoLegada()) ? _adsResult.label : 'via API';
       const pubEl = document.getElementById('kpi-pub-input');
       if (pubEl && kpiPubManual === 0 && _adsResult.totalInvestimento > 0 && pubEl.value === '') {
         pubEl.value = _adsResult.totalInvestimento.toFixed(2);
@@ -8079,7 +8625,9 @@
             : '';
         } else {
           // Onda A: nao afirmar "importe relatorio" enquanto loadAdCost roda.
-          _pubStatusEl.textContent = (_adsLoadState === 'loading') ? 'carregando...' : 'importe relatório na aba ML Ads';
+          _pubStatusEl.textContent = (_adsLoadState === 'loading') ? 'carregando...'
+            : (!selecaoLegada() && !adCostDisponivel) ? 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)')
+              : 'importe relatório na aba ML Ads';
           _pubStatusEl.style.color = 'var(--muted)';
         }
       }
@@ -8094,6 +8642,36 @@
       document.getElementById('kpi-unidades').textContent = _perOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
       document.getElementById('kpi-ticket').textContent = _perOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
+    }
+
+    /**
+     * Tarifa, frete e liquido APURADOS pelo backend para a selecao (valores
+     * reais dos pedidos e envios; na Overwine dentro do consolidado, a
+     * estimativa dela). `semFinanceiro` e true quando o total nao existe —
+     * ai `apurado.conhecido` traz o subtotal e quanto da receita ele cobre.
+     */
+    function liquidoApurado(bruto) {
+      const f = (_metrics && _metrics.periodo && _metrics.periodo.faturamento) || {};
+      const fin = (_metrics && _metrics.financeiro) || null;
+      const n = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
+      const tarifaML = n(f.tarifaML), tarifaEnv = n(f.tarifaEnv), liquido = n(f.liquido);
+      return {
+        bruto, tarifaML, tarifaEnv, liquido,
+        semFinanceiro: liquido === null || tarifaML === null || tarifaEnv === null,
+        apurado: fin ? { metodo: fin.conhecido ? fin.conhecido.metodo : null, conhecido: fin.conhecido || null, porConta: fin.porConta || null } : null,
+      };
+    }
+
+    /** "R$ 1.234 conhecidos · cobre 40% da receita" — ou o motivo de nao haver nada. */
+    function textoCobertura(sub, oQue) {
+      const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      if (!sub || !(sub.receitaCoberta > 0)) return oQue + ' n\u00e3o informado nos pedidos carregados';
+      return 'subtotal conhecido: ' + fmt(sub.valor) + ' \u00b7 cobre ' + (sub.fracaoReceita * 100).toFixed(0) + '% da receita';
+    }
+    function rotuloMetodo(metodo) {
+      if (metodo === 'apurado_pedidos_envios') return 'valor real dos pedidos e envios';
+      if (metodo === 'misto') return 'Overwine estimada + demais apuradas';
+      return 'estimado';
     }
 
     // Calcula receita bruta e líquida do período usando allOrders.
@@ -8117,9 +8695,29 @@
         const fYmd = ymdBRT(inicio), tYmd = ymdBRT(fim);
         if (mp && mp.fromYmd === fYmd && mp.toYmd === tYmd && mp.faturamento) {
           const f = mp.faturamento;
+          if (!selecaoTemFinanceiro()) return liquidoApurado(f.bruto);
           return { bruto: f.bruto, tarifaML: f.tarifaML, tarifaEnv: f.tarifaEnv, liquido: f.liquido };
         }
         return { bruto: 0, tarifaML: 0, tarifaEnv: 0, liquido: 0, indisponivel: true };
+      }
+
+      // Selecao sem tarifas proprias: o bruto sai dos pedidos em memoria; tarifa
+      // e frete, do que o backend APUROU nos pedidos e envios. As medias abaixo
+      // (14,8% e 14,4%) sairam da planilha da Overwine e nao entram aqui.
+      if (!selecaoTemFinanceiro()) {
+        let b = 0;
+        allOrders.forEach(o => {
+          if (o.status !== 'paid') return;
+          if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
+          b += o.paid_amount || o.total_amount || 0;
+        });
+        const r = liquidoApurado(b);
+        // O apurado so vale para o periodo EXATO em que foi calculado.
+        const mp2 = _metrics && _metrics.periodo;
+        if (!(mp2 && mp2.fromYmd === ymdBRT(inicio) && mp2.toYmd === ymdBRT(fim))) {
+          return { bruto: b, tarifaML: null, tarifaEnv: null, liquido: null, semFinanceiro: true, apurado: null };
+        }
+        return r;
       }
 
       let bruto = 0, tarifaML = 0, tarifaEnv = 0;
@@ -8196,8 +8794,8 @@
 
       document.getElementById('semvisitas-table').innerHTML = semVisitas.length
         ? semVisitas.map(item => `
-        <tr onclick="openDetail('${item.id}')">
-          <td><span class="item-title">${escHtml(item.title)}</span><div class="item-sku">${item.id}</div></td>
+        <tr onclick="openDetail('${item.id}')"${attrConta(item)}>
+          <td><span class="item-title">${escHtml(item.title)}</span>${tagConta(item)}<div class="item-sku">${item.id}</div></td>
           <td><span class="price">R$\u00a0${fmtPrice(item.price || 0)}</span></td>
           <td>${item.available_quantity ?? '-'}</td>
           <td><span class="badge active">Ativo</span></td>
@@ -8254,8 +8852,8 @@
       const tbody = document.getElementById('items-table');
       tbody.innerHTML = page.length
         ? page.map(item => `
-        <tr onclick="openDetail('${item.id}')">
-          <td><span class="item-title">${escHtml(item.title)}</span><div class="item-sku">${item.id}</div></td>
+        <tr onclick="openDetail('${item.id}')"${attrConta(item)}>
+          <td><span class="item-title">${escHtml(item.title)}</span>${tagConta(item)}<div class="item-sku">${item.id}</div></td>
           <td><span class="price">R$\u00a0${fmtPrice(item.price)}</span></td>
           <td>
             <div class="stock-bar"><div class="stock-fill" style="width:${Math.min(100, (item.available_quantity || 0) / 20 * 100)}%"></div></div>
@@ -8775,9 +9373,9 @@
       const qty = oi?.quantity || 1;
       const val = o.paid_amount || o.total_amount || 0;
       return `
-          <tr onclick="openOrderDetail('${o.id}')">
+          <tr onclick="openOrderDetail('${o.id}')"${attrConta(o)}>
             <td style="color:var(--muted);font-size:12px">${num}</td>
-            <td><span class="item-title">${escHtml(titulo)}</span><div class="item-sku">#${o.id}</div></td>
+            <td><span class="item-title">${escHtml(titulo)}</span>${tagConta(o)}<div class="item-sku">#${o.id}</div></td>
             <td><span class="price">R$\u00a0${fmtPrice(val)}</span></td>
             <td style="text-align:center">${qty}</td>
             <td>${ordStatusBadge(o.status)}</td>
@@ -8899,21 +9497,21 @@
 
       if (!odOrderCache[oid]) {
         jobs.push(
-          mlFetch(`/orders/${oid}`)
-            .then(d => { odOrderCache[oid] = d; })
+          mlFetch(`/orders/${oid}`, contaDoPedido(order))
+            .then(d => { if (order.conta) d.conta = order.conta; odOrderCache[oid] = d; })
             .catch(e => { console.warn('[order-detail] /orders falhou:', e.message); odOrderCache[oid] = order; })
         );
       }
       if (sid && !odShipCache[sid]) {
         jobs.push(
-          mlFetch(`/shipments/${sid}`)
+          mlFetch(`/shipments/${sid}`, contaDoPedido(order))
             .then(d => { odShipCache[sid] = d; })
             .catch(e => { console.warn('[order-detail] /shipments falhou:', e.message); odShipCache[sid] = null; })
         );
       }
       if (odDiscountCache[oid] === undefined) {
         jobs.push(
-          mlFetch(`/orders/${oid}/discounts`)
+          mlFetch(`/orders/${oid}/discounts`, contaDoPedido(order))
             .then(d => { odDiscountCache[oid] = d; })
             .catch(() => { odDiscountCache[oid] = null; }) // endpoint pode nao existir p/ o pedido — normal
         );
@@ -9013,6 +9611,7 @@
     <div class="od-section">
       <div class="od-section-title">Resumo da venda</div>
       ${odRow('ID do pedido', `<a href="https://www.mercadolivre.com.br/vendas/${oid}/detalhe" target="_blank" class="detail-link" onclick="event.stopPropagation()">#${oid}</a>`)}
+      ${selecaoLegada() ? '' : odRow('Empresa', escHtml(contaRotuloCompleto(contaDe(order) || '')))}
       ${order.pack_id ? odRow('Carrinho (pack)', `#${order.pack_id}`) : ''}
       ${odRow('Data da compra', fmtDataHora(order.date_created))}
       ${odRow('Status', odOrderStatusBadge(order.status))}
@@ -9395,9 +9994,9 @@
       // Agrupar por SKU (seller_custom_field) — chave definitiva por produto
       const grupos = {};
       allItems.forEach(item => {
-        const sku = item.seller_custom_field
-          || (item.attributes || []).find(a => a.id === 'SELLER_SKU')?.value_name
-          || 'sem-sku-' + item.id;
+        // itemSKU: a mesma chave de todas as abas. Fora do consolidado e o SKU
+        // puro; no consolidado leva a empresa, para nao fundir dois estoques.
+        const sku = itemSKU(item);
         if (!grupos[sku]) grupos[sku] = { sku, items: [], label: item.title };
         grupos[sku].items.push(item);
         // Label: preferir o título mais curto entre os anúncios do grupo
@@ -9511,9 +10110,11 @@
       shipmentsLoading = true;
 
       // Pegar IDs de shipment que ainda não estão em cache
+      // A conta do envio e a do pedido dele: e ela que escolhe o vendedor no proxy.
+      const contaDoEnvio = {};
       const pending = allOrders
         .filter(o => o.shipping?.id && !shipmentsCache[o.shipping.id])
-        .map(o => o.shipping.id);
+        .map(o => { contaDoEnvio[o.shipping.id] = contaDoPedido(o); return o.shipping.id; });
 
       if (!pending.length) { shipmentsLoading = false; return; }
 
@@ -9523,7 +10124,7 @@
         const batch = pending.slice(i, i + BATCH);
         await Promise.all(batch.map(async sid => {
           try {
-            const data = await mlFetch(`/shipments/${sid}`);
+            const data = await mlFetch(`/shipments/${sid}`, contaDoEnvio[sid]);
             shipmentsCache[sid] = {
               status: data.status || '',
               substatus: data.substatus || '',
@@ -9688,7 +10289,7 @@
         const motivo = CANCEL_CODE_LABELS[code] || o.cancel_detail?.description || code;
         const color = CANCEL_COLORS[group] || '#9A8E94';
         const num = (cancPage - 1) * CANC_PAGE_SIZE + idx + 1;
-        return `<tr><td style="color:var(--muted);font-size:12px">${num}</td><td><span class="item-title">${escHtml(titulo)}</span><div class="item-sku">#${o.id}</div></td><td><span class="badge ${group}">${CANCEL_GROUP_LABELS[group] || group}</span></td><td style="font-size:12px;color:${color}">${motivo}</td><td style="color:var(--red);font-family:var(--font-display);font-size:14px">R$\u00a0${val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td><td style="font-size:12px;color:var(--muted)">${fmtData(o.date_created)}</td></tr>`;
+        return `<tr${attrConta(o)}><td style="color:var(--muted);font-size:12px">${num}</td><td><span class="item-title">${escHtml(titulo)}</span>${tagConta(o)}<div class="item-sku">#${o.id}</div></td><td><span class="badge ${group}">${CANCEL_GROUP_LABELS[group] || group}</span></td><td style="font-size:12px;color:${color}">${motivo}</td><td style="color:var(--red);font-family:var(--font-display);font-size:14px">R$\u00a0${val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td><td style="font-size:12px;color:var(--muted)">${fmtData(o.date_created)}</td></tr>`;
       }).join('') : `<tr><td colspan="6"><div class="empty-state"><p>Nenhum cancelamento neste filtro</p></div></td></tr>`;
       const pag = document.getElementById('canc-pagination');
       if (totalPages <= 1) { pag.innerHTML = ''; return; }
@@ -9706,7 +10307,7 @@
     let _posQuery = '';
     let _posOffset = 0;
     const POS_LIMIT = 50;
-    let _posSavedTerms = JSON.parse(localStorage.getItem('pos_saved_terms') || '[]');
+    let _posSavedTerms = [];   // lido em aplicarSelecaoNaInterface(), com a chave da selecao
     let _posActiveTerm = null;
 
     // Listing type labels
@@ -9886,7 +10487,7 @@
       if (!_posSavedTerms.includes(q)) {
         _posSavedTerms.unshift(q);
         if (_posSavedTerms.length > 8) _posSavedTerms.pop();
-        localStorage.setItem('pos_saved_terms', JSON.stringify(_posSavedTerms));
+        localStorage.setItem(chaveLocal('pos_saved_terms'), JSON.stringify(_posSavedTerms));
       }
       posRenderSavedTerms();
       showToast('Termo salvo', 'success');
@@ -9895,7 +10496,7 @@
     function posRemoverTermo(termo, e) {
       e.stopPropagation();
       _posSavedTerms = _posSavedTerms.filter(t => t !== termo);
-      localStorage.setItem('pos_saved_terms', JSON.stringify(_posSavedTerms));
+      localStorage.setItem(chaveLocal('pos_saved_terms'), JSON.stringify(_posSavedTerms));
       posRenderSavedTerms();
     }
 
@@ -9998,7 +10599,7 @@
 
       results.forEach((r, i) => {
         const globalPos = _posOffset + i + 1;
-        const isMine = myItemIds.has(r.id) || String(r.seller?.id) === String(USER_ID);
+        const isMine = myItemIds.has(r.id) || ehVendedorDaSelecao(r.seller?.id);
         if (isMine) {
           minePositions.push(globalPos);
           if (r.price) minePrices.push(r.price);
@@ -10045,7 +10646,7 @@
 
       document.getElementById('pos-rows').innerHTML = results.map((r, i) => {
         const globalPos = _posOffset + i + 1;
-        const isMine = myItemIds.has(r.id) || String(r.seller?.id) === String(USER_ID);
+        const isMine = myItemIds.has(r.id) || ehVendedorDaSelecao(r.seller?.id);
         const rankCls = isMine ? 'mine-rank' : (globalPos <= 3 ? 'top3' : '');
         const rowCls = isMine ? 'mine' : '';
         const listingLabel = POS_LISTING_LABELS[r.listing_type_id] || r.listing_type_id || '-';
@@ -10163,6 +10764,18 @@
     }
 
     async function radarRefresh() {
+      // Os grupos do Radar (produtos e concorrentes) foram montados para o
+      // catalogo da Overwine. Em outra selecao nao ha grupo nenhum: a aba diz
+      // isso, e nao compara os precos da Overwine como se fossem de outro.
+      if (!selecaoLegada()) {
+        const b0 = document.getElementById('radar-refresh-btn');
+        if (b0) b0.disabled = true;
+        const k0 = document.getElementById('radar-kpis');
+        if (k0) k0.style.display = 'none';
+        document.getElementById('radar-content').innerHTML = htmlAvisoSelecao('<b>Radar ' + INDISPONIVEL + ' para ' +
+          escHtml(SELECAO.map(contaNome).join(' + ')) + '.</b> Os grupos de produtos e concorrentes est\u00e3o configurados apenas para a Overwine.');
+        return;
+      }
       const btn = document.getElementById('radar-refresh-btn');
       if (btn) { btn.disabled = true; btn.textContent = 'Atualizando...'; }
       document.getElementById('radar-content').innerHTML = `
@@ -10196,7 +10809,7 @@
               // Pegar o menor preco disponivel dos nao-nossos (buy box de concorrente)
               // Se há um itemId fixo para este PID, usar ele; senão pegar o buy box
               const _override = _itemIdOverride[pid];
-              const concItems = items.filter(x => String(x.seller_id) !== String(USER_ID));
+              const concItems = items.filter(x => !ehVendedorDaSelecao(x.seller_id));
               const buyBox = _override
                 ? (items.find(x => x.item_id === _override) || concItems[0] || items[0])
                 : (concItems.length > 0 ? concItems[0] : items[0]);
@@ -10236,7 +10849,7 @@
             const data = _radarData[pid];
             if (!data) return [];
             return (data._allItems || [])
-              .filter(x => mySet.has(x.item_id) || String(x.seller_id) === String(USER_ID))
+              .filter(x => mySet.has(x.item_id) || ehVendedorDaSelecao(x.seller_id))
               .map(x => {
                 const local = allItems.find(i => i.id === x.item_id) || {};
                 return {
@@ -10456,6 +11069,7 @@
 
     // ── API helpers especificos — via backend BFF (allowlist de promocoes) ──
     async function rlPost(path, data) {
+      if (selecaoConsolidada()) throw new Error('Selecione uma empresa: a vis\u00e3o consolidada n\u00e3o altera promo\u00e7\u00f5es.');
       const m = path.match(/^\/seller-promotions\/items\/(MLB\d+)/);
       if (!m) throw new Error('Rota de promocao nao mapeada: ' + path);
       const res = await backendFetch('/api/ml/promotion-item-set', {
@@ -10468,6 +11082,7 @@
     }
 
     async function rlDelete(path) {
+      if (selecaoConsolidada()) throw new Error('Selecione uma empresa: a vis\u00e3o consolidada n\u00e3o altera promo\u00e7\u00f5es.');
       const m = path.match(/^\/seller-promotions\/items\/(MLB\d+)/);
       if (!m) throw new Error('Rota de promocao nao mapeada: ' + path);
       const qIdx = path.indexOf('?');
@@ -10519,7 +11134,15 @@
     }
 
     // ── Carregar promos ──
+    /** Promocoes sao criadas e canceladas EM NOME de um vendedor: nunca na visao consolidada. */
+    function rlBloqueadoPelaSelecao() {
+      if (!selecaoConsolidada()) return false;
+      showToast('Ofertas rel\u00e2mpago: selecione uma empresa. Na vis\u00e3o consolidada n\u00e3o h\u00e1 um vendedor \u00fanico.', 'error');
+      return true;
+    }
+
     async function rlLoadPromotions() {
+      if (rlBloqueadoPelaSelecao()) return;
       const btn = document.getElementById('rl-btn-load');
       btn.disabled = true;
       btn.textContent = 'Buscando...';
@@ -11322,6 +11945,10 @@
       const metaMensal = parseFloat(document.getElementById('pv-meta').value) || 0;
       const c = pvCalc(metaMensal);
       const meta = c.metaPeriodo;   // meta do PERIODO (mensal x meses no intervalo)
+      // Fora da Overwine nao existe meta padrao: sem valor informado, tudo o
+      // que compara com a meta fica indisponivel (ver o fim desta funcao).
+      const semMeta = !selecaoLegada() && !(metaMensal > 0);
+      if (!selecaoLegada()) { try { localStorage.setItem(chaveLocal('pv_meta'), metaMensal > 0 ? String(metaMensal) : ''); } catch (e) { } }
 
       // ── Cards ──
       document.getElementById('pv-c-meta').textContent = pvFmtBRL(meta) +
@@ -11362,6 +11989,21 @@
       renderPvChart(c, meta);
       // ── Tabela ──
       renderPvTabela(c, meta);
+
+      if (semMeta) {
+        const ind = htmlIndisponivel('meta mensal n\u00e3o informada para ' + SELECAO.map(contaNome).join(' + '));
+        document.getElementById('pv-c-meta').innerHTML = ind;
+        document.getElementById('pv-c-pct').textContent = 'informe a meta mensal';
+        document.getElementById('pv-c-barra').style.width = '0%';
+        document.getElementById('pv-c-ideal').textContent = 'meta ideal: ' + INDISPONIVEL;
+        document.getElementById('pv-c-necessaria').textContent = '-';
+        const difEl2 = document.getElementById('pv-c-difproj');
+        difEl2.textContent = 'sem meta para comparar'; difEl2.style.color = 'var(--muted)';
+        document.getElementById('pv-c-status').innerHTML = htmlIndisponivel('meta mensal n\u00e3o informada');
+        document.getElementById('pv-alerta').innerHTML = htmlAvisoSelecao('<b>Meta ' + INDISPONIVEL + '.</b> Informe a meta mensal de ' +
+          escHtml(SELECAO.map(contaNome).join(' + ')) + ' no campo acima. A meta da Overwine n\u00e3o \u00e9 aplicada a outra empresa. ' +
+          'Vendido, m\u00e9dia di\u00e1ria e proje\u00e7\u00e3o abaixo s\u00e3o reais.');
+      }
     }
 
     function renderPvAlerta(c, meta) {
@@ -11662,8 +12304,18 @@
     }
 
     // Monta a lista completa de SKUs com todas as metricas
+    /**
+     * Cobertura alvo em semanas. Na Overwine, o padrao de 24 de sempre. Em
+     * qualquer outra selecao nao ha padrao: `null` ate alguem informar.
+     */
+    function grSemanasAlvo() {
+      const v = parseInt(document.getElementById('gr-semanas').value);
+      if (selecaoLegada()) return Math.max(1, v || 24);
+      return (Number.isFinite(v) && v >= 1) ? v : null;
+    }
+
     function grBuildData() {
-      const semanasPadrao = Math.max(1, parseInt(document.getElementById('gr-semanas').value) || 24);
+      const semanasPadrao = grSemanasAlvo() || 1;
       // Ciclo = periodo GLOBAL. `fim` pode estar no futuro (mes atual); as
       // semanas decorridas param em hoje, como ja faziam.
       const _g = gdrGet();
@@ -11714,6 +12366,8 @@
 
     // Carrega config publica (qualquer dispositivo le, sem token)
     async function grLoadConfig() {
+      // sku-config.json e a configuracao de semanas por SKU da Overwine.
+      if (!selecaoLegada()) { _grWeeks = {}; _grPesoManual = {}; _grConfigLoaded = true; return; }
       try {
         const res = await fetch(GR_GH.rawUrl + '?t=' + Date.now()); // cache-bust
         if (res.ok) {
@@ -11805,7 +12459,7 @@
 
     function grLoadSeasonalityCache() {
       try {
-        const raw = localStorage.getItem(GR_SEASONAL_KEY);
+        const raw = localStorage.getItem(chaveLocal(GR_SEASONAL_KEY));
         if (!raw) return;
         const c = JSON.parse(raw);
         if (c.ts && (Date.now() - c.ts) < GR_SEASONAL_TTL) {
@@ -11843,10 +12497,13 @@
           const fim = new Date(ano, mes + 1, 0, 23, 59, 59);
           const iniStr = ymdBRT(ini) + 'T00:00:00.000-03:00';
           const fimStr = ymdBRT(fim) + 'T23:59:59.000-03:00';
-          let offset = 0, mesRev = 0, mesQtd = 0, mesPedidos = 0;
+          let mesRev = 0, mesQtd = 0, mesPedidos = 0;
+          // Uma varredura por conta da selecao; o mes soma as duas.
+          for (const _c of contasParaProxy()) {
+          let offset = 0;
           while (totalCalls < MAX_CALLS) {
             const url = `/orders/search?seller=${USER_ID}&order.date_created.from=${encodeURIComponent(iniStr)}&order.date_created.to=${encodeURIComponent(fimStr)}&sort=date_desc&limit=50&offset=${offset}`;
-            const data = await mlFetch(url);
+            const data = await mlFetch(url, _contaProxy(_c));
             totalCalls++;
             const results = data.results || [];
             results.forEach(o => {
@@ -11859,6 +12516,7 @@
             offset += 50;
             setLoadingText && setLoadingText(`${mes + 1}/${ano} (${totalCalls} req)`);
             if (results.length === 0 || offset >= total) break;
+          }
           }
           if (ano === anoAtual) revAtual[mes] += mesRev;
           if (ano === anoAnterior) revAnterior[mes] += mesRev;
@@ -11883,7 +12541,7 @@
         _grSeasonalAnos = { atual: anoAtual, anterior: anoAnterior };
         const totMeses = mesesComDados.size;
         _grSeasonalInfo = `${totMeses} meses com dados`;
-        localStorage.setItem(GR_SEASONAL_KEY, JSON.stringify({
+        localStorage.setItem(chaveLocal(GR_SEASONAL_KEY), JSON.stringify({
           weights: _grSeasonal, revAtual, revAnterior, anos: _grSeasonalAnos,
           ts: Date.now(), info: _grSeasonalInfo
         }));
@@ -11998,6 +12656,25 @@
     }
 
     function renderGiro() {
+      const _avisoGiro = document.getElementById('gr-aviso-selecao');
+      if (grSemanasAlvo() === null) {
+        // Sem cobertura alvo nao ha meta de giro. Mostrar estoque e vendido, e
+        // dizer o que falta — nao preencher com as 24 semanas da Overwine.
+        if (_avisoGiro) {
+          _avisoGiro.style.display = 'block';
+          _avisoGiro.innerHTML = htmlAvisoSelecao('<b>Metas de giro ' + INDISPONIVEL + '.</b> Informe a cobertura alvo em semanas para ' +
+            escHtml(SELECAO.map(contaNome).join(' + ')) + '. A configura\u00e7\u00e3o da Overwine n\u00e3o \u00e9 aplicada a outra empresa.');
+        }
+        ['gr-c-meta'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = htmlIndisponivel('cobertura alvo n\u00e3o informada'); });
+        const est = grEstoquePorSku();
+        const tot = Object.values(est).reduce((s2, x) => s2 + (x.estoque || 0), 0);
+        const ce = document.getElementById('gr-c-estoque'); if (ce) ce.textContent = Math.round(tot).toLocaleString('pt-BR');
+        ['gr-c-vendido', 'gr-c-giro'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '-'; });
+        _grLinhas = [];
+        renderGiroTabela();
+        return;
+      }
+      if (_avisoGiro) _avisoGiro.style.display = 'none';
       const { linhas, semanasPadrao, semanasDecorridas } = grBuildData();
 
       // Cards
@@ -13609,6 +14286,78 @@
     /** Descarta resposta de requisição antiga que chegou fora de ordem. */
     let _mgToken = 0;
 
+    /**
+     * Margem de uma selecao SEM perfil financeiro (Degustar, consolidado).
+     * Mostra o que e verdade — receita, unidades, pedidos por produto — e
+     * declara indisponivel tudo o que dependeria de custo ou tarifa.
+     */
+    function renderMargemSemFinanceiro(dados, tabela, vazio) {
+      const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      const motivo = motivoSemFinanceiro();
+      const ind = htmlIndisponivel(motivo);
+      const T = dados.totais || {};
+
+      document.getElementById('mg-bruto').textContent = fmt(T.receitaProdutos || 0);
+      // Custo de PRODUTO nao existe em pedido nem em envio: precisa de cadastro.
+      ['mg-custo', 'mg-margem'].forEach(id => {
+        const el = document.getElementById(id); if (el) { el.innerHTML = ind; el.style.color = ''; }
+      });
+      const mp = document.getElementById('mg-margem-pct');
+      if (mp) mp.textContent = 'custo dos produtos n\u00e3o cadastrado';
+      // Receita liquida (bruto - tarifa - frete) e REAL quando a cobertura fecha.
+      const k = dados.financeiro && dados.financeiro.conhecido;
+      const liqEl = document.getElementById('mg-liq'), liqPct = document.getElementById('mg-liq-pct');
+      if (typeof T.receitaLiquida === 'number') {
+        if (liqEl) { liqEl.textContent = fmt(T.receitaLiquida); liqEl.style.color = ''; }
+        if (liqPct) liqPct.textContent = rotuloMetodo(k && k.metodo);
+      } else {
+        if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido')); liqEl.style.color = ''; }
+        if (liqPct) liqPct.textContent = textoCobertura(k && k.liquido, 'l\u00edquido');
+      }
+      const totPub = mgPubManual > 0 ? mgPubManual : ((adCostDisponivel && adCostTotal > 0) ? adCostTotal : 0);
+      const pubEl = document.getElementById('mg-pub');
+      if (pubEl) pubEl.innerHTML = totPub > 0 ? fmt(totPub) : ind;
+      const pubPct = document.getElementById('mg-pub-pct');
+      if (pubPct) pubPct.textContent = totPub > 0
+        ? (mgPubManual > 0 ? 'inserido manualmente' : 'via API')
+        : (selecaoConsolidada() ? 'informe por empresa' : 'nao informado');
+
+      const varias = selecaoConsolidada();
+      const catalogo = {};
+      allItems.forEach(item => {
+        const skuRaw = (item.seller_custom_field || item.seller_sku || '').trim();
+        const key = (item.conta || '') + '|' + (skuRaw || item.id);
+        if (!catalogo[key]) catalogo[key] = { estoque: 0, vendidoTotal: 0 };
+        catalogo[key].estoque += item.available_quantity || 0;
+        catalogo[key].vendidoTotal += item.sold_quantity || 0;
+      });
+
+      const linhas = (dados.porSku || []);
+      document.getElementById('mg-meta').textContent =
+        `${gdrGet().label} \u00b7 ${linhas.length} com vendas \u00b7 custo e margem ${INDISPONIVEL} (produtos sem custo cadastrado)`;
+
+      const semCustoCard = document.getElementById('mg-sem-custo-card');
+      if (semCustoCard) semCustoCard.style.display = 'none';
+
+      if (!linhas.length) { tabela.innerHTML = vazio('Nenhuma venda no periodo'); return; }
+      const aviso = `<tr><td colspan="11" style="padding:0">${htmlAvisoSelecao('<b>Margem ' + INDISPONIVEL + '.</b> ' + escHtml(motivo))}</td></tr>`;
+      tabela.innerHTML = aviso + linhas.map(l => {
+        const c = catalogo[(l.conta || '') + '|' + l.sku] || catalogo[(varias ? (l.conta || '') : (SELECAO[0] || '')) + '|' + l.sku] || {};
+        const tag = varias && l.conta ? `<span class="tag-conta">${escHtml(contaNome(l.conta))}</span>` : '';
+        return `<tr>
+      <td>
+        <div>
+          <span class="item-title">${escHtml(l.label || l.sku)}</span>${tag}
+          <div class="item-sku">${l.semSku ? escHtml((l.itemIds || [])[0] || '') : 'SKU: ' + escHtml(l.sku)} \u00b7 est: ${c.estoque || 0} \u00b7 vendido: ${c.vendidoTotal || 0}</div>
+        </div>
+      </td>
+      <td style="text-align:center;color:var(--cream)">${l.unidades}</td>
+      <td><span class="price">${fmt(l.receitaProdutos)}</span></td>
+      <td>${ind}</td><td>${ind}</td><td>${ind}</td><td>${ind}</td><td>${ind}</td><td>${ind}</td><td>${ind}</td><td>${ind}</td>
+    </tr>`;
+      }).join('');
+    }
+
     async function renderMargem() {
       const tabela = document.getElementById('mg-table');
       const token = ++_mgToken;
@@ -13632,6 +14381,13 @@
             ? 'O snapshot de pedidos ainda nao esta pronto.'
             : (dados && (dados.code || dados.error)) || `HTTP ${resp.status}`;
           tabela.innerHTML = vazio('Margem indisponivel', motivo);
+          return;
+        }
+
+        // Selecao sem custos e tarifas proprios: receita e unidades sao reais,
+        // o resto nao existe. Nada de calcular com a tabela da Overwine.
+        if (dados.financeiro && dados.financeiro.disponivel === false) {
+          renderMargemSemFinanceiro(dados, tabela, vazio);
           return;
         }
 
@@ -14102,9 +14858,34 @@
      * sincronizacao. Os freios locais abaixo apenas evitam gastar requisicao
      * que o backend ja recusaria.
      */
+    /**
+     * Quais contas pedir para sincronizar. A sincronizacao e uma ACAO, sempre de
+     * UMA conta: cada uma tem o lock, o cooldown e o vendedor dela no backend.
+     * Na visao consolidada o status traz `porConta`, e so as contas ATRASADAS
+     * sao pedidas — a que esta em dia nao gasta chamada no Mercado Livre.
+     * A Overwine sozinha nao passa por aqui: segue com o corpo `{}` de sempre.
+     */
+    function contasParaRefresh(body) {
+      if (body && body.porConta && typeof body.porConta === 'object') {
+        return Object.keys(body.porConta).filter(id => {
+          const i = _idadeDoUltimoCheck(body.porConta[id]);
+          return i !== null && i > SNAPSHOT_IDADE_MAX_S;
+        });
+      }
+      const i = _idadeDoUltimoCheck(body);
+      if (i === null || i <= SNAPSHOT_IDADE_MAX_S) return [];
+      return [SELECAO[0]];
+    }
+
     async function pedirRefreshSeVelho(body) {
       if (_refreshEmCurso) return;
       if (Date.now() - _ultimoRefreshMs < REFRESH_COOLDOWN_LOCAL_MS) return;
+      // Fora da Overwine sozinha, o pedido e POR CONTA (so as atrasadas).
+      if ((body && body.porConta) || (typeof selecaoLegada === 'function' && !selecaoLegada())) {
+        const alvos = contasParaRefresh(body);
+        if (alvos.length) return pedirRefreshDasContas(alvos);
+        return;
+      }
       const idade = _idadeDoUltimoCheck(body);
       if (idade === null || idade <= SNAPSHOT_IDADE_MAX_S) return;
 
@@ -14143,6 +14924,43 @@
         console.info('[refresh] versao publicada', publicouVersao, '- recarregando');
         _pollVersaoVista = publicouVersao;
         await loadAll();
+      }
+    }
+
+    /**
+     * Refresh de contas NOMEADAS (Degustar sozinha, ou as atrasadas do
+     * consolidado), uma por vez. A tela nao recarrega daqui: a versao que o
+     * backend devolve e a DA CONTA, e a que a tela acompanha e a da selecao.
+     * Quem percebe a mudanca e o poll, na proxima passada (ate 15 s).
+     */
+    async function pedirRefreshDasContas(contas) {
+      _refreshEmCurso = true;
+      _ultimoRefreshMs = Date.now();
+      atualizarIndicadorPedidos();
+      let checou = 0;
+      try {
+        for (const conta of contas) {
+          try {
+            const res = await backendFetch('/api/orders/refresh', { method: 'POST', body: JSON.stringify({ conta }) });
+            if (!res.ok) continue;
+            const r = await res.json().catch(() => null);
+            if (!r) continue;
+            console.info('[refresh] conta=' + conta + ' acao=' + r.acao +
+              (r.modo ? ' modo=' + r.modo : '') + (r.publicou !== undefined ? ' publicou=' + r.publicou : ''));
+            if (r.acao === 'sincronizado' || r.acao === 'fresco') checou++;
+          } catch (e) {
+            if (e && e.selecaoMudou) return;   // a pagina esta trocando de conta
+          }
+        }
+        // So quando TODAS as pedidas checaram a idade volta a zero: a selecao
+        // so esta em dia quando a conta mais atrasada esta.
+        if (checou === contas.length) {
+          _pedidosIdadeCheckS = 0;
+          _pedidosCheckRecebidoEmMs = Date.now();
+        }
+      } finally {
+        _refreshEmCurso = false;
+        atualizarIndicadorPedidos();
       }
     }
 
@@ -14253,11 +15071,16 @@
       showLoading('Conectando...');
       document.getElementById('setup-screen').style.display = 'none';
       try {
+        // Antes de qualquer dado: quais contas existem e se a selecao desta
+        // aba ainda vale. Tudo o que vem depois ja sai com a conta certa.
+        await carregarContas();
+        aplicarSelecaoNaInterface();
         await loadAll();
         // Onda A: loadAll ja revelou a interface apos a 1a renderizacao util.
         // Esta chamada e idempotente e cobre o caminho em que loadAll retornou
         // pelo catch interno (falha nao-critica com allItems ja carregado).
         revelarInterface();
+        if (_abaAposTroca) { const aba = _abaAposTroca; _abaAposTroca = null; switchTab(aba); }
         scheduleAutoRefresh();
         // Explicito, e nao como efeito colateral do timer de 30 minutos: o
         // poll do snapshot e o unico mecanismo que enxerga uma venda em
@@ -15280,6 +16103,9 @@
         };
         // Continuidade OPCIONAL: a chave so entra quando ha consulta anterior.
         if (owcPreviousQuery) payload.previousQuery = owcPreviousQuery;
+        // Segunda trava: fora da Overwine a selecao vai no corpo, e o backend
+        // recusa (400 assistente_mono_conta) mesmo que a trava da tela falhe.
+        if (typeof selecaoLegada === 'function' && !selecaoLegada()) payload.contas = selecaoChave();
         backendFetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -15341,6 +16167,16 @@
         if (!texto) return;
         if (owcEnviando) return; // trava duplo-envio
         owChatAppendMsg('user', texto, null);
+
+        // O assistente le so a base da Overwine. Em outra selecao ele NAO
+        // responde: um numero da Overwine dito como se fosse da Degustar (ou
+        // do consolidado) seria pior que nenhuma resposta.
+        if (typeof selecaoLegada === 'function' && !selecaoLegada()) {
+          owChatAppendMsg('bot', 'O assistente ainda responde apenas pela Overwine no Mercado Livre. ' +
+            'A sele\u00e7\u00e3o atual \u00e9 ' + selecaoRotulo() + ': para perguntar, selecione Overwine em Empresa. ' +
+            'Os n\u00fameros desta tela continuam sendo os da sele\u00e7\u00e3o.', 'aviso');
+          return;
+        }
 
         // Comando local de inspeção — exibe o contexto sanitizado (SEM rede).
         if (/^\/(contexto|debug)\b/i.test(texto)) {

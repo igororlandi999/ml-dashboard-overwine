@@ -113,6 +113,8 @@ function montarAmbiente({
     extrairFuncao('scheduleSnapshotPoll'),
     extrairFuncao('scheduleIndicadorPedidos'),
     extrairFuncao('pollSnapshot'),
+    extrairFuncao('contasParaRefresh'),
+    extrairFuncao('pedirRefreshDasContas'),
     extrairFuncao('pedirRefreshSeVelho'),
     extrairFuncao('_idadeDoUltimoCheck'),
     extrairFuncao('registrarStatusPedidos'),
