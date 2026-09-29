@@ -8585,10 +8585,12 @@
           const v = document.getElementById(idVal), t = document.getElementById(idSub);
           const nv = _semProva && dependeDaTarifa;
           if (total !== null) {
-            const rs = dependeDaTarifa ? textoRessalvas(_k, true) : '';
-            if (v) { v.textContent = fmt(Math.abs(total)); v.title = dependeDaTarifa ? textoRessalvas(_k, false) : ''; }
+            // Reembolso nao conciliado atinge as TRES parcelas: a tarifa e a
+            // original, o frete e so o de ida, e o liquido herda as duas.
+            const rs = textoRessalvas(_k, true);
+            if (v) { v.textContent = fmt(Math.abs(total)); v.title = textoRessalvas(_k, false); }
             if (t) t.textContent = pct(total, _base) + ' do bruto \u00b7 ' + _met + (rs ? ' \u00b7 ' + rs : '');
-            if (v) v.setAttribute('data-validacao', rs ? 'com-ressalva' : 'sem-ressalva');
+            if (v) v.setAttribute('data-validacao', rs ? 'provisorio' : 'sem-ressalva');
           } else {
             if (v) v.innerHTML = htmlIndisponivel(_ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo');
             if (t) t.textContent = _ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo';
@@ -8603,7 +8605,7 @@
         if (_avisoFin) {
           const txt = textoRessalvas(_k, false);
           _avisoFin.style.display = txt ? 'block' : 'none';
-          _avisoFin.innerHTML = txt ? htmlAvisoSelecao('<b>Financeiro com ressalva.</b> ' + escHtml(txt)) : '';
+          _avisoFin.innerHTML = txt ? htmlAvisoSelecao('<b>L\u00edquido provis\u00f3rio.</b> ' + escHtml(txt)) : '';
         }
       } else {
         document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
@@ -8701,12 +8703,19 @@
       if (!rs.length) return '';
       const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const n = rs.reduce((s, r) => s + r.pedidos, 0);
-      const valor = rs.reduce((s, r) => s + Math.abs(r.tarifaCalculada), 0);
-      const pedidos = n + ' pedido' + (n === 1 ? '' : 's') + ' com reembolso parcial';
-      if (curto) return 'com ressalva: ' + pedidos;
+      const pedidos = n + ' pedido' + (n === 1 ? '' : 's') + ' com reembolso';
+      if (curto) return 'provis\u00f3rio: ' + pedidos + ' n\u00e3o conciliado' + (n === 1 ? '' : 's');
+      const tarifa = rs.reduce((s, r) => s + Math.abs(r.tarifaCalculada || 0), 0);
+      const frete = rs.reduce((s, r) => s + Math.abs(r.freteCalculado || 0), 0);
       const onde = rs.map(r => contaNome(r.conta)).filter((v, i, a) => a.indexOf(v) === i).join(' e ');
-      return 'Tarifa n\u00e3o conferida em ' + pedidos + ' (' + onde + '): foi calculada pela quantidade original, ' + fmt(valor) +
-        ', e o Mercado Livre pode ter devolvido parte. O total pode estar at\u00e9 ' + fmt(valor) + ' acima do real na tarifa.';
+      const NOMES = { frete_de_devolucao: 'frete de devolu\u00e7\u00e3o', ajustes_de_cancelamento: 'ajustes de cancelamento cobrados pelo Mercado Livre' };
+      const falta = [];
+      rs.forEach(r => (r.naoInclui || []).forEach(k => { const t = NOMES[k] || k; if (falta.indexOf(t) === -1) falta.push(t); }));
+      // O que ESTA no total e o que NAO esta. Sem estimar a diferenca: ela nao e conhecida.
+      return pedidos + ' (' + onde + ') n\u00e3o ' + (n === 1 ? 'est\u00e1 conciliado' : 'est\u00e3o conciliados') + '. ' +
+        'Inclu\u00eddo no total: tarifa original ' + fmt(tarifa) + ' e frete de ida ' + fmt(frete) + '. ' +
+        'N\u00e3o inclu\u00eddo: ' + (falta.join(' e ') || 'ajustes do reembolso') + '. ' +
+        'O l\u00edquido real ' + (n === 1 ? 'desse pedido' : 'desses pedidos') + ' pode ser menor, inclusive negativo; a diferen\u00e7a n\u00e3o \u00e9 conhecida.';
     }
 
     // Calcula receita bruta e líquida do período usando allOrders.

@@ -433,7 +433,7 @@ describe('tarifa e frete reais, com cobertura', () => {
   });
 });
 
-describe('ressalva de validacao — reembolso parcial', () => {
+describe('reembolso nao conciliado — liquido provisorio', () => {
   function montar() {
     const fonte = [
       'function contaNome(id) { return id === "degustar-ml" ? "Degustar" : "Overwine"; }',
@@ -442,7 +442,11 @@ describe('ressalva de validacao — reembolso parcial', () => {
     ].join('\n');
     return new Function(fonte)();
   }
-  const comRessalva = { completo: true, ressalvas: [{ tipo: 'reembolso_parcial', conta: 'degustar-ml', pedidos: 1, receita: 99, tarifaCalculada: -27.72 }] };
+  // O caso real conferido na tela do Mercado Livre: 2 x R$ 99, metade reembolsada.
+  const caso = { completo: true, liquidoProvisorio: true, ressalvas: [{
+    tipo: 'reembolso_parcial', conta: 'degustar-ml', pedidos: 1, receita: 99,
+    tarifaCalculada: -27.72, freteCalculado: -51.9, naoInclui: ['frete_de_devolucao', 'ajustes_de_cancelamento'],
+  }] };
 
   test('sem ressalva o texto e vazio: nada aparece na tela', () => {
     const m = montar();
@@ -450,26 +454,39 @@ describe('ressalva de validacao — reembolso parcial', () => {
     assert.equal(m.textoRessalvas({ completo: true }, false), '');
     assert.equal(m.textoRessalvas(null, false), '');
   });
-  test('curto, para o card: diz que ha ressalva e quantos pedidos', () => {
-    assert.equal(montar().textoRessalvas(comRessalva, true), 'com ressalva: 1 pedido com reembolso parcial');
+  test('curto, para o card: provisorio, e quantos pedidos', () => {
+    assert.equal(montar().textoRessalvas(caso, true), 'provisório: 1 pedido com reembolso não conciliado');
   });
-  test('por extenso: empresa, valor em duvida e o sentido do erro possivel', () => {
-    const t = montar().textoRessalvas(comRessalva, false);
+  test('por extenso: o que ESTA incluido e o que NAO esta', () => {
+    const t = montar().textoRessalvas(caso, false);
     assert.match(t, /Degustar/);
-    assert.match(t, /27,72/);
-    assert.match(t, /n.o conferida/);
-    assert.match(t, /acima do real/);
+    assert.match(t, /tarifa original R\$\s27,72/);
+    assert.match(t, /frete de ida R\$\s51,90/);
+    assert.match(t, /Não incluído: frete de devolução e ajustes de cancelamento/);
   });
-  test('os cards que dependem da tarifa levam a ressalva; o de frete, nao', () => {
+  test('NAO diz que a tarifa pode ter sido devolvida, e NAO da teto para a diferenca', () => {
+    const t = montar().textoRessalvas(caso, false);
+    assert.ok(!/devolvido parte|pode ter devolvido/.test(t));
+    assert.ok(!/at[eé] R\$/.test(t), 'nenhum "ate R$ X"');
+    assert.match(t, /a diferença não é conhecida/);
+    assert.match(t, /inclusive negativo/);
+  });
+  test('nenhum valor da tela conferida virou regra: os numeros 41,60 / 69,29 / 91,51 nao existem no codigo', () => {
+    for (const n of ['41,60', '41.6', '69,29', '69.29', '91,51', '91.51', '168,29', '168.29']) {
+      assert.ok(!html.includes(n), 'valor fixo ' + n + ' encontrado no dashboard');
+    }
+  });
+  test('as TRES parcelas levam a marca: tarifa, frete e liquido', () => {
     const corpo = extrairFuncao('renderKPIsPeriodo');
-    assert.match(corpo, /const rs = dependeDaTarifa \? textoRessalvas\(_k, true\) : '';/);
-    assert.match(corpo, /data-validacao/);
-    assert.match(corpo, /kpi-ressalva-financeiro/);
+    assert.match(corpo, /const rs = textoRessalvas\(_k, true\);/);
+    assert.ok(!/dependeDaTarifa \? textoRessalvas/.test(corpo), 'o frete nao fica de fora');
+    assert.match(corpo, /'data-validacao', rs \? 'provisorio' : 'sem-ressalva'/);
+    assert.ok(corpo.includes('quido provis'), 'o aviso se chama Liquido provisorio');
   });
   test('a area da ressalva existe na pagina e nasce escondida', () => {
     assert.match(html, /<div id="kpi-ressalva-financeiro" style="display:none"><\/div>/);
   });
-  test('a margem tambem leva a ressalva na receita liquida', () => {
+  test('a margem tambem leva a marca na receita liquida', () => {
     assert.match(extrairFuncao('renderMargemSemFinanceiro'), /textoRessalvas\(k, true\)/);
   });
 });
