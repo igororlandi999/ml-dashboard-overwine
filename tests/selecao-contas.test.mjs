@@ -408,6 +408,17 @@ describe('tarifa e frete reais, com cobertura', () => {
     assert.ok(!/R\$/.test(t));
     assert.match(t, /tarifa n.o informado/);
   });
+  test('tarifa nao validada: o texto diz isso, e nenhum valor aparece — mesmo havendo subtotal', () => {
+    const t = montarApurado(parcial).textoCobertura({ valor: -144, receitaCoberta: 1200, fracaoReceita: 0.63 }, 'tarifa', true);
+    assert.match(t, /ainda n.o validada contra o Mercado Livre/);
+    assert.ok(!/R\$|144|63%/.test(t));
+  });
+  test('liquido e tarifa dependem da validacao; o frete, nao', () => {
+    const corpo = extrairFuncao('renderKPIsPeriodo');
+    assert.match(corpo, /cardApurado\('kpi-liq', 'kpi-liq-pct', liquido, [^\n]*, true\);/);
+    assert.match(corpo, /cardApurado\('kpi-tarifa-ml', 'kpi-tarifa-ml-pct', tarifaML, [^\n]*, true\);/);
+    assert.match(corpo, /cardApurado\('kpi-tarifa-env', 'kpi-tarifa-env-pct', tarifaEnv, [^\n]*, false\);/);
+  });
   test('o metodo e dito na tela: real, ou misto com a Overwine estimada', () => {
     const m = montarApurado(completo);
     assert.match(m.rotuloMetodo('apurado_pedidos_envios'), /valor real/);

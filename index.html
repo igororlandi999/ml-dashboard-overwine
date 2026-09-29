@@ -8578,20 +8578,22 @@
         const _k = _ap && _ap.conhecido;
         const _met = rotuloMetodo(_ap && _ap.metodo);
         const _base = bruto || totalFaturamento;
-        const cardApurado = (idVal, idSub, total, sub, oQue) => {
+        const _semProva = !!(_k && _k.tarifaValidada === false);
+        const cardApurado = (idVal, idSub, total, sub, oQue, dependeDaTarifa) => {
           const v = document.getElementById(idVal), t = document.getElementById(idSub);
+          const nv = _semProva && dependeDaTarifa;
           if (total !== null) {
             if (v) v.textContent = fmt(Math.abs(total));
             if (t) t.textContent = pct(total, _base) + ' do bruto \u00b7 ' + _met;
           } else {
-            if (v) v.innerHTML = htmlIndisponivel(_ap ? textoCobertura(sub, oQue) : 'aguardando o apurado do per\u00edodo');
-            if (t) t.textContent = _ap ? textoCobertura(sub, oQue) : 'aguardando o apurado do per\u00edodo';
+            if (v) v.innerHTML = htmlIndisponivel(_ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo');
+            if (t) t.textContent = _ap ? textoCobertura(sub, oQue, nv) : 'aguardando o apurado do per\u00edodo';
           }
-          if (v) v.setAttribute('data-cobertura', total !== null ? 'completa' : (sub && sub.receitaCoberta > 0 ? 'parcial' : 'nenhuma'));
+          if (v) v.setAttribute('data-cobertura', total !== null ? 'completa' : nv ? 'nao-validada' : (sub && sub.receitaCoberta > 0 ? 'parcial' : 'nenhuma'));
         };
-        cardApurado('kpi-liq', 'kpi-liq-pct', liquido, _k && _k.liquido, 'l\u00edquido');
-        cardApurado('kpi-tarifa-ml', 'kpi-tarifa-ml-pct', tarifaML, _k && _k.tarifaML, 'tarifa');
-        cardApurado('kpi-tarifa-env', 'kpi-tarifa-env-pct', tarifaEnv, _k && _k.tarifaEnv, 'frete');
+        cardApurado('kpi-liq', 'kpi-liq-pct', liquido, _k && _k.liquido, 'l\u00edquido', true);
+        cardApurado('kpi-tarifa-ml', 'kpi-tarifa-ml-pct', tarifaML, _k && _k.tarifaML, 'tarifa', true);
+        cardApurado('kpi-tarifa-env', 'kpi-tarifa-env-pct', tarifaEnv, _k && _k.tarifaEnv, 'frete', false);
       } else {
         document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
         document.getElementById('kpi-liq').textContent = fmt(liquido);
@@ -8663,7 +8665,10 @@
     }
 
     /** "R$ 1.234 conhecidos · cobre 40% da receita" — ou o motivo de nao haver nada. */
-    function textoCobertura(sub, oQue) {
+    function textoCobertura(sub, oQue, naoValidada) {
+      // Tarifa calculada mas ainda nao conferida contra o Mercado Livre: nao e
+      // falta de dado, e falta de prova — e o numero nao aparece.
+      if (naoValidada) return 'tarifa do pedido ainda n\u00e3o validada contra o Mercado Livre';
       const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       if (!sub || !(sub.receitaCoberta > 0)) return oQue + ' n\u00e3o informado nos pedidos carregados';
       return 'subtotal conhecido: ' + fmt(sub.valor) + ' \u00b7 cobre ' + (sub.fracaoReceita * 100).toFixed(0) + '% da receita';
@@ -14311,8 +14316,9 @@
         if (liqEl) { liqEl.textContent = fmt(T.receitaLiquida); liqEl.style.color = ''; }
         if (liqPct) liqPct.textContent = rotuloMetodo(k && k.metodo);
       } else {
-        if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido')); liqEl.style.color = ''; }
-        if (liqPct) liqPct.textContent = textoCobertura(k && k.liquido, 'l\u00edquido');
+        const nv = !!(k && k.tarifaValidada === false);
+        if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido', nv)); liqEl.style.color = ''; }
+        if (liqPct) liqPct.textContent = textoCobertura(k && k.liquido, 'l\u00edquido', nv);
       }
       const totPub = mgPubManual > 0 ? mgPubManual : ((adCostDisponivel && adCostTotal > 0) ? adCostTotal : 0);
       const pubEl = document.getElementById('mg-pub');
