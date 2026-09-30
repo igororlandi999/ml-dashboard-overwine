@@ -5639,6 +5639,41 @@
     // proprio e Full ja deduplicados por saldo fisico.
     //   - proprio: soma por anuncio (cada anuncio nao-Full tem saldo independente)
     //   - full:    deduplicado por fullStockKey (inventory_id), separando classico/premium
+    /**
+     * Estoque de um grupo de anuncios na aba Consolidado.
+     *
+     * Overwine: a regra de sempre (consolidarEstoqueGrupo), sem mudanca.
+     *
+     * Demais empresas: saldo so e deduplicado com VINCULO EXPLICITO do Mercado
+     * Livre — mesmo `inventory_id` (Full) ou mesmo `user_product_id` (produto do
+     * vendedor, estoque unico). Mesmo produto de catalogo e mesma quantidade NAO
+     * provam compartilhamento. Sem vinculo para todos os anuncios do grupo, nao
+     * ha total fisico: devolve `valor: null` e o saldo de cada anuncio.
+     */
+    function estoqueDoGrupo(items) {
+      const daOverwine = items.every(i => !i.conta || i.conta === CONTA_LEGADA);
+      if (daOverwine || items.length <= 1) {
+        const c = consolidarEstoqueGrupo(items);
+        return { valor: c.proprio + c.full, confirmado: true, porAnuncio: null };
+      }
+      const chave = i => i.inventory_id || i.user_product_id || null;
+      if (items.every(i => chave(i))) {
+        const porVinculo = new Map();
+        items.forEach(i => { const k = chave(i); porVinculo.set(k, Math.max(porVinculo.get(k) || 0, i.available_quantity || 0)); });
+        let total = 0; porVinculo.forEach(q => { total += q; });
+        return { valor: total, confirmado: true, porAnuncio: null };
+      }
+      return { valor: null, confirmado: false, porAnuncio: items.map(i => i.available_quantity || 0) };
+    }
+
+    /** Texto do estoque quando o compartilhamento nao foi confirmado: saldo por anuncio, sem somar nem deduplicar. */
+    function textoEstoqueNaoConfirmado(porAnuncio) {
+      const vals = porAnuncio.slice().sort((a, b) => a - b);
+      const fmt = v => v.toLocaleString('pt-BR');
+      if (vals[0] === vals[vals.length - 1]) return fmt(vals[0]) + ' em cada an\u00fancio (' + vals.length + ')';
+      return fmt(vals[0]) + ' a ' + fmt(vals[vals.length - 1]) + ' por an\u00fancio';
+    }
+
     function consolidarEstoqueGrupo(items) {
       // Dedup de saldo fisico:
       //  - FULL: anuncios com o mesmo inventory_id compartilham o saldo do Full.
@@ -10117,8 +10152,8 @@
       return Object.values(grupos).map(g => {
         // Estoque total real = proprio (somado por anuncio) + Full (dedup por inventory_id).
         // Evita duplicar quando 2 anuncios do mesmo produto compartilham saldo Full.
-        const _cons = consolidarEstoqueGrupo(g.items);
-        const estTotal = _cons.proprio + _cons.full;
+        const _est = estoqueDoGrupo(g.items);
+        const estTotal = _est.confirmado ? _est.valor : 0;
         const vendasTotal = g.items.reduce((s, i) => s + (i.sold_quantity || 0), 0);
         const allOrd = g.items.flatMap(i => ordersByItem[i.id] || []);
         const pedidosCnt = allOrd.filter(o => o.status !== 'cancelled').length;
@@ -10145,6 +10180,7 @@
           anuncios: g.items.length,
           estTotal, vendasTotal, pedidosCnt, precoMedio,
           precoMedioVendido, qtdVendida,
+          estConfirmado: _est.confirmado, estPorAnuncio: _est.porAnuncio,
         };
       }).sort((a, b) => b.pedidosCnt - a.pedidosCnt || b.vendasTotal - a.vendasTotal);
     }
@@ -10162,9 +10198,11 @@
       // Chave de produto de catalogo conta como produto; anuncio sem nenhuma
       // identificacao NAO conta como SKU unico.
       const semId = data.filter(d => !identidadeReal(d.sku)).length;
-      document.getElementById('cons-meta').textContent = semId
+      const semVinculo = data.filter(d => d.estConfirmado === false).length;
+      document.getElementById('cons-meta').textContent = (semId
         ? `${total - semId} produtos identificados \u00b7 ${semId} an\u00fancio${semId !== 1 ? 's' : ''} sem SKU nem cat\u00e1logo`
-        : `${total} SKUs unicos`;
+        : `${total} SKUs unicos`) +
+        (semVinculo ? ` \u00b7 estoque compartilhado n\u00e3o confirmado em ${semVinculo} produto${semVinculo !== 1 ? 's' : ''}: saldo por an\u00fancio` : '');
 
       const tbody = document.getElementById('cons-table');
       tbody.innerHTML = slice.length
@@ -10178,7 +10216,9 @@
             </div>
           </td>
           <td style="text-align:center">${d.anuncios}</td>
-          <td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal > 0 ? d.estTotal.toLocaleString('pt-BR') : '-'}</td>
+          ${d.estConfirmado === false
+              ? `<td style="text-align:center;font-size:12px;color:var(--cream)" data-estoque="nao-confirmado" title="O Mercado Livre n\u00e3o informa v\u00ednculo de estoque entre estes an\u00fancios: os saldos n\u00e3o foram somados nem deduplicados.">${textoEstoqueNaoConfirmado(d.estPorAnuncio)}<div style="font-size:10px;color:var(--muted)">compartilhamento n\u00e3o confirmado</div></td>`
+              : `<td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal > 0 ? d.estTotal.toLocaleString('pt-BR') : '-'}</td>`}
           <td style="text-align:center">${d.vendasTotal.toLocaleString('pt-BR')}</td>
           <td style="text-align:center;color:${d.pedidosCnt > 0 ? 'var(--gold)' : 'var(--muted)'};font-weight:${d.pedidosCnt > 0 ? '600' : '400'}">${d.pedidosCnt || '-'}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(d.precoMedio)}</span></td>

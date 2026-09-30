@@ -563,3 +563,58 @@ describe('identidade de produto — SKU, produto de catalogo, e nada de titulo',
     for (const f of ['itemSKU', '_skuPorCatalogo', '_skuDoVendedor']) assert.ok(!/title|normalize/i.test(extrairFuncao(f)), f);
   });
 });
+
+describe('estoque no Consolidado por produto — so deduplica com vinculo explicito', () => {
+  function montarEst() {
+    const fonte = [
+      "const CONTA_LEGADA = 'overwine-ml';",
+      "function itemSKU(i) { return i.seller_custom_field || ('sem-sku-' + i.id); }",
+      extrairFuncao('isFullItem'),
+      extrairFuncao('fullStockKey'),
+      extrairFuncao('consolidarEstoqueGrupo'),
+      extrairFuncao('estoqueDoGrupo'),
+      extrairFuncao('textoEstoqueNaoConfirmado'),
+      'return { estoqueDoGrupo, textoEstoqueNaoConfirmado };',
+    ].join('\n');
+    return new Function(fonte)();
+  }
+  const an = (id, q, extra = {}) => Object.assign({ id, conta: 'degustar-ml', available_quantity: q, shipping: { logistic_type: 'xd_drop_off' }, tags: [] }, extra);
+
+  test('Degustar, mesmo catalogo e mesma quantidade, SEM vinculo: nenhum total, saldo por anuncio', () => {
+    const r = montarEst().estoqueDoGrupo([an('A', 137), an('B', 137), an('C', 137)]);
+    assert.deepEqual(r, { valor: null, confirmado: false, porAnuncio: [137, 137, 137] });
+  });
+  test('Degustar, mesmo user_product_id: estoque unico, contado uma vez', () => {
+    const r = montarEst().estoqueDoGrupo([an('A', 137, { user_product_id: 'MLBU1' }), an('B', 137, { user_product_id: 'MLBU1' })]);
+    assert.deepEqual(r, { valor: 137, confirmado: true, porAnuncio: null });
+  });
+  test('Degustar, user_product_id diferentes: soma os estoques distintos', () => {
+    const r = montarEst().estoqueDoGrupo([an('A', 10, { user_product_id: 'MLBU1' }), an('B', 5, { user_product_id: 'MLBU2' })]);
+    assert.equal(r.valor, 15);
+  });
+  test('Degustar, vinculo em PARTE dos anuncios: nao afirma total', () => {
+    const r = montarEst().estoqueDoGrupo([an('A', 10, { user_product_id: 'MLBU1' }), an('B', 10)]);
+    assert.equal(r.confirmado, false);
+    assert.equal(r.valor, null);
+  });
+  test('um anuncio so: o saldo dele, sem ressalva', () => {
+    assert.deepEqual(montarEst().estoqueDoGrupo([an('A', 42)]), { valor: 42, confirmado: true, porAnuncio: null });
+  });
+  test('Overwine: a regra de sempre, sem ressalva, com ou sem vinculo', () => {
+    const m = montarEst();
+    const l = [an('A', 137, { conta: undefined }), an('B', 137, { conta: undefined })];
+    assert.deepEqual(m.estoqueDoGrupo(l), { valor: 137, confirmado: true, porAnuncio: null });
+    const l2 = [an('A', 137, { conta: 'overwine-ml' }), an('B', 137, { conta: 'overwine-ml' })];
+    assert.equal(m.estoqueDoGrupo(l2).confirmado, true);
+  });
+  test('texto: nao soma, nao deduplica', () => {
+    const m = montarEst();
+    assert.equal(m.textoEstoqueNaoConfirmado([137, 137, 137]), '137 em cada anúncio (3)');
+    assert.equal(m.textoEstoqueNaoConfirmado([12, 757]), '12 a 757 por anúncio');
+  });
+  test('as outras abas nao mudaram: consolidarEstoqueGrupo continua igual e so a aba Consolidado usa a regra nova', () => {
+    const n = (html.match(/estoqueDoGrupo\(/g) || []).length;
+    assert.equal(n, 2, 'definicao + uso em buildConsolidado');
+    assert.match(extrairFuncao('buildConsolidado'), /estoqueDoGrupo\(g\.items\)/);
+  });
+});
