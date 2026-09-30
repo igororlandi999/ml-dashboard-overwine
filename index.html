@@ -5566,13 +5566,54 @@
     // que agrupa por SKU (Estoque, Consolidado por produto, Giro, Analise de
     // Preco) somaria o saldo de uma empresa no da outra. Fora do consolidado
     // a chave e o SKU puro, como sempre.
+    //
+    // IDENTIDADE, em ordem de confianca (tudo DENTRO de uma empresa):
+    //  1. SKU do vendedor (seller_custom_field / atributo SELLER_SKU);
+    //  2. anuncio sem SKU ligado a um produto de CATALOGO do Mercado Livre que,
+    //     nesta mesma empresa, tem UM SKU conhecido: vale esse SKU;
+    //  3. anuncio sem SKU ligado a produto de catalogo: a chave e o produto de
+    //     catalogo (`cat:MLB...`). O catalogo separa volume, safra, kit e
+    //     variacao; anuncios de titulos diferentes do mesmo produto apontam
+    //     para o mesmo id. Nunca e tratado como SKU: so agrupa;
+    //  4. nada disso: o anuncio fica sozinho (`sem-sku-<id>`, chave interna).
+    // Titulo NUNCA e usado para agrupar.
+    function _skuDoVendedor(i) {
+      return i.seller_custom_field || (i.attributes || []).find(a => a.id === 'SELLER_SKU')?.value_name || null;
+    }
+    let _indiceCatalogo = { ref: null, mapa: null };
+    /** conta|produto de catalogo -> SKU, quando a empresa usa UM SKU so para aquele produto. */
+    function _skuPorCatalogo() {
+      if (_indiceCatalogo.ref === allItems && _indiceCatalogo.mapa) return _indiceCatalogo.mapa;
+      const vistos = new Map();
+      (allItems || []).forEach(i => {
+        const sku = _skuDoVendedor(i);
+        if (!sku || !i.catalog_product_id) return;
+        const k = (i.conta || '') + '|' + i.catalog_product_id;
+        if (!vistos.has(k)) vistos.set(k, new Set());
+        vistos.get(k).add(sku);
+      });
+      const mapa = new Map();
+      vistos.forEach((skus, k) => { if (skus.size === 1) mapa.set(k, [...skus][0]); });   // dois SKUs no mesmo produto: nao escolhe
+      _indiceCatalogo = { ref: allItems, mapa };
+      return mapa;
+    }
     function itemSKU(i) {
-      const sku = i.seller_custom_field
-        || (i.attributes || []).find(a => a.id === 'SELLER_SKU')?.value_name
-        || 'sem-sku-' + i.id;
+      let sku = _skuDoVendedor(i);
+      if (!sku && i.catalog_product_id) sku = _skuPorCatalogo().get((i.conta || '') + '|' + i.catalog_product_id) || ('cat:' + i.catalog_product_id);
+      if (!sku) sku = 'sem-sku-' + i.id;
       if (selecaoConsolidada() && i.conta) return sku + ' \u00b7 ' + contaNome(i.conta);
       return sku;
     }
+
+    /** Como a chave aparece na tela: produto de catalogo e anuncio sem identificacao NAO se passam por SKU. */
+    function rotuloIdentidade(chave) {
+      const k = String(chave || '');
+      let m;
+      if ((m = /^cat:(MLB\d+)(.*)$/.exec(k))) return 'cat\u00e1logo ' + m[1] + m[2];
+      if ((m = /^sem-sku-(\S+)(.*)$/.exec(k))) return 'sem SKU \u00b7 an\u00fancio ' + m[1] + m[2];
+      return k;
+    }
+    function identidadeReal(chave) { return !/^sem-sku-/.test(String(chave || '')); }
 
     /** Etiqueta da empresa ao lado de um pedido ou anuncio. So existe no consolidado. */
     function tagConta(obj) {
@@ -10118,8 +10159,12 @@
       if (consPage > totalPages) consPage = 1;
       const slice = data.slice((consPage - 1) * CONS_PAGE_SIZE, consPage * CONS_PAGE_SIZE);
 
-      document.getElementById('cons-meta').textContent =
-        `${total} SKUs unicos`;
+      // Chave de produto de catalogo conta como produto; anuncio sem nenhuma
+      // identificacao NAO conta como SKU unico.
+      const semId = data.filter(d => !identidadeReal(d.sku)).length;
+      document.getElementById('cons-meta').textContent = semId
+        ? `${total - semId} produtos identificados \u00b7 ${semId} an\u00fancio${semId !== 1 ? 's' : ''} sem SKU nem cat\u00e1logo`
+        : `${total} SKUs unicos`;
 
       const tbody = document.getElementById('cons-table');
       tbody.innerHTML = slice.length
@@ -10128,7 +10173,7 @@
           <td>
             <span class="item-title">${escHtml(d.label)}</span>
             <div style="margin-top:4px;display:flex;gap:8px;align-items:center">
-              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${d.sku}</span>
+              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${escHtml(rotuloIdentidade(d.sku))}</span>
               <span style="font-size:11px;color:var(--muted)">${d.anuncios} anuncio${d.anuncios !== 1 ? 's' : ''}</span>
             </div>
           </td>

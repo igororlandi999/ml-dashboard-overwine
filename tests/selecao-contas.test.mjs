@@ -62,7 +62,7 @@ const CONTAS = [
 ];
 
 /** Monta o modulo com storage e fetch falsos. `guardada` e o que ja esta no sessionStorage. */
-function montar({ guardada = null, fetchFalso = null } = {}) {
+function montar({ guardada = null, fetchFalso = null, itens = [] } = {}) {
   const mem = new Map();
   if (guardada !== null) mem.set('ow_selecao', guardada);
   const storage = {
@@ -103,17 +103,23 @@ function montar({ guardada = null, fetchFalso = null } = {}) {
     extrairFuncao('_comParametro'),
     extrairFuncao('aplicarSelecao'),
     extrairFuncao('backendFetch'),
+    'let allItems = _itens || [];',
+    'let _indiceCatalogo = { ref: null, mapa: null };',
+    extrairFuncao('_skuDoVendedor'),
+    extrairFuncao('_skuPorCatalogo'),
     extrairFuncao('itemSKU'),
+    extrairFuncao('rotuloIdentidade'),
+    extrairFuncao('identidadeReal'),
     extrairFuncao('pubManualPermitida'),
     extrairConstante('SNAPSHOT_IDADE_MAX_S'),
     extrairFuncao('_idadeDoUltimoCheck'),
     extrairFuncao('contasParaRefresh'),
     'return { selecaoGravar, selecaoChave, selecaoLegada, selecaoConsolidada, selecaoTemFinanceiro, contasSemFinanceiro,',
     '  chaveLocal, contasParaProxy, ehVendedorDaSelecao, contaDe, aplicarSelecao, backendFetch, itemSKU, contaNome,',
-    '  pubManualPermitida, contasParaRefresh, _idsDeConta, selecao: () => SELECAO.slice() };',
+    '  pubManualPermitida, contasParaRefresh, _idsDeConta, rotuloIdentidade, identidadeReal, selecao: () => SELECAO.slice(), usarItens: (l) => { allItems = l; } };',
   ].join('\n');
   const expirou = { n: 0 };
-  const api = new Function('window', 'fetch', '_contas', '_expirou', fonte)(win, fetchFalso || fetchPadrao, CONTAS, expirou);
+  const api = new Function('window', 'fetch', '_contas', '_expirou', '_itens', fonte)(win, fetchFalso || fetchPadrao, CONTAS, expirou, itens);
   return Object.assign(api, { chamadas, mem, expirou });
 }
 
@@ -488,5 +494,72 @@ describe('reembolso nao conciliado — liquido provisorio', () => {
   });
   test('a margem tambem leva a marca na receita liquida', () => {
     assert.match(extrairFuncao('renderMargemSemFinanceiro'), /textoRessalvas\(k, true\)/);
+  });
+});
+
+describe('identidade de produto — SKU, produto de catalogo, e nada de titulo', () => {
+  // Recorte REAL da Degustar (30/09/2026): sem SKU, ligados ao catalogo.
+  const dg = (id, cat, extra = {}) => Object.assign({ id, title: 'x', conta: 'degustar-ml', catalog_product_id: cat, seller_custom_field: null, attributes: null }, extra);
+  test('anuncios sem SKU do mesmo produto de catalogo tem a MESMA chave, mesmo com titulos diferentes', () => {
+    const m = montar({ guardada: 'degustar-ml' });
+    const a = dg('MLB7699185998', 'MLB19762297', { title: 'Vinho Tinto Meio Seco Portugues Lisboa Arcos Do Convento Blend' });
+    const b = dg('MLB7699147872', 'MLB19762297', { title: 'Vinho Tinto Meio Seco Portugues Arcos Do Convento 750ml' });
+    m.usarItens([a, b]);
+    assert.equal(m.itemSKU(a), 'cat:MLB19762297');
+    assert.equal(m.itemSKU(b), m.itemSKU(a));
+  });
+  test('produto de catalogo DIFERENTE e chave diferente, mesmo com titulo parecido', () => {
+    const m = montar({ guardada: 'degustar-ml' });
+    const x = dg('MLB5288920721', 'MLB48554364', { title: 'Vinho Tinto Seco Ouro Meu 750ml' });
+    const y = dg('MLB5283261063', 'MLB54263549', { title: 'Vinho Tinto Seco Ouro Meu Exclusive Edition', seller_custom_field: '25101' });
+    m.usarItens([x, y]);
+    assert.notEqual(m.itemSKU(x), m.itemSKU(y));
+  });
+  test('sem SKU e sem catalogo: fica sozinho, e NAO conta como SKU unico', () => {
+    const m = montar({ guardada: 'degustar-ml' });
+    const z = dg('MLB5248612063', undefined, { title: 'Ouro Meu Tinto Seco 750ml' });
+    const w = dg('MLB5288920721', 'MLB48554364', { title: 'Ouro Meu Tinto Seco 750ml' });   // MESMO titulo
+    m.usarItens([z, w]);
+    assert.equal(m.itemSKU(z), 'sem-sku-MLB5248612063');
+    assert.notEqual(m.itemSKU(z), m.itemSKU(w));
+    assert.equal(m.identidadeReal(m.itemSKU(z)), false);
+    assert.equal(m.identidadeReal(m.itemSKU(w)), true);
+  });
+  test('produto de catalogo com UM SKU na empresa: o anuncio sem SKU herda esse SKU', () => {
+    const m = montar({ guardada: 'degustar-ml' });
+    const comSku = dg('MLB1', 'MLB38365661', { seller_custom_field: '21003' });
+    const semSku = dg('MLB2', 'MLB38365661');
+    m.usarItens([comSku, semSku]);
+    assert.equal(m.itemSKU(semSku), '21003');
+  });
+  test('produto de catalogo com DOIS SKUs na empresa: nao escolhe; o sem SKU fica na chave do catalogo', () => {
+    const m = montar({ guardada: 'degustar-ml' });
+    const l = [dg('MLB1', 'MLB9000', { seller_custom_field: 'A' }), dg('MLB2', 'MLB9000', { seller_custom_field: 'B' }), dg('MLB3', 'MLB9000')];
+    m.usarItens(l);
+    assert.deepEqual(l.map(m.itemSKU), ['A', 'B', 'cat:MLB9000']);
+  });
+  test('o SKU de uma empresa nao passa para o anuncio de outra pelo catalogo', () => {
+    const m = montar({ guardada: 'overwine-ml,degustar-ml' });
+    const ow = { id: 'MLB10', conta: 'overwine-ml', catalog_product_id: 'MLB19762297', seller_custom_field: '21002', attributes: null };
+    const d = dg('MLB20', 'MLB19762297');
+    m.usarItens([ow, d]);
+    assert.equal(m.itemSKU(d), 'cat:MLB19762297 · Degustar');
+    assert.equal(m.itemSKU(ow), '21002 · Overwine');
+  });
+  test('com SKU, a chave e o SKU de sempre — o catalogo nao muda nada', () => {
+    const m = montar();
+    const i = { id: 'MLB1', seller_custom_field: '21003', catalog_product_id: 'MLB38365661', attributes: null };
+    m.usarItens([i]);
+    assert.equal(m.itemSKU(i), '21003');
+  });
+  test('na tela, catalogo e anuncio sem identificacao nao se passam por SKU', () => {
+    const m = montar();
+    assert.equal(m.rotuloIdentidade('cat:MLB19762297'), 'catálogo MLB19762297');
+    assert.equal(m.rotuloIdentidade('sem-sku-MLB5248612063'), 'sem SKU · anúncio MLB5248612063');
+    assert.equal(m.rotuloIdentidade('cat:MLB19762297 · Degustar'), 'catálogo MLB19762297 · Degustar');
+    assert.equal(m.rotuloIdentidade('21003'), '21003');
+  });
+  test('o agrupamento nao usa titulo em lugar nenhum', () => {
+    for (const f of ['itemSKU', '_skuPorCatalogo', '_skuDoVendedor']) assert.ok(!/title|normalize/i.test(extrairFuncao(f)), f);
   });
 });
