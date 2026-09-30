@@ -9171,7 +9171,7 @@
           <td>
             <span class="item-title">${escHtml(g.label)}</span>
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${g.sku}</span>
+              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${escHtml(rotuloIdentidade(g.sku))}</span>
               <span class="${t.cls}">${t.label}</span>
               <span style="font-size:11px;color:var(--muted)">${g.anuncios} anuncio${g.anuncios !== 1 ? 's' : ''}</span>
             </div>
@@ -12878,7 +12878,7 @@
             style="margin-top:3px;accent-color:var(--gold);cursor:pointer;flex-shrink:0">
           <div style="min-width:0">
             <span class="item-title">${escHtml(l.label)}</span>
-            <div class="item-sku">SKU: ${escHtml(l.sku)} · ${l.categoria}</div>
+            <div class="item-sku">${identidadeReal(l.sku) && !/^cat:/.test(l.sku) ? 'SKU: ' : ''}${escHtml(rotuloIdentidade(l.sku))} · ${l.categoria}</div>
           </div>
         </div>
       </td>
@@ -14337,7 +14337,7 @@
           <td>
             <span class="item-title">${escHtml(g.label)}</span>
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
-              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${g.sku}</span>
+              <span style="font-size:10px;font-weight:700;font-family:var(--font-mono);color:var(--wine-light);background:rgba(107,26,42,0.2);padding:1px 6px;border-radius:2px">${escHtml(rotuloIdentidade(g.sku))}</span>
               <span class="${t.cls}">${t.label}</span>
             </div>
           </td>

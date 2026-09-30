@@ -559,6 +559,13 @@ describe('identidade de produto — SKU, produto de catalogo, e nada de titulo',
     assert.equal(m.rotuloIdentidade('cat:MLB19762297 · Degustar'), 'catálogo MLB19762297 · Degustar');
     assert.equal(m.rotuloIdentidade('21003'), '21003');
   });
+  test('Gestao de Estoque, Estoque Full e Giro mostram o rotulo, nunca a chave interna', () => {
+    for (const f of ['renderEstoque', 'renderEstoqueFull', 'renderGiroTabela']) {
+      const src = extrairFuncao(f);
+      assert.ok(src.includes('rotuloIdentidade('), f + ' sem rotuloIdentidade');
+      assert.ok(!/>\$\{g\.sku\}</.test(src) && !/SKU: \$\{escHtml\(l\.sku\)\}/.test(src), f + ' mostra a chave crua');
+    }
+  });
   test('o agrupamento nao usa titulo em lugar nenhum', () => {
     for (const f of ['itemSKU', '_skuPorCatalogo', '_skuDoVendedor']) assert.ok(!/title|normalize/i.test(extrairFuncao(f)), f);
   });
