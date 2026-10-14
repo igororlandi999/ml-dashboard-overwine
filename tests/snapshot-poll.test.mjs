@@ -272,3 +272,35 @@ describe('auto-refresh — quando a aba pede sincronizacao', () => {
     assert.ok(idade.indexOf('idadeCheckSegundos') < idade.indexOf('lastSyncAt'), 'servidor primeiro');
   });
 });
+
+describe('mensagens de sucesso nao escondem falha (incidente de 13/10/2026)', () => {
+  const fonte = extrairFuncao('falhasDaCarga');
+  const avaliar = (catalogo, pedidosFalha, rCat = { status: 'fulfilled' }, rMet = { status: 'fulfilled' }) =>
+    new Function('_catalogo', '_pedidosFalha', fonte + '\nreturn falhasDaCarga;')(catalogo, pedidosFalha)(rCat, rMet);
+
+  test('tudo certo: nenhuma falha, o toast pode dizer sucesso', () => {
+    assert.deepEqual(avaliar({ source: 'snapshot', warnings: [] }, null), []);
+  });
+
+  test('catalogo servido do snapshot antigo apos falha da reconstrucao e falha', () => {
+    assert.equal(avaliar({ source: 'fallback_stale', warnings: ['atualizacao_falhou'] }, null).length, 1);
+  });
+
+  test('pedidos sem sincronizar e falha, mesmo com catalogo e metricas ok', () => {
+    const f = avaliar({ source: 'snapshot', warnings: [] }, { motivo: 'token', contas: [] });
+    assert.equal(f.length, 1);
+    assert.match(f[0], /pedidos/);
+  });
+
+  test('loadAll so mostra sucesso quando falhasDaCarga volta vazia', () => {
+    const corpo = extrairFuncao('loadAll');
+    assert.match(corpo, /falhasDaCarga\(rCat, rMet\)/);
+    assert.match(corpo, /if \(falhas\.length\)[\s\S]*else \{\s*showToast\('Dashboard atualizado com sucesso'/);
+  });
+
+  test('Recarregar tudo tambem consulta o status e pede o refresh dos pedidos', () => {
+    const corpo = extrairFuncao('recarregarTudo');
+    assert.match(corpo, /pollSnapshot\(\)/);
+    assert.match(corpo, /_ultimoRefreshMs = 0/);
+  });
+});

@@ -6472,7 +6472,15 @@
         revelarInterface();                    // libera a tela sem esperar os secundarios
         carregarSecundariosEmSegundoPlano();   // nao aguardado de proposito
 
-        showToast('Dashboard atualizado com sucesso', 'success');
+        // "Sucesso" so quando nada falhou. Em 13/10/2026 este toast aparecia
+        // com o token do Mercado Livre recusado: catalogo servido do snapshot
+        // antigo e pedidos parados, tudo com mensagem de sucesso.
+        const falhas = falhasDaCarga(rCat, rMet);
+        if (falhas.length) {
+          showToast('Dashboard carregado com falhas: ' + falhas.join('; ') + '.', 'error');
+        } else {
+          showToast('Dashboard atualizado com sucesso', 'success');
+        }
       } catch (e) {
         console.error(e);
         const msg = (e && e.message) ? e.message : String(e || 'erro');
@@ -6563,6 +6571,24 @@
      * `forcar` (botao Recarregar tudo) manda refresh=1; o backend aplica
      * cooldown e lock, entao cliques repetidos nao viram rajada contra o ML.
      */
+    /**
+     * O que falhou nesta carga, em texto para o operador. O catalogo pode
+     * responder 200 com o snapshot anterior quando a reconstrucao falha
+     * (`source: fallback_stale`, aviso `atualizacao_falhou`): a tela segue
+     * util, mas isso nao e sucesso.
+     */
+    function falhasDaCarga(rCat, rMet) {
+      const falhas = [];
+      if (rCat && rCat.status === 'rejected') falhas.push('catalogo nao carregou');
+      else if (_catalogo && ((_catalogo.source === 'fallback_stale') ||
+        (Array.isArray(_catalogo.warnings) && _catalogo.warnings.indexOf('atualizacao_falhou') !== -1))) {
+        falhas.push('catalogo nao atualizou (exibindo a ultima copia)');
+      }
+      if (rMet && rMet.status === 'rejected') falhas.push('metricas nao carregaram');
+      if (typeof _pedidosFalha !== 'undefined' && _pedidosFalha) falhas.push('pedidos nao sincronizam com o Mercado Livre');
+      return falhas;
+    }
+
     function loadCatalogSnapshot(forcar) {
       if (_catalogoPromise) return _catalogoPromise;
 
@@ -6803,9 +6829,18 @@
     // Cancelados NAO entram aqui: passaram a ser sob demanda (aba Cancelamentos).
     function carregarSecundariosEmSegundoPlano() {
       _repLoadState = "loading";
+      _falhasSecundarias = {};
       Promise.all([loadReputation(), loadVisitas()])
         .then(() => { _repLoadState = "loaded"; }, () => { _repLoadState = "error"; })
-        .then(() => { renderVisaoGeral(); });
+        .then(() => {
+          renderVisaoGeral();
+          // loadReputation e loadVisitas engolem o erro para a tela seguir de
+          // pe; sem este aviso, "sem dados" parecia ausencia de dado.
+          const nomes = Object.keys(_falhasSecundarias);
+          if (nomes.length) {
+            showToast(nomes.join(' e ') + ' nao carregaram: ' + _falhasSecundarias[nomes[0]], 'error');
+          }
+        });
 
       // Onda D: os numeros do periodo ja vieram no agregado; o que falta aqui
       // sao as VISITAS (unica chamada de rede de loadPeriodoData).
@@ -7029,9 +7064,17 @@
       _metricsPeriodoKey = null;
 
       showToast('Recarregando catalogo e historico...', 'info');
+      // Os pedidos vem do snapshot do backend; recarregar a tela nao sincroniza
+      // nada. Depois da carga, uma passada do poll consulta o status e pede o
+      // refresh se a selecao estiver atrasada, sem esperar o proximo tique.
       Promise.resolve(loadAll(true))
         .catch(() => { })
-        .then(() => { _recarregandoTudo = false; });
+        .then(() => {
+          _recarregandoTudo = false;
+          _ultimoRefreshMs = 0;
+          return pollSnapshot();
+        })
+        .catch(() => { });
       scheduleAutoRefresh();
     }
 
@@ -7378,6 +7421,9 @@
      * conta as funde: na visao consolidada o card declara a indisponibilidade.
      */
     let _repIndisponivelConsolidado = false;
+    /** Falhas de reputacao/visitas da ultima carga em segundo plano: nome -> mensagem. */
+    let _falhasSecundarias = {};
+
     async function loadReputation() {
       if (selecaoConsolidada()) { reputacaoData = null; _repIndisponivelConsolidado = true; return; }
       try {
@@ -7385,6 +7431,7 @@
         reputacaoData = data.seller_reputation || null;
       } catch (e) {
         console.warn('Reputacao nao carregada:', e.message);
+        _falhasSecundarias['Reputacao'] = e.message;
       }
     }
 
@@ -7421,6 +7468,7 @@
           .sort((a, b) => a.dia.localeCompare(b.dia));
       } catch (e) {
         console.warn('Visitas nao carregadas:', e.message);
+        _falhasSecundarias['Visitas'] = e.message;
         visitasPorDia = [];
       }
     }
@@ -14822,6 +14870,13 @@
      * da venda, e mostra-lo como "ultima venda" deu horario errado na tela.
      */
     let _ultimoNewestDate = null;
+    /**
+     * Falha de sincronizacao em curso: `{ motivo, desde, contas }` ou null.
+     * Em 13/10/2026 o Mercado Livre recusou a renovacao do token por 17 horas
+     * e o cabecalho seguiu dizendo "Pedidos atualizados ha poucos segundos".
+     * A idade do check nao basta: uma falha precisa aparecer como falha.
+     */
+    let _pedidosFalha = null;
 
     async function apiLogin(password, manter) {
       const res = await backendFetch('/api/auth/login', {
@@ -14922,12 +14977,44 @@
      * `updatedAt` (quando o snapshot MUDOU) segue em `_ultimoUpdatedAt`.
      */
     function registrarStatusPedidos(body) {
+      _pedidosFalha = _falhaSyncDoStatus(body);
       const idade = _idadeDoUltimoCheck(body);
       _pedidosIdadeCheckS = (idade === null) ? null : idade;
       _pedidosCheckRecebidoEmMs = Date.now();
       if (body.updatedAt) _ultimoUpdatedAt = body.updatedAt;
       if (body.newestDate) _ultimoNewestDate = body.newestDate;
       atualizarIndicadorPedidos();
+    }
+
+    /**
+     * Falha em curso segundo o backend: a ultima falha registrada e mais nova
+     * que a ultima sincronizacao concluida. Na selecao com varias contas, cada
+     * conta e lida na sua telemetria (`porConta`), e o aviso nomeia as que
+     * falham — a que esta em dia nao some atras da outra, nem o contrario.
+     */
+    function _falhaSyncDoStatus(body) {
+      const daTelemetria = (s) => {
+        if (!s || !s.ultimaFalhaEm) return null;
+        const falha = Date.parse(s.ultimaFalhaEm);
+        const ok = s.ultimoSyncConcluidoEm ? Date.parse(s.ultimoSyncConcluidoEm) : NaN;
+        if (!Number.isFinite(falha)) return null;
+        if (Number.isFinite(ok) && ok >= falha) return null;
+        return { motivo: s.ultimaFalhaMotivo || null, desde: s.ultimoSyncConcluidoEm || null };
+      };
+      if (!body) return null;
+      if (body.porConta && typeof body.porConta === 'object') {
+        const contas = [];
+        let primeira = null;
+        Object.keys(body.porConta).forEach(id => {
+          const f = daTelemetria(body.porConta[id] && body.porConta[id].sincronizacao);
+          if (!f) return;
+          contas.push(id);
+          if (!primeira) primeira = f;
+        });
+        return contas.length ? { motivo: primeira.motivo, desde: primeira.desde, contas } : null;
+      }
+      const f = daTelemetria(body.sincronizacao);
+      return f ? { motivo: f.motivo, desde: f.desde, contas: [] } : null;
     }
 
     /** Idade atual do ultimo check, em segundos, andando com o relogio local. */
@@ -14964,8 +15051,22 @@
       const idade = _idadePedidosAgoraS();
       let texto;
       let atrasado = false;
+      let falhou = false;
       if (_refreshEmCurso) {
         texto = 'Sincronizando pedidos...';
+      } else if (_pedidosFalha) {
+        // Antes da idade: uma falha nunca pode sair como "atualizado".
+        falhou = true;
+        const f = _pedidosFalha;
+        let desde = '';
+        if (f.desde) {
+          const d = new Date(f.desde);
+          if (!isNaN(d)) desde = ' desde ' + d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+        const quem = (f.contas && f.contas.length) ? ' (' + f.contas.join(', ') + ')' : '';
+        const motivo = f.motivo ? String(f.motivo).replace(/^erro_parcial:\s*/, '') : '';
+        const legivel = /token/i.test(motivo) ? 'token do Mercado Livre recusado' : motivo.slice(0, 80);
+        texto = 'Falha ao sincronizar pedidos' + quem + desde + (legivel ? ' \u2014 ' + legivel : '');
       } else if (idade === null) {
         texto = _ultimoUpdatedAt ? ('Pedidos atualizados' + mudou.replace(' \u00b7 \u00faltima venda registrada', ' \u00e0s')) : ('Atualizado ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
         mudou = '';
@@ -14980,10 +15081,11 @@
         const min = Math.floor(idade / 60);
         texto = 'Pedidos atrasados h\u00e1 ' + (min >= 120 ? Math.floor(min / 60) + 'h' : min + 'min') + ' \u2014 tentando sincronizar';
       }
-      if (_ultimoPartial && !atrasado) texto += ' \u00b7 sincronizacao em andamento';
+      if (_ultimoPartial && !atrasado && !falhou) texto += ' \u00b7 sincronizacao em andamento';
       el.textContent = texto + mudou;
-      el.style.color = atrasado ? 'var(--amber)' : '';
-      el.title = (_ultimoNewestDate ? ('Pedido mais recente: ' + _ultimoNewestDate + '\n') : '') +
+      el.style.color = falhou ? 'var(--red)' : (atrasado ? 'var(--amber)' : '');
+      el.title = (falhou && _pedidosFalha.motivo ? ('Motivo: ' + _pedidosFalha.motivo + '\n') : '') +
+        (_ultimoNewestDate ? ('Pedido mais recente: ' + _ultimoNewestDate + '\n') : '') +
         (_ultimoUpdatedAt ? ('Ultima publicacao do snapshot: ' + _ultimoUpdatedAt) : '');
     }
 
@@ -15060,6 +15162,12 @@
         if (r.acao === 'sincronizado' && r.publicou === true && Number.isInteger(r.versao)) {
           publicouVersao = r.versao;
         }
+        // A falha aparece na hora; o proximo status confirma ou desfaz.
+        if (r.acao === 'erro') {
+          _pedidosFalha = { motivo: r.motivo || null, desde: (_pedidosFalha && _pedidosFalha.desde) || null, contas: [] };
+        } else if (r.acao === 'sincronizado') {
+          _pedidosFalha = null;
+        }
       } catch (e) {
         // Silencioso de proposito: a proxima rodada do poll tenta de novo, e o
         // dashboard segue servindo o snapshot que ja tinha.
@@ -15097,6 +15205,11 @@
             console.info('[refresh] conta=' + conta + ' acao=' + r.acao +
               (r.modo ? ' modo=' + r.modo : '') + (r.publicou !== undefined ? ' publicou=' + r.publicou : ''));
             if (r.acao === 'sincronizado' || r.acao === 'fresco') checou++;
+            if (r.acao === 'erro') {
+              const contas = (_pedidosFalha && _pedidosFalha.contas) ? _pedidosFalha.contas.slice() : [];
+              if (contas.indexOf(conta) === -1) contas.push(conta);
+              _pedidosFalha = { motivo: r.motivo || null, desde: (_pedidosFalha && _pedidosFalha.desde) || null, contas };
+            }
           } catch (e) {
             if (e && e.selecaoMudou) return;   // a pagina esta trocando de conta
           }

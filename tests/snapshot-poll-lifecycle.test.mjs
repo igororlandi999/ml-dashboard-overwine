@@ -60,6 +60,7 @@ const drenar = () => new Promise(r => setTimeout(r, 0));
 function montarAmbiente({
   sessao = 'tok', hidden = false, versao = 7, lastSyncAt = null,
   idadeCheckSegundos, updatedAt = null, newestDate = null, refreshResposta = null,
+  extraStatus = null,
 } = {}) {
   const chamadas = [];          // toda chamada de rede, em ordem
   const recargas = [];          // toda chamada a loadAll
@@ -68,6 +69,7 @@ function montarAmbiente({
   let proximoId = 1;
   let resposta = { versao, lastSyncAt, updatedAt, newestDate };
   if (idadeCheckSegundos !== undefined) resposta.idadeCheckSegundos = idadeCheckSegundos;
+  if (extraStatus) Object.assign(resposta, extraStatus);
   let respostaRefresh = refreshResposta || { ok: true, acao: 'sincronizado', modo: 'rapido', publicou: false, versao };
 
   /** O elemento do cabecalho onde o indicador escreve. */
@@ -109,6 +111,7 @@ function montarAmbiente({
     'let _ultimoNewestDate = null;',
     'let _ultimoUpdatedAt = null;',
     'let _ultimoPartial = false;',
+    'let _pedidosFalha = null;',
     'let SESSION_TOKEN = _sessaoInicial;',
     extrairFuncao('scheduleSnapshotPoll'),
     extrairFuncao('scheduleIndicadorPedidos'),
@@ -118,6 +121,7 @@ function montarAmbiente({
     extrairFuncao('pedirRefreshSeVelho'),
     extrairFuncao('_idadeDoUltimoCheck'),
     extrairFuncao('registrarStatusPedidos'),
+    extrairFuncao('_falhaSyncDoStatus'),
     extrairFuncao('_idadePedidosAgoraS'),
     extrairFuncao('atualizarIndicadorPedidos'),
     'return {',
@@ -658,5 +662,65 @@ describe('aba Pedidos acompanha a versao nova', () => {
     const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 4 }, pagina: { versao: 4, items: [] }, abaAtiva: false });
     await a.run();
     assert.deepEqual(a.renders, ['kpis']);
+  });
+});
+
+describe('falha de sincronizacao nunca aparece como "atualizado" (incidente de 13/10/2026)', () => {
+  const MOTIVO = 'erro_parcial: Falha ao renovar token ML: invalid client_id or client_secret';
+  const falhando = (extra = {}) => ({
+    sincronizacao: Object.assign({
+      ultimoSyncConcluidoEm: '2026-10-13T20:22:00.000Z',
+      ultimaFalhaEm: '2026-10-14T13:45:13.000Z',
+      ultimaFalhaMotivo: MOTIVO,
+    }, extra),
+  });
+
+  test('status com falha mais nova que o ultimo sucesso: indicador mostra a falha', async () => {
+    const amb = montarAmbiente({ idadeCheckSegundos: 3, extraStatus: falhando() });
+    amb.scheduleSnapshotPoll();
+    await drenar(); await drenar();
+    const txt = amb.indicador.textContent;
+    assert.ok(!/atualizados/.test(txt), 'nao pode dizer atualizado: ' + txt);
+    assert.match(txt, /Falha ao sincronizar pedidos/);
+    assert.match(txt, /token/i, 'o motivo aparece de forma legivel');
+    assert.equal(amb.indicador.style.color, 'var(--red)');
+  });
+
+  test('sucesso mais novo que a falha: volta ao texto normal', async () => {
+    const amb = montarAmbiente({
+      idadeCheckSegundos: 3,
+      extraStatus: falhando({ ultimoSyncConcluidoEm: '2026-10-14T13:46:00.000Z' }),
+    });
+    amb.scheduleSnapshotPoll();
+    await drenar(); await drenar();
+    assert.match(amb.indicador.textContent, /Pedidos atualizados/);
+  });
+
+  test('refresh respondendo acao=erro marca a falha na hora, sem zerar a idade', async () => {
+    const amb = montarAmbiente({
+      idadeCheckSegundos: 600,
+      refreshResposta: { ok: false, acao: 'erro', modo: 'incremental', motivo: MOTIVO, versao: 7 },
+    });
+    amb.scheduleSnapshotPoll();
+    await drenar(); await drenar(); await drenar();
+    assert.equal(refresh(amb.chamadas).length, 1);
+    assert.match(amb.indicador.textContent, /Falha ao sincronizar pedidos/);
+  });
+
+  test('consolidado: uma conta falhando aparece com o nome dela', async () => {
+    const amb = montarAmbiente({
+      idadeCheckSegundos: 3,
+      extraStatus: {
+        porConta: {
+          'overwine-ml': Object.assign({ idadeCheckSegundos: 3 }, falhando()),
+          'degustar-ml': { idadeCheckSegundos: 3, sincronizacao: { ultimoSyncConcluidoEm: '2026-10-14T13:46:00.000Z', ultimaFalhaEm: null } },
+        },
+      },
+    });
+    amb.scheduleSnapshotPoll();
+    await drenar(); await drenar();
+    assert.match(amb.indicador.textContent, /Falha ao sincronizar pedidos/);
+    assert.match(amb.indicador.textContent, /overwine-ml/);
+    assert.ok(!/degustar-ml/.test(amb.indicador.textContent));
   });
 });
