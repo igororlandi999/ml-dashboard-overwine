@@ -304,3 +304,27 @@ describe('mensagens de sucesso nao escondem falha (incidente de 13/10/2026)', ()
     assert.match(corpo, /_ultimoRefreshMs = 0/);
   });
 });
+
+describe('publicidade passa pelos bloqueadores de anuncio (14/10/2026)', () => {
+  // `?advertiser_id=` abrindo a query e barrado no navegador: a consulta
+  // falhava com "Failed to fetch" sem chegar ao backend, nas duas contas.
+  const mlPathToOp = new Function(extrairFuncao('mlPathToOp') + '\nreturn mlPathToOp;')();
+
+  test('campanhas: advertiser_id nunca e o primeiro parametro', () => {
+    const op = mlPathToOp('/marketplace/advertising/MLB/advertisers/3353235/product_ads/campaigns/search?date_from=2026-10-01&date_to=2026-10-14&limit=50&offset=0');
+    assert.match(op, /^\/api\/ml\/pub-campanhas\?/);
+    assert.ok(!/\?advertiser_id=/.test(op), op);
+    assert.match(op, /&advertiser_id=3353235/);
+  });
+
+  test('metricas: advertiser_id nunca e o primeiro parametro', () => {
+    const op = mlPathToOp('/marketplace/advertising/MLB/advertisers/3353235/product_ads/campaigns/77/metrics?date_from=2026-10-01&date_to=2026-10-14');
+    assert.ok(!/\?advertiser_id=/.test(op), op);
+    assert.match(op, /&advertiser_id=3353235&campaign_id=77/);
+  });
+
+  test('Overwine sozinha: falha da consulta deixa a publicidade indisponivel, nunca zero', () => {
+    const corpo = extrairFuncao('loadAdCost');
+    assert.match(corpo, /adCostDisponivel = \(r !== null\)/);
+  });
+});

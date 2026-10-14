@@ -6376,17 +6376,20 @@
       // Campanhas e metricas. O ML consolida as metricas do dia as 10h (GMT-3),
       // entao o dia corrente pode vir parcial, e o range maximo e de 90 dias.
       if (/^\/marketplace\/advertising\/MLB\/advertisers\/\d+\/product_ads\/campaigns\/search$/.test(p)) {
+        // `advertiser_id` NUNCA abre a query: `?advertiser_id=` esta nas listas
+        // dos bloqueadores de anuncio, que barram a requisicao no navegador
+        // ("Failed to fetch", nada chega ao backend). Visto em 14/10/2026.
         const adv = p.split('/')[5];
-        return `/api/ml/pub-campanhas?advertiser_id=${adv}&date_from=${q.get('date_from') || ''}` +
-               `&date_to=${q.get('date_to') || ''}&limit=${q.get('limit') || 50}&offset=${q.get('offset') || 0}`;
+        return `/api/ml/pub-campanhas?date_from=${q.get('date_from') || ''}&date_to=${q.get('date_to') || ''}` +
+               `&advertiser_id=${adv}&limit=${q.get('limit') || 50}&offset=${q.get('offset') || 0}`;
       }
 
       // Metricas de UMA campanha. Os nomes das operacoes acima evitam a palavra
       // "ads" de proposito: bloqueadores de anuncio barram a requisicao antes
       // de sair do navegador (ERR_BLOCKED_BY_CLIENT), sem resposta e sem erro util.
       if ((m = p.match(/^\/marketplace\/advertising\/MLB\/advertisers\/(\d+)\/product_ads\/campaigns\/(\d+)\/metrics$/))) {
-        return `/api/ml/pub-metricas?advertiser_id=${m[1]}&campaign_id=${m[2]}` +
-               `&date_from=${q.get('date_from') || ''}&date_to=${q.get('date_to') || ''}`;
+        return `/api/ml/pub-metricas?date_from=${q.get('date_from') || ''}&date_to=${q.get('date_to') || ''}` +
+               `&advertiser_id=${m[1]}&campaign_id=${m[2]}`;
       }
 
       return null;
@@ -7512,7 +7515,13 @@
      */
     let adCostDisponivel = true;
     async function loadAdCost(fromYmd, toYmd) {
-      if (selecaoLegada()) { adCostDisponivel = true; return loadAdCostDaConta(fromYmd, toYmd, null); }
+      if (selecaoLegada()) {
+        // A falha da consulta nao e "sem investimento": sem isto a Overwine
+        // mostrava publicidade 0 e pedia importacao, escondendo o erro.
+        const r = await loadAdCostDaConta(fromYmd, toYmd, null);
+        adCostDisponivel = (r !== null);
+        return r;
+      }
       let soma = 0, ok = true;
       for (const c of contasParaProxy()) {
         const r = await loadAdCostDaConta(fromYmd, toYmd, c);
@@ -8783,7 +8792,7 @@
         } else {
           // Onda A: nao afirmar "importe relatorio" enquanto loadAdCost roda.
           _pubStatusEl.textContent = (_adsLoadState === 'loading') ? 'carregando...'
-            : (!selecaoLegada() && !adCostDisponivel) ? 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)')
+            : !adCostDisponivel ? 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)')
               : 'importe relatório na aba ML Ads';
           _pubStatusEl.style.color = 'var(--muted)';
         }
