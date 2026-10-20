@@ -173,12 +173,12 @@ describe('inicializacao — o poll nao pode nascer morto', () => {
       'scheduleSnapshotPoll tem de sondar na hora');
   });
 
-  test('depois da sondagem imediata, roda a cada 15 segundos', async () => {
+  test('depois da sondagem imediata, roda a cada 60 segundos', async () => {
     const amb = montarAmbiente();
     amb.scheduleSnapshotPoll();
     await drenar();
-    assert.equal(amb.intervalo(), 15 * 1000);
-    assert.equal(amb.pollTimers()[0].ms, 15 * 1000);
+    assert.equal(amb.intervalo(), 60 * 1000);
+    assert.equal(amb.pollTimers()[0].ms, 60 * 1000);
 
     await amb.avancarTick();
     assert.equal(status(amb.chamadas).length, 2);

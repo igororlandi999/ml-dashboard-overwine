@@ -14827,14 +14827,15 @@
      *  - NAO baixa pedido nenhum. Ele consulta /api/orders/status, que le
      *    manifesto e telemetria e nao toca em chunk: alguns bytes por chamada.
      *  - So dispara loadAll quando a VERSAO do snapshot mudou. Em um dia sem
-     *    venda o custo e um GET barato a cada 45 segundos e mais nada.
+     *    venda o custo e um GET barato a cada 60 segundos e mais nada.
      *
-     * 15s: com o backend checando o Mercado Livre em uma pagina (passo rapido)
-     * e o refresh recarregando a tela no ato quando publica, e o intervalo
-     * que deixa uma venda aparecer em menos de meio minuto na maior parte
-     * das vezes. Cada passada custa um GET de alguns bytes.
+     * 60s (era 15s ate 10/2026): cada passada custa cerca de 8 comandos no
+     * Redis gratuito (sessao, limite, manifesto, status e telemetria), e com
+     * 15s o poll sozinho era a maior parcela do consumo mensal. A venda chega
+     * pelo webhook do Mercado Livre em segundos; o poll so a mostra na tela,
+     * em ate 1 minuto.
      */
-    const SNAPSHOT_POLL_MS = 15 * 1000;
+    const SNAPSHOT_POLL_MS = 60 * 1000;
 
     let refreshTimer = null;
     let countdown = 0;
@@ -14852,12 +14853,15 @@
 
     /**
      * Auto-refresh: acima desta idade (segundos) do ultimo check do backend, a
-     * aba pede uma sincronizacao. 25s, com o poll de 15s, da uma checagem no
-     * Mercado Livre a cada ~30s enquanto houver uma aba visivel — e uma venda
-     * aparece em ~15s na media, ~35s no pior caso. Mesmo valor do backend
-     * (ORDERS_REFRESH_IDADE_MAX_S): abaixo dele o backend responde `fresco`.
+     * aba pede uma sincronizacao. 110s (era 25s ate 10/2026), com o poll de
+     * 60s, da uma checagem no Mercado Livre a cada ~2 min enquanto houver uma
+     * aba visivel. E a rede de seguranca para quando o webhook falha; o caminho
+     * normal da venda e o webhook. Fica abaixo de PEDIDOS_ATRASO_AVISO_S (180s)
+     * para o indicador nunca piscar "atrasado" entre duas checagens. O backend
+     * (ORDERS_REFRESH_IDADE_MAX_S, 25s) continua respondendo `fresco` abaixo do
+     * dele; como 110 > 25, nada muda do lado dele.
      */
-    const SNAPSHOT_IDADE_MAX_S = 25;
+    const SNAPSHOT_IDADE_MAX_S = 110;
     /** Freio LOCAL. O que realmente segura carga e o cooldown global do backend. */
     const REFRESH_COOLDOWN_LOCAL_MS = 15 * 1000;
     let _refreshEmCurso = false;
@@ -15110,7 +15114,7 @@
      * Quem chama NAO aguarda o resultado, entao o refresh nunca atrasa o poll
      * nem bloqueia a interface. Mas a resposta e aproveitada: quando o backend
      * diz que PUBLICOU uma versao nova, a tela recarrega no ato, em vez de
-     * esperar a proxima rodada do poll descobrir a versao — sao ate 15s a
+     * esperar a proxima rodada do poll descobrir a versao — sao ate 60s a
      * menos entre a venda e o card de faturamento.
      *
      * Tres freios, e o mais importante nao esta aqui: o backend tem um
@@ -15197,7 +15201,7 @@
      * Refresh de contas NOMEADAS (Degustar sozinha, ou as atrasadas do
      * consolidado), uma por vez. A tela nao recarrega daqui: a versao que o
      * backend devolve e a DA CONTA, e a que a tela acompanha e a da selecao.
-     * Quem percebe a mudanca e o poll, na proxima passada (ate 15 s).
+     * Quem percebe a mudanca e o poll, na proxima passada (ate 60 s).
      */
     async function pedirRefreshDasContas(contas) {
       _refreshEmCurso = true;
