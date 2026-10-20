@@ -137,8 +137,8 @@ describe('poll do snapshot — quando ele recarrega', () => {
 });
 
 describe('poll do snapshot — ciclo de vida do temporizador', () => {
-  test('o intervalo e de 15 segundos', () => {
-    assert.match(html, /const SNAPSHOT_POLL_MS = 15 \* 1000;/);
+  test('o intervalo e de 60 segundos (economia do Redis gratuito)', () => {
+    assert.match(html, /const SNAPSHOT_POLL_MS = 60 \* 1000;/);
   });
 
   test('o refresh de 30 minutos continua existindo como piso', () => {
@@ -246,9 +246,12 @@ describe('auto-refresh — quando a aba pede sincronizacao', () => {
     assert.match(html, /const REFRESH_COOLDOWN_LOCAL_MS = 15 \* 1000;/);
   });
 
-  test('freio: so acima do limite de idade — o mesmo do backend (25s)', () => {
+  test('freio: so acima do limite de idade (110s, acima dos 25s do backend e abaixo do aviso de atraso)', () => {
     assert.match(corpo, /idade <= SNAPSHOT_IDADE_MAX_S/);
-    assert.match(html, /const SNAPSHOT_IDADE_MAX_S = 25;/);
+    assert.match(html, /const SNAPSHOT_IDADE_MAX_S = 110;/);
+    const aviso = Number(/const PEDIDOS_ATRASO_AVISO_S = (\d+);/.exec(html)[1]);
+    const poll = 60;
+    assert.ok(110 + poll / 2 < aviso, 'checagem tem de acontecer antes do aviso de atraso');
   });
 
   test('libera a bandeira num finally — falha nao trava o mecanismo', () => {
