@@ -5419,7 +5419,39 @@
     // pedidos ja vem liquido do estorno (decisao do proprietario, 18/08/2026).
     // ══════════════════════════════════════
     function contaComoVenda(status) {
-      return status === 'paid' || status === 'partially_refunded';
+      return status === 'paid' || status === 'partially_refunded' || STATUS_VENDA_AMAZON.has(status);
+    }
+
+    // AMAZON — lista PROPRIA (espelho de src/lib/status-venda.ts e
+    // src/amazon/leitura.ts do backend), decidida sobre o contrato da Orders
+    // API v2026-01-01. Os pedidos da Amazon chegam com status `amazon:*`:
+    // entram so os aprovados (a enviar, enviado em parte, enviado); pendente,
+    // pre-venda, cancelado e nao atendivel ficam de fora.
+    const STATUS_VENDA_AMAZON = new Set(['amazon:unshipped', 'amazon:partially_shipped', 'amazon:shipped']);
+    const ROTULO_STATUS_AMAZON = {
+      'amazon:pending_availability': 'Pr\u00e9-venda', 'amazon:pending': 'Pendente', 'amazon:unshipped': 'A enviar',
+      'amazon:partially_shipped': 'Enviado em parte', 'amazon:shipped': 'Enviado', 'amazon:cancelled': 'Cancelado',
+      'amazon:unfulfillable': 'N\u00e3o atend\u00edvel', 'amazon:desconhecido': 'Status n\u00e3o informado',
+    };
+    function pedidoAmazon(o) { return !!o && (o.canal === 'amazon' || String(o.status || '').indexOf('amazon:') === 0); }
+    // As telas comparavam `status` direto com 'paid' e 'cancelled'. Para pedido
+    // do Mercado Livre os auxiliares devolvem EXATAMENTE a comparacao antiga
+    // (nenhum numero da Overwine ou da Degustar muda); para pedido da Amazon,
+    // usam a lista acima.
+    function pedidoPago(o) { return pedidoAmazon(o) ? contaComoVenda(o.status) : o.status === 'paid'; }
+    function pedidoForaDaVenda(o) { return pedidoAmazon(o) ? !contaComoVenda(o.status) : o.status === 'cancelled'; }
+    /** Filtro "Pagos"/"Cancelados" das tabelas: para a Amazon, pelos auxiliares; para o ML, igualdade como antes. */
+    function filtroStatusPedido(o, f) {
+      if (!pedidoAmazon(o)) return o.status === f;
+      if (f === 'paid') return pedidoPago(o);
+      if (f === 'cancelled') return pedidoCancelado(o);
+      return o.status === f;
+    }
+    function pedidoCancelado(o) { return pedidoAmazon(o) ? o.status === 'amazon:cancelled' : o.status === 'cancelled'; }
+    function badgeStatusAmazon(s) {
+      const rot = ROTULO_STATUS_AMAZON[s] || String(s || '-').replace('amazon:', '');
+      const cls = STATUS_VENDA_AMAZON.has(s) ? 'active' : s === 'amazon:cancelled' ? 'closed' : 'paused';
+      return `<span class="badge ${cls}" title="Status da Amazon">${escHtml(rot)}</span>`;
     }
 
     // ══════════════════════════════════════
@@ -5651,10 +5683,17 @@
      * ha total fisico: devolve `valor: null` e o saldo de cada anuncio.
      */
     function estoqueDoGrupo(items) {
-      const daOverwine = items.every(i => !i.conta || i.conta === CONTA_LEGADA);
+      if (items.length && items.every(i => pedidoAmazon(i) || i.canal === 'amazon')) {
+        const c = consolidarEstoqueGrupo(items);
+        return { valor: c.proprio + c.fba, confirmado: true, porAnuncio: null };
+      }
+      // Overwine no Mercado Livre e Alem Mar na Amazon sao a MESMA empresa: o
+      // estoque proprio e um so (consolidarEstoqueGrupo deduplica, nunca soma
+      // duas vezes), o Full do ML e o FBA da Amazon entram separados.
+      const daOverwine = items.every(i => !i.conta || contaDaEmpresaOverwine(i.conta));
       if (daOverwine || items.length <= 1) {
         const c = consolidarEstoqueGrupo(items);
-        return { valor: c.proprio + c.full, confirmado: true, porAnuncio: null };
+        return { valor: c.proprio + c.full + c.fba, confirmado: true, porAnuncio: null };
       }
       const chave = i => i.inventory_id || i.user_product_id || null;
       if (items.every(i => chave(i))) {
@@ -5674,6 +5713,16 @@
       return fmt(vals[0]) + ' a ' + fmt(vals[vals.length - 1]) + ' por an\u00fancio';
     }
 
+    /** A conta e da Overwine (Mercado Livre legado ou Alem Mar na Amazon)? */
+    function contaDaEmpresaOverwine(id) {
+      if (id === CONTA_LEGADA) return true;
+      const c = contaInfo(id), base = contaInfo(CONTA_LEGADA);
+      return !!(c && base && c.empresa && c.empresa === base.empresa);
+    }
+
+    /** Anuncio Amazon com saldo no FBA (linha `<sku>#fba` do backend). Nao e o Full do ML. */
+    function isFbaItem(i) { return !!i && i.shipping?.logistic_type === 'amazon_fba'; }
+
     function consolidarEstoqueGrupo(items) {
       // Dedup de saldo fisico:
       //  - FULL: anuncios com o mesmo inventory_id compartilham o saldo do Full.
@@ -5687,8 +5736,11 @@
       let propSemInvMax = 0;          // espelhos sem inventory_id: mesmo saldo, usa o maior
       let temPropSemInv = false;
 
+      let fba = 0;
       items.forEach(i => {
         const est = i.available_quantity || 0;
+        // Amazon FBA: cada linha FBA ja e um saldo distinto (por SKU).
+        if (isFbaItem(i)) { fba += est; return; }
         if (isFullItem(i)) {
           const k = fullStockKey(i);
           if (!fullVistos.has(k)) {
@@ -5726,6 +5778,7 @@
         fullClassico,
         fullPremium,
         full: fullClassico + fullPremium,
+        fba,
       };
     }
 
@@ -5978,7 +6031,10 @@
      * Contas para as consultas que so existem POR CONTA (proxy do Mercado
      * Livre). `null` = a Overwine sozinha, sem parametro — a chamada de sempre.
      */
-    function contasParaProxy() { return selecaoLegada() ? [null] : SELECAO.slice(); }
+    function contasParaProxy() { return selecaoLegada() ? [null] : SELECAO.filter(id => !contaEhAmazon(id)); }
+    function contaEhAmazon(id) { const c = contaInfo(id); return !!c && c.canal === 'amazon'; }
+    function selecaoTemMercadoLivre() { return selecaoLegada() || SELECAO.some(id => !contaEhAmazon(id)); }
+    function selecaoTemAmazon() { return !selecaoLegada() && SELECAO.some(contaEhAmazon); }
 
     /** O vendedor e de uma conta da selecao? So a Overwine tem o id aqui; as demais se reconhecem pelos anuncios. */
     function ehVendedorDaSelecao(sellerId) {
@@ -6049,7 +6105,7 @@
       } catch (e) {
         if (SESSION_TOKEN === null) throw e;   // sessao expirada: quem chamou trata
       }
-      CONTAS_DISPONIVEIS = lista;
+      CONTAS_DISPONIVEIS = contasPermitidas(lista);
       if (!selecaoLegada()) {
         const todasValidas = SELECAO.every(id => { const c = contaInfo(id); return !!(c && c.selecionavel); });
         if (!todasValidas) {
@@ -6060,6 +6116,16 @@
         }
       }
       contaMontarSeletores();
+    }
+
+    /**
+     * Regra de negocio: a Amazon existe SO para a Overwine (Alem Mar). Uma
+     * conta Amazon de outra empresa (ex.: Degustar), mesmo declarada no
+     * backend, nunca aparece nem e selecionavel aqui.
+     */
+    function contasPermitidas(lista) {
+      const emp = ((lista || []).find(c => c && c.id === CONTA_LEGADA) || {}).empresa;
+      return (lista || []).filter(c => !!c && !(c.canal === 'amazon' && (!emp || c.empresa !== emp)));
     }
 
     function _contasSelecionaveis() { return CONTAS_DISPONIVEIS.filter(c => c.selecionavel); }
@@ -6089,16 +6155,33 @@
         (empresas.length > 1 ? '<option value="*">Todas (consolidado)</option>' : '');
       selC.innerHTML = canais.map(e => '<option value="' + esc(e.id) + '">' + esc(e.nome) + '</option>').join('') +
         (canais.length > 1 ? '<option value="*">Todos (consolidado)</option>' : '') +
-        futuros.map(e => '<option value="' + esc(e.id) + '" disabled>' + esc(e.nome) + ' (n\u00e3o conectado)</option>').join('');
+        futuros.map(e => '<option value="' + esc(e.id) + '" disabled data-futuro="1">' + esc(e.nome) + ' (n\u00e3o conectado)</option>').join('');
 
       const sel = SELECAO.map(contaInfo).filter(Boolean);
       const umaSo = (campo) => sel.length && sel.every(c => c[campo] === sel[0][campo]) ? sel[0][campo] : '*';
       selE.value = sel.length > 1 && empresas.length > 1 && umaSo('empresa') === '*' ? '*' : umaSo('empresa');
       selC.value = sel.length > 1 && canais.length > 1 && umaSo('canal') === '*' ? '*' : umaSo('canal');
+      _canaisDaEmpresa(selE, selC);
       wrap.dataset.empresa = selE.value;
       wrap.dataset.canal = selC.value;
       wrap.classList.add('visivel');
       wrap.title = selecaoRotulo();
+    }
+
+    /**
+     * Marketplace que a empresa escolhida nao tem fica desabilitado (ex.:
+     * Degustar so tem Mercado Livre: a opcao Amazon nao e escolhivel com ela).
+     * Se o marketplace atual ficou invalido, cai no primeiro valido da empresa.
+     */
+    function _canaisDaEmpresa(selE, selC) {
+      const e = selE.value, ok = _contasSelecionaveis();
+      const tem = canal => ok.some(x => (e === '*' || x.empresa === e) && (canal === '*' || x.canal === canal));
+      Array.from(selC.options).forEach(o => { if (!o.dataset.futuro) o.disabled = !tem(o.value); });
+      const atual = selC.options[selC.selectedIndex];
+      if (!atual || atual.disabled) {
+        const primeiro = Array.from(selC.options).find(o => !o.disabled && o.value !== '*') || Array.from(selC.options).find(o => !o.disabled);
+        if (primeiro) selC.value = primeiro.value;
+      }
     }
 
     function contaOnChange() {
@@ -6106,13 +6189,14 @@
       const selE = document.getElementById('conta-empresa');
       const selC = document.getElementById('conta-canal');
       if (!wrap || !selE || !selC) return;
+      if (selE.value !== wrap.dataset.empresa) _canaisDaEmpresa(selE, selC);
       const e = selE.value, c = selC.value;
       const ids = _contasSelecionaveis()
         .filter(x => (e === '*' || x.empresa === e) && (c === '*' || x.canal === c))
         .map(x => x.id);
       if (!ids.length) {
         showToast('Nenhuma conta conectada para essa combina\u00e7\u00e3o de empresa e marketplace.', 'error');
-        selE.value = wrap.dataset.empresa; selC.value = wrap.dataset.canal;
+        selE.value = wrap.dataset.empresa; _canaisDaEmpresa(selE, selC); selC.value = wrap.dataset.canal;
         return;
       }
       trocarSelecao(ids);
@@ -6152,7 +6236,27 @@
      * mensal de R$ 80.000, a cobertura alvo de 24 semanas. Ficam vazios, e a
      * tela diz que faltam — nao herdam.
      */
+    // Abas que leem o Mercado Livre direto (proxy, Full, Ads, reputacao). Sem
+    // nenhuma conta ML na selecao, somem; com Amazon junto, avisam que a
+    // Amazon nao entra nelas.
+    const ABAS_SO_MERCADO_LIVRE = ['estoquefull', 'qualidade', 'tipoanuncio', 'tipopedido', 'mlads', 'posicionamento', 'radar', 'relampago', 'entregas', 'cancelamentos'];
+    function aplicarAbasPorCanal() {
+      const temML = selecaoTemMercadoLivre(), temAmz = selecaoTemAmazon();
+      ABAS_SO_MERCADO_LIVRE.forEach(aba => {
+        document.querySelectorAll(`[onclick="switchTab('${aba}')"]`).forEach(b => {
+          b.style.display = temML ? '' : 'none';
+          b.title = temML && temAmz ? 'S\u00f3 Mercado Livre: a Amazon n\u00e3o entra nesta aba' : '';
+        });
+      });
+      // Sem conta ML na selecao, uma aba so-ML que estava aberta nao pode ficar na tela.
+      if (!temML && typeof switchTab === 'function'
+        && ABAS_SO_MERCADO_LIVRE.some(aba => document.getElementById('tab-' + aba)?.classList.contains('active'))) {
+        switchTab('visaogeral');
+      }
+    }
+
     function aplicarSelecaoNaInterface() {
+      aplicarAbasPorCanal();
       pubManualCarregar();
       try { _posSavedTerms = JSON.parse(localStorage.getItem(chaveLocal('pos_saved_terms')) || '[]'); } catch (e) { _posSavedTerms = []; }
       if (!Array.isArray(_posSavedTerms)) _posSavedTerms = [];
@@ -7646,7 +7750,7 @@
       if (pedidosEmMemoria()) {
         const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
         allOrders.forEach(o => {
-          if (o.status === 'cancelled') return;
+          if (pedidoForaDaVenda(o)) return;
           if (!dentroDoPeriodo(o.date_created, ini, fim)) return;
           const id = o.order_items?.[0]?.item?.id;
           if (!id) return;
@@ -7711,7 +7815,7 @@
       // Montar periodoData cruzando com pedidos e allItems
       const ordsByItem = {};
       allOrders.forEach(o => {
-        if (o.status === 'cancelled') return;
+        if (pedidoForaDaVenda(o)) return;
         const id = o.order_items?.[0]?.item?.id;
         if (!id) return;
         if (!ordsByItem[id]) ordsByItem[id] = { cnt: 0, revenue: 0, units: 0 };
@@ -7750,7 +7854,7 @@
         // Fallback: calcular so com pedidos (sem visitas)
         const ordsByItem = {};
         allOrders.forEach(o => {
-          if (o.status === 'cancelled') return;
+          if (pedidoForaDaVenda(o)) return;
           if (!dentroDoPeriodo(o.date_created, periodoDateInicio, periodoDateFim)) return;
           const id = o.order_items?.[0]?.item?.id;
           if (!id) return;
@@ -8174,7 +8278,7 @@
       // mes = date_created.slice(0,7)).
       if (pedidosEmMemoria()) {
         allOrders.forEach(o => {
-          if (o.status !== 'paid') return;
+          if (!pedidoPago(o)) return;
           const m = (o.date_created || '').slice(0, 7);
           if (m) byMonth[m] = (byMonth[m] || 0) + (o.paid_amount || 0);
         });
@@ -8206,7 +8310,7 @@
         const fonte = Array.isArray(allOrders) ? allOrders : [];
         let soma = 0, temDado = false;
         for (const o of fonte) {
-          if (o.status !== 'paid') continue;
+          if (!pedidoPago(o)) continue;
           const dt = o.date_created || '';
           if (dt.slice(0, 7) !== mes) continue;
           const d = parseInt(dt.slice(8, 10), 10);
@@ -8391,7 +8495,7 @@
           const cx = barCX(hIdx);
           // Onda D: a contagem por mes so e conhecida com o historico local.
           const cnt = pedidosEmMemoria()
-            ? allOrders.filter(o => o.status === 'paid' && o.date_created?.slice(0, 7) === meses[hIdx]).length
+            ? allOrders.filter(o => pedidoPago(o) && o.date_created?.slice(0, 7) === meses[hIdx]).length
             : null;
           const diff = v - meta;
           const pct = meta > 0 ? ((v / meta - 1) * 100).toFixed(1) : '0.0';
@@ -8571,7 +8675,7 @@
       if (pedidosEmMemoria()) {
         const _limiteRep = new Date(); _limiteRep.setDate(_limiteRep.getDate() - PERIODO_DIAS);
         (allOrders || []).forEach(o => {
-          if (o.status !== 'paid') return;
+          if (!pedidoPago(o)) return;
           const dt = new Date(o.date_created || 0);
           if (dt < _limiteRep) return;
           faturamentoPeriodo += o.paid_amount || o.total_amount || 0;
@@ -8755,8 +8859,12 @@
         const _avisoFin = document.getElementById('kpi-ressalva-financeiro');
         if (_avisoFin) {
           const txt = textoRessalvas(_k, false);
-          _avisoFin.style.display = txt ? 'block' : 'none';
-          _avisoFin.innerHTML = txt ? htmlAvisoSelecao('<b>L\u00edquido provis\u00f3rio.</b> ' + escHtml(txt)) : '';
+          const amz = textoFinanceiroAmazon(_ap && _ap.porConta);
+          const partes = [];
+          if (txt) partes.push('<b>L\u00edquido provis\u00f3rio.</b> ' + escHtml(txt));
+          if (amz) partes.push(amz);
+          _avisoFin.style.display = partes.length ? 'block' : 'none';
+          _avisoFin.innerHTML = partes.length ? htmlAvisoSelecao(partes.join('<br>')) : '';
         }
       } else {
         document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
@@ -8803,10 +8911,18 @@
       // seria um numero errado. Faturamento/liquido/tarifas acima vem de
       // calcLiquidoPeriodo sobre allOrders, que ja esta completo neste ponto.
       const _perOk = (_periodoLoadState === 'loaded');
-      document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      // A Amazon nao informa visitas: sem conta ML na selecao, visitas e
+      // conversao sao indisponiveis; com ML junto, as visitas sao so do ML e a
+      // conversao (vendas de todos / visitas do ML) seria falsa.
+      const _amzVis = selecaoTemAmazon();
+      const _motVis = 'A Amazon n\u00e3o informa visitas';
+      if (_perOk && _amzVis && !selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motVis);
+      else document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      if (_perOk && _amzVis && selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').title = 'S\u00f3 Mercado Livre: ' + _motVis.toLowerCase();
       document.getElementById('kpi-transacoes').textContent = _perOk ? totalTransacoes.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       document.getElementById('kpi-unidades').textContent = _perOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
-      document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
+      if (_perOk && _amzVis) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
+      else document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
       document.getElementById('kpi-ticket').textContent = _perOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
     }
 
@@ -8839,6 +8955,7 @@
     }
     function rotuloMetodo(metodo) {
       if (metodo === 'apurado_pedidos_envios') return 'valor real dos pedidos e envios';
+      if (metodo === 'transacoes_amazon') return 'Amazon: sem tarifa calculada';
       if (metodo === 'misto') return 'Overwine estimada + demais apuradas';
       return 'estimado';
     }
@@ -8849,6 +8966,34 @@
      * conferida contra o Mercado Livre. Hoje: pedido com reembolso parcial.
      * Devolve '' quando nao ha ressalva.
      */
+    /**
+     * Amazon: o dinheiro LANCADO (transacoes) e ate quando foi lido. Nunca e o
+     * faturamento (que vem dos pedidos) nem um liquido conciliado.
+     */
+    function textoFinanceiroAmazon(porConta) {
+      if (!porConta) return '';
+      const fmt = v => 'R$\u00a0' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const dt = d => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null;
+      const out = [];
+      Object.keys(porConta).forEach(id => {
+        const a = porConta[id] && porConta[id].amazon;
+        if (!a) return;
+        const lido = dt(a.lidoAte);
+        let t = '<b>' + escHtml(contaNome(id)) + ': financeiro lan\u00e7ado, n\u00e3o conciliado.</b> ';
+        if (!lido) { out.push(t + 'O financeiro ainda n\u00e3o foi lido: tarifa, frete e l\u00edquido indispon\u00edveis.'); return; }
+        t += 'Lido at\u00e9 ' + lido + '. De ' + a.pedidos.vendas + ' venda' + (a.pedidos.vendas === 1 ? '' : 's') + ' do per\u00edodo, ' +
+          a.pedidos.comTransacoes + ' com transa\u00e7\u00e3o lan\u00e7ada (' + fmt(a.lancadoDessasVendas) + ' lan\u00e7ados, sobre ' + fmt(a.faturamentoComTransacoes) + ' de faturamento)';
+        if (a.pedidos.semTransacoesAteLeitura) t += ', ' + a.pedidos.semTransacoesAteLeitura + ' sem transa\u00e7\u00e3o at\u00e9 essa data';
+        if (a.pedidos.foraDaLeitura) t += ', ' + a.pedidos.foraDaLeitura + ' fora do per\u00edodo lido';
+        t += '.';
+        if (a.retidas) t += ' ' + a.retidas + ' transa\u00e7\u00e3o(\u00f5es) retida(s).';
+        if (a.debitos && a.debitos.pedidos) t += ' ' + a.debitos.pedidos + ' venda(s) com d\u00e9bito lan\u00e7ado (' + fmt(a.debitos.valor) + '), possivelmente reembolso: o faturamento n\u00e3o foi reduzido.';
+        if (a.lancamentosSemPedido && a.lancamentosSemPedido.quantidade) t += ' Lan\u00e7amentos sem pedido no per\u00edodo: ' + fmt(a.lancamentosSemPedido.valor) + ' (n\u00e3o s\u00e3o venda).';
+        out.push(t);
+      });
+      return out.join('<br>');
+    }
+
     function textoRessalvas(conhecido, curto) {
       const rs = (conhecido && Array.isArray(conhecido.ressalvas)) ? conhecido.ressalvas : [];
       if (!rs.length) return '';
@@ -8902,7 +9047,7 @@
       if (!selecaoTemFinanceiro()) {
         let b = 0;
         allOrders.forEach(o => {
-          if (o.status !== 'paid') return;
+          if (!pedidoPago(o)) return;
           if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
           b += o.paid_amount || o.total_amount || 0;
         });
@@ -8918,7 +9063,7 @@
       let bruto = 0, tarifaML = 0, tarifaEnv = 0;
 
       allOrders.forEach(o => {
-        if (o.status !== 'paid') return; // somente pagos (nao cancelados, nao pendentes)
+        if (!pedidoPago(o)) return; // somente pagos (nao cancelados, nao pendentes)
         if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
 
         // Receita bruta = paid_amount (o que o comprador pagou pelo produto)
@@ -9111,6 +9256,7 @@
     // ======================================
     let _estFiltro = 'todos';
     let _estData = [];
+    let _estSemInfo = 0;   // SKUs da Amazon sem estoque proprio informado
 
     function estGetSKUData() {
       const hoje = new Date();
@@ -9122,7 +9268,7 @@
       const vendas30 = {};
       if (pedidosEmMemoria()) {
         allOrders.forEach(o => {
-          if (o.status === 'cancelled') return;
+          if (pedidoForaDaVenda(o)) return;
           const dt = new Date(o.date_created || 0);
           if (dt < limite30) return;
           (o.order_items || []).forEach(oi => {
@@ -9145,8 +9291,13 @@
         if (i.title.length < grupos[sku].label.length) grupos[sku].label = i.title;
       });
 
-      return Object.values(grupos).map(g => {
-        // Gestao de Estoque usa SOMENTE estoque proprio (exclui Full), sem duplicar
+      // Amazon sem estoque proprio informado (e sem anuncio do ML no grupo):
+      // o saldo e DESCONHECIDO. Fora da lista, contado a parte — nunca como 0,
+      // que viraria "ruptura" falsa.
+      const _semEstoqueInformado = g => g.items.every(i => isFbaItem(i) || (i.canal === 'amazon' && i.amazon && i.amazon.estoqueInformado === false));
+      _estSemInfo = Object.values(grupos).filter(_semEstoqueInformado).length;
+      return Object.values(grupos).filter(g => !_semEstoqueInformado(g)).map(g => {
+        // Gestao de Estoque usa SOMENTE estoque proprio (exclui Full e FBA), sem duplicar
         const est = consolidarEstoqueGrupo(g.items).proprio;
         const vel = +(g.vendas30 / 30).toFixed(2);
         const dias = vel > 0 ? Math.round(est / vel) : 9999;
@@ -9186,7 +9337,8 @@
         ? _estData
         : _estData.filter(g => g.tipo === _estFiltro);
 
-      document.getElementById('est-meta').textContent = `${dados.length} SKU${dados.length !== 1 ? 's' : ''}`;
+      document.getElementById('est-meta').textContent = `${dados.length} SKU${dados.length !== 1 ? 's' : ''}` +
+        (_estSemInfo ? ` \u00b7 ${_estSemInfo} da Amazon sem estoque pr\u00f3prio informado (fora da lista)` : '');
 
       // Labels e cores por tipo
       const TIPO = {
@@ -9405,18 +9557,19 @@
     function openDetail(id) {
       const item = allItems.find(i => i.id === id);
       if (!item) return;
+      const _amz = item.canal === 'amazon';
       document.getElementById('detail-title').textContent = item.title;
       document.getElementById('detail-content').innerHTML = `
     <div class="detail-row"><span class="detail-key">ID</span><span class="detail-val">${item.id}</span></div>
     <div class="detail-row"><span class="detail-key">Preco</span><span class="detail-val gold">R$\u00a0${fmtPrice(item.price)}</span></div>
     <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val"><span class="badge ${item.status}">${statusLabel(item.status)}</span></span></div>
-    <div class="detail-row"><span class="detail-key">Estoque</span><span class="detail-val">${item.available_quantity || 0} unidades</span></div>
+    <div class="detail-row"><span class="detail-key">Estoque</span><span class="detail-val">${(_amz && item.amazon && item.amazon.estoqueInformado === false) ? 'n\u00e3o informado pela Amazon' : (item.available_quantity || 0) + ' unidades'}</span></div>
     <div class="detail-row"><span class="detail-key">Qtd Vendida</span><span class="detail-val">${(item.sold_quantity || 0).toLocaleString('pt-BR')}</span></div>
     <div class="detail-row"><span class="detail-key">Tipo Anuncio</span><span class="detail-val">${item.listing_type_id || '-'}</span></div>
-    <div class="detail-row"><span class="detail-key">Logistica</span><span class="detail-val">${item.shipping?.logistic_type || '-'}</span></div>
-    <div class="detail-row"><span class="detail-key">Frete</span><span class="detail-val">${item.shipping?.free_shipping ? 'Gratis' : 'Pago'}</span></div>
+    <div class="detail-row"><span class="detail-key">Logistica</span><span class="detail-val">${_amz ? (isFbaItem(item) ? 'Amazon FBA (estoque no centro da Amazon)' : 'Estoque pr\u00f3prio (compartilhado com o ML)') : (item.shipping?.logistic_type || '-')}</span></div>
+    <div class="detail-row"><span class="detail-key">Frete</span><span class="detail-val">${_amz ? 'n\u00e3o informado' : (item.shipping?.free_shipping ? 'Gratis' : 'Pago')}</span></div>
     <div class="detail-row"><span class="detail-key">Atualizado</span><span class="detail-val">${item.last_updated ? new Date(item.last_updated).toLocaleDateString('pt-BR') : '-'}</span></div>
-    <div class="detail-row"><span class="detail-key">Ver no ML</span><span class="detail-val"><a href="${item.permalink}" target="_blank" class="detail-link">Abrir anuncio</a></span></div>
+    <div class="detail-row"><span class="detail-key">${_amz ? 'Ver na Amazon' : 'Ver no ML'}</span><span class="detail-val">${item.permalink ? `<a href="${item.permalink}" target="_blank" rel="noopener" class="detail-link">Abrir anuncio</a>` : '-'}</span></div>
     ${item.thumbnail ? `<div style="margin-top:24px;text-align:center"><img src="${item.thumbnail.replace('http:', 'https:')}" style="max-width:160px;border:1px solid var(--border)"/></div>` : ''}`;
       document.getElementById('detail-panel').style.display = 'block';
     }
@@ -9528,8 +9681,8 @@
         const dia = ymdBRT(o.date_created);  // dia do pedido em BRT
         const m = dia.slice(0, 7);
         const val = o.paid_amount || 0;
-        if (o.status === 'cancelled') { cancelCnt++; return; }
-        if (o.status === 'paid') {
+        if (pedidoForaDaVenda(o)) { if (pedidoCancelado(o)) cancelCnt++; return; }
+        if (pedidoPago(o)) {
           totalPago += val; cntPago++;
           if (dia === hoje) { hojVal += val; hojCnt++; }
           if (m === mes) { mesVal += val; mesCnt++; }
@@ -9552,6 +9705,7 @@
     // renderOrdTable SEM alteracao de conteudo, para que a primeira pagina
     // (preview) e a tabela definitiva produzam exatamente o mesmo HTML.
     function ordStatusBadge(s) {
+      if (String(s || '').indexOf('amazon:') === 0) return badgeStatusAmazon(s);
       if (s === 'paid') return `<span class="badge active">Pago</span>`;
       if (s === 'cancelled') return `<span class="badge closed">Cancelado</span>`;
       return `<span class="badge paused">${s}</span>`;
@@ -9581,7 +9735,7 @@
 
     function getFilteredOrders() {
       let orders = allOrders;
-      if (ordFilter !== 'all') orders = orders.filter(o => o.status === ordFilter);
+      if (ordFilter !== 'all') orders = orders.filter(o => filtroStatusPedido(o, ordFilter));
       // Periodo GLOBAL: compara como Date (nunca como string, para evitar bug
       // de timezone), do inicio do dia inicial ao fim do dia final em BRT.
       const g = gdrGet();
@@ -9599,7 +9753,7 @@
     function updateOrdFiltroCard() {
       const orders = getFilteredOrders();
       // O card diz "pedidos pagos" — contar somente pagos (nao pendentes, nao cancelados)
-      const pagos = orders.filter(o => o.status === 'paid');
+      const pagos = orders.filter(o => pedidoPago(o));
       const fat = pagos.reduce((s, o) => s + (o.paid_amount || o.total_amount || 0), 0);
       const card = document.getElementById('ord-filtro-card');
       const hasFilter = ordFilter !== 'all';
@@ -9686,6 +9840,7 @@
     }
 
     async function enrichOrderDetail(order) {
+      if (pedidoAmazon(order)) return; // detalhe vem do snapshot; o proxy e do Mercado Livre
       const oid = String(order.id);
       const sid = order.shipping?.id;
       const jobs = [];
@@ -9739,6 +9894,10 @@
     }
 
     function odLogisticaInfo(lt, mode) {
+      // Amazon: modalidades proprias, preservadas (nao viram Full/Flex do ML).
+      if (lt === 'amazon_fba') return { tag: 'FBA', cls: 'full', desc: 'Amazon FBA (estoque no centro da Amazon)' };
+      if (lt === 'amazon_easy_ship') return { tag: 'EASY SHIP', cls: 'flex', desc: 'Amazon Easy Ship (coleta pela Amazon, estoque do vendedor)' };
+      if (lt === 'amazon_envio_proprio') return { tag: 'PROPRIO', cls: 'proprio', desc: 'Envio pr\u00f3prio do vendedor na Amazon' };
       // Mapeia logistic_type do ML para tag visual
       if (lt === 'fulfillment') return { tag: 'FULL', cls: 'full', desc: 'Mercado Envios Full (estoque no CD do ML)' };
       if (lt === 'self_service') return { tag: 'FLEX', cls: 'flex', desc: 'Mercado Envios Flex (entrega propria no dia)' };
@@ -9775,6 +9934,7 @@
     }
 
     function odOrderStatusBadge(s) {
+      if (String(s || '').indexOf('amazon:') === 0) return badgeStatusAmazon(s);
       if (s === 'paid') return '<span class="badge active">Pago</span>';
       if (s === 'cancelled') return '<span class="badge closed">Cancelado</span>';
       return `<span class="badge paused">${escHtml(s || '-')}</span>`;
@@ -10083,7 +10243,7 @@
       // Filtro de status para as tabelas (o periodo ja foi aplicado acima)
       const applyFilters = ords => {
         let r = ords;
-        if (tpStatusFilter !== 'all') r = r.filter(o => o.status === tpStatusFilter);
+        if (tpStatusFilter !== 'all') r = r.filter(o => filtroStatusPedido(o, tpStatusFilter));
         return r;
       };
 
@@ -10097,6 +10257,7 @@
           dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       };
       const statusBadge = s => {
+        if (String(s || '').indexOf('amazon:') === 0) return badgeStatusAmazon(s);
         if (s === 'paid') return `<span class="badge active">Pago</span>`;
         if (s === 'cancelled') return `<span class="badge closed">Cancelado</span>`;
         return `<span class="badge paused">${s}</span>`;
@@ -10213,7 +10374,7 @@
         const estTotal = _est.confirmado ? _est.valor : 0;
         const vendasTotal = g.items.reduce((s, i) => s + (i.sold_quantity || 0), 0);
         const allOrd = g.items.flatMap(i => ordersByItem[i.id] || []);
-        const pedidosCnt = allOrd.filter(o => o.status !== 'cancelled').length;
+        const pedidosCnt = allOrd.filter(o => !pedidoForaDaVenda(o)).length;
         const prices = g.items.filter(i => i.status === 'active' && (i.price || 0) > 0).map(i => i.price);
         const precoMedio = prices.length ? prices.reduce((s, p) => s + p, 0) / prices.length : 0;
 
@@ -10222,7 +10383,7 @@
         // pagos (nao cancelados) de todos os anuncios do grupo.
         let valorVendido = 0, qtdVendida = 0;
         allOrd.forEach(o => {
-          if (o.status === 'cancelled') return;
+          if (pedidoForaDaVenda(o)) return;
           const oi = o.order_items?.[0];
           const qtd = oi?.quantity || 1;
           // paid_amount = total pago no pedido; dividido pela qtd da chega no unitario
@@ -10398,7 +10559,7 @@
         document.getElementById('canc-orders-table').innerHTML = '';
         return;
       }
-      const grandTotal = total + allOrders.filter(o => o.status === 'paid').length;
+      const grandTotal = total + allOrders.filter(o => pedidoPago(o)).length;
       const taxa = total / (grandTotal || 1) * 100;
       const valorTotal = allCancelledOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
       const sellerCount = allCancelledOrders.filter(o => o.cancel_detail?.group === 'seller').length;
@@ -11780,7 +11941,7 @@
       const vistos = new Set(); // evita duplicar o mesmo order_item do mesmo pedido
 
       allOrders.forEach(o => {
-        if (o.status !== 'paid') return;                       // somente pagas
+        if (!pedidoPago(o)) return;                       // somente pagas
         if (!dentroDoPeriodo(o.date_created, ini, fim)) return; // respeita periodo BRT
         (o.order_items || []).forEach((oi, idx) => {
           const itemId = oi.item?.id;
@@ -12051,7 +12212,7 @@
     function pvGroupByDay(fromYmd, toYmd) {
       const porDia = {}; // indice do dia no periodo -> total
       (allOrders || []).forEach(o => {
-        if (o.status !== 'paid') return;                 // somente pagos
+        if (!pedidoPago(o)) return;                 // somente pagos
         const ymd = ymdBRT(o.date_created);              // "YYYY-MM-DD" BRT
         if (!ymd || ymd < fromYmd || ymd > toYmd) return; // so o periodo global
         const d = gdrDiasEntre(fromYmd, ymd);
@@ -12458,7 +12619,7 @@
         out[g.sku] = {
           sku: g.sku,
           label: g.label,
-          estoque: c.proprio + c.full,
+          estoque: c.proprio + c.full + c.fba,
           categoria: grCategoria(g.label),
         };
       });
@@ -12480,7 +12641,7 @@
       const skuMap = apItemSkuMap(); // item_id -> sku (reuso)
       const out = {}; // sku -> { totalQty, totalRev, porSemana: {semana: qtd} }
       (allOrders || []).forEach(o => {
-        if (o.status !== 'paid') return;
+        if (!pedidoPago(o)) return;
         if (!dentroDoPeriodo(o.date_created, ini, fim)) return;
         const dt = new Date(o.date_created);
         const semana = Math.floor(grSemanasEntre(ini, dt)) + 1; // semana 1, 2, ...
@@ -12711,7 +12872,7 @@
             totalCalls++;
             const results = data.results || [];
             results.forEach(o => {
-              if (o.status !== 'paid') return;
+              if (!pedidoPago(o)) return;
               mesRev += o.paid_amount || o.total_amount || 0;
               (o.order_items || []).forEach(oi => { mesQtd += oi.quantity || 1; });
               mesPedidos++;
@@ -14297,7 +14458,7 @@
 
       const vendas30 = {};
       allOrders.forEach(o => {
-        if (o.status === 'cancelled') return;
+        if (pedidoForaDaVenda(o)) return;
         if (new Date(o.date_created || 0) < limite30) return;
         (o.order_items || []).forEach(oi => {
           const id = oi.item?.id;
@@ -14874,6 +15035,7 @@
      * com o relogio errado nao mostra idade negativa nem de horas.
      */
     let _pedidosCheckRecebidoEmMs = 0;   // Date.now() local quando o status chegou
+    let _ultimoAmazon = null;            // estado de atualizacao da Amazon (status.amazon), quando ha
     let _pedidosIdadeCheckS = null;       // idade do ultimo check, segundo o servidor
     let _pedidosIndicadorTimer = null;
     /**
@@ -14990,6 +15152,7 @@
      * `updatedAt` (quando o snapshot MUDOU) segue em `_ultimoUpdatedAt`.
      */
     function registrarStatusPedidos(body) {
+      _ultimoAmazon = (body && body.amazon) ? body.amazon : null;
       _pedidosFalha = _falhaSyncDoStatus(body);
       const idade = _idadeDoUltimoCheck(body);
       _pedidosIdadeCheckS = (idade === null) ? null : idade;
@@ -15095,11 +15258,33 @@
         texto = 'Pedidos atrasados h\u00e1 ' + (min >= 120 ? Math.floor(min / 60) + 'h' : min + 'min') + ' \u2014 tentando sincronizar';
       }
       if (_ultimoPartial && !atrasado && !falhou) texto += ' \u00b7 sincronizacao em andamento';
-      el.textContent = texto + mudou;
+      const amz = textoAtualizacaoAmazon(_ultimoAmazon);
+      el.textContent = texto + mudou + (amz.curto ? ' \u00b7 ' + amz.curto : '');
       el.style.color = falhou ? 'var(--red)' : (atrasado ? 'var(--amber)' : '');
       el.title = (falhou && _pedidosFalha.motivo ? ('Motivo: ' + _pedidosFalha.motivo + '\n') : '') +
         (_ultimoNewestDate ? ('Pedido mais recente: ' + _ultimoNewestDate + '\n') : '') +
-        (_ultimoUpdatedAt ? ('Ultima publicacao do snapshot: ' + _ultimoUpdatedAt) : '');
+        (_ultimoUpdatedAt ? ('Ultima publicacao do snapshot: ' + _ultimoUpdatedAt) : '') + (amz.longo ? '\n' + amz.longo : '');
+    }
+
+    /**
+     * Amazon: de onde vem a atualizacao. Com a aba aberta, o dashboard pede
+     * dentro da cota da Amazon; sem aba, so a reconciliacao agendada, SEM
+     * horario garantido. `body.amazon` e um objeto (uma conta) ou um mapa
+     * conta -> estado (consolidado).
+     */
+    function textoAtualizacaoAmazon(a) {
+      if (!a) return { curto: '', longo: '' };
+      const lista = a.ultimoPasso !== undefined ? [['Amazon', a]] : Object.keys(a).map(id => [contaNome(id), a[id]]);
+      const hm = d => d ? new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : null;
+      const curto = [], longo = [];
+      lista.forEach(([nome, e]) => {
+        const prox = hm(e.proximaConsultaPedidosEm);
+        const falhou = e.ultimoPasso && e.ultimoPasso.ok === false;
+        curto.push(nome + (falhou ? ': \u00faltima consulta falhou' : prox ? ': pr\u00f3xima consulta de pedidos \u00e0s ' + prox : ': consulta liberada'));
+        longo.push(nome + ': pedidos lidos at\u00e9 ' + (hm(e.pedidosLidosAte) || '\u2014') + ', financeiro lido at\u00e9 ' + (hm(e.financeiroLidoAte) || '\u2014') +
+          '. Com esta aba aberta o painel pede atualiza\u00e7\u00e3o dentro da cota da Amazon; sem aba aberta, s\u00f3 a reconcilia\u00e7\u00e3o agendada, sem hor\u00e1rio garantido.');
+      });
+      return { curto: curto.join(' \u00b7 '), longo: longo.join('\n') };
     }
 
     /** Liga o tique de 1s do indicador. Idempotente, como o poll. */
@@ -15922,7 +16107,7 @@
       allItems.forEach(i => { itemMap[i.id] = i; });
 
       return allOrders
-        .filter(o => o.status !== 'cancelled')
+        .filter(o => !pedidoForaDaVenda(o))
         .map(o => {
           const oi = o.order_items?.[0];
           const itemId = oi?.item?.id || '';
