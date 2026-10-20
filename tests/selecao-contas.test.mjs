@@ -98,6 +98,7 @@ function montar({ guardada = null, fetchFalso = null, itens = [] } = {}) {
     extrairFuncao('contasSemFinanceiro'),
     extrairFuncao('chaveLocal'),
     extrairFuncao('contasParaProxy'),
+    extrairFuncao('contaEhAmazon'),
     extrairFuncao('ehVendedorDaSelecao'),
     extrairFuncao('contaDe'),
     extrairFuncao('_comParametro'),
@@ -575,9 +576,14 @@ describe('estoque no Consolidado por produto — so deduplica com vinculo explic
   function montarEst() {
     const fonte = [
       "const CONTA_LEGADA = 'overwine-ml';",
+      "const CONTAS_DISPONIVEIS = [{ id: 'overwine-ml', empresa: 'alemmar', canal: 'ml' }, { id: 'degustar-ml', empresa: 'degustar', canal: 'ml' }];",
+      extrairFuncao('contaInfo'),
+      extrairFuncao('contaDaEmpresaOverwine'),
       "function itemSKU(i) { return i.seller_custom_field || ('sem-sku-' + i.id); }",
       extrairFuncao('isFullItem'),
       extrairFuncao('fullStockKey'),
+      extrairFuncao('pedidoAmazon'),
+      extrairFuncao('isFbaItem'),
       extrairFuncao('consolidarEstoqueGrupo'),
       extrairFuncao('estoqueDoGrupo'),
       extrairFuncao('textoEstoqueNaoConfirmado'),
