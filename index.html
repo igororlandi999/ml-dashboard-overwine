@@ -14609,6 +14609,17 @@
       if (!Number.isFinite(d.getTime())) return '-';
       return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
+    /**
+     * Prazo para exibir: com o horario-limite do SLA quando o ML o envia
+     * ("21/10, 23:59", em Brasilia); so a data quando o prazo e data pura.
+     */
+    function expPrazoTexto(e) {
+      if (e && e.prazoLimiteEm) {
+        const d = new Date(e.prazoLimiteEm);
+        if (Number.isFinite(d.getTime())) return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      }
+      return expDiaCurto(e && e.prazoPostagem);
+    }
     function expLogistica(t) {
       return ({ xd_drop_off: 'Agência', drop_off: 'Agência', cross_docking: 'Coleta', self_service: 'Flex', fulfillment: 'Full' })[t] || (t || 'logística não informada');
     }
@@ -14939,8 +14950,8 @@
       const ped = '#' + escHtml(p.pedidos[0]) + (p.pedidos.length > 1 ? ' <small>+' + (p.pedidos.length - 1) + ' pedido' + (p.pedidos.length > 2 ? 's' : '') + ' no pacote</small>' : '');
       const itens = Object.values(p.itens).map(it => '<li><span class="q">' + (it.qtdDesconhecida ? '?' : it.qtd + '×') + '</span><span>' + escHtml(it.titulo) + '</span></li>').join('');
       let data = '', badge = '';
-      if (g === 'a_enviar') { data = '<span class="exp-data">Postar até ' + expDiaCurto(e.prazoPostagem) + '</span>'; badge = '<span class="badge ouro">A enviar</span>'; }
-      else if (g === 'atrasado') { data = '<span class="exp-data atraso">Prazo era ' + expDiaCurto(e.prazoPostagem) + '</span>'; badge = '<span class="badge atraso">Atrasado</span>'; }
+      if (g === 'a_enviar') { data = '<span class="exp-data">Postar até ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge ouro">A enviar</span>'; }
+      else if (g === 'atrasado') { data = '<span class="exp-data atraso">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge atraso">Atrasado</span>'; }
       else if (g === 'sem_prazo') { data = '<span class="exp-data falta">Prazo não informado</span>'; badge = '<span class="badge alerta">Sem prazo</span>'; }
       else if (g === 'programado') { data = '<span class="exp-data">' + (e.liberacaoEm ? 'Liberação em ' + expDiaCurto(e.liberacaoEm) : 'Liberação não informada') + '</span>'; badge = '<span class="badge paused">Programado</span>'; }
       else if (g === 'despachado') { data = '<span class="exp-data">Despachado ' + expInstante(e.despachadoEm) + '</span>'; badge = '<span class="badge active">Despachado</span>'; }

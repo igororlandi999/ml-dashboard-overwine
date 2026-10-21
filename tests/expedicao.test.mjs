@@ -41,7 +41,8 @@ const m = new Function([
   extrairFuncao('expResumo'),
   extrairFuncao('expValorCard'),
   extrairFuncao('expDiaCurto'),
-  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto };',
+  extrairFuncao('expPrazoTexto'),
+  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto, expPrazoTexto };',
 ].join('\n'))();
 
 const HOJE = '2026-10-21';
@@ -158,6 +159,13 @@ describe('contagem — ausente nao e zero', () => {
     assert.equal(r.a_enviar, 0);
     assert.equal(r.atrasado, 1);
     assert.equal(r.aEnviarIncompleto, false);
+  });
+
+  test('prazo exibido com o horario-limite do SLA em Brasilia; sem horario, so a data', () => {
+    assert.match(m.expPrazoTexto({ prazoPostagem: '2026-10-21', prazoLimiteEm: '2026-10-21T23:59:59.000-03:00' }), /21\/10.*23:59/);
+    // 02:59 UTC de 22/10 = 23:59 de 21/10 em Brasilia
+    assert.match(m.expPrazoTexto({ prazoPostagem: '2026-10-21', prazoLimiteEm: '2026-10-22T02:59:00.000Z' }), /21\/10.*23:59/);
+    assert.equal(m.expPrazoTexto({ prazoPostagem: '2026-10-21', prazoLimiteEm: null }), '21/10');
   });
 
   test('dia civil do prazo exibido sem fuso', () => {
