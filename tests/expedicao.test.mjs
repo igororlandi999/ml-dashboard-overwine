@@ -77,6 +77,18 @@ describe('pacotes', () => {
     assert.deepEqual(Object.keys(p), ['overwine-ml|900']);
   });
 
+  test('pedido antigo (60 dias) ainda aberto entra na janela de 90 dias; e fica visivel como vencido/atrasado em qualquer dia', () => {
+    const p = m.expMontarPacotes([ped(1, 950, { date_created: '2026-08-22T10:00:00.000-03:00' })], {}, '2026-07-23', 'overwine-ml');
+    assert.ok(p['overwine-ml|950']);
+    const vencido = { situacao: 'pendente', prazoPostagem: '2026-08-25', atrasoML: 'nao_indicado' };
+    const confirmado = { situacao: 'pendente', prazoPostagem: '2026-08-25', atrasoML: 'confirmado' };
+    for (const dia of [HOJE, '2026-10-22']) {
+      assert.equal(m.expGrupo(vencido, dia, HOJE), 'prazo_vencido');
+      assert.equal(m.expGrupo(confirmado, dia, HOJE), 'atrasado');
+      assert.equal(m.expGrupo({ situacao: 'programado', liberacaoEm: '2026-08-30' }, dia, HOJE), 'programado');
+    }
+  });
+
   test('logistica desconhecida no mapa entra para consulta (o backend diz se e Full)', () => {
     const p = m.expMontarPacotes([ped(1, 905)], { '999': 'fulfillment' }, '2026-09-21', 'overwine-ml');
     assert.ok(p['overwine-ml|905']);

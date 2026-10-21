@@ -3057,6 +3057,8 @@
     #tab-expedicao .exp-secao-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-family: var(--font-display); font-size: 15px; color: var(--gold); padding: 6px 2px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
     #tab-expedicao .exp-secao-titulo small { font-family: var(--font-body); font-size: 11px; color: var(--muted); }
     #tab-expedicao .exp-secao.atraso .exp-secao-titulo { color: var(--red); }
+    #tab-expedicao .exp-secao.vencido .exp-secao-titulo { color: var(--amber); }
+    #tab-expedicao .exp-pacote.g-prazo_vencido { background: rgba(232, 168, 74, 0.05); }
     #tab-expedicao .exp-lista { display: grid; grid-template-columns: 1fr; gap: 8px; }
     #tab-expedicao .exp-pacote { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); padding: 12px 14px; }
     #tab-expedicao .exp-pacote.g-a_enviar { border-left-color: var(--gold); }
@@ -14592,7 +14594,8 @@
     //  - Amazon: indisponivel ate haver fonte confiavel de prazo e despacho.
     //    Nenhuma regra do ML e aplicada a ela.
     // ══════════════════════════════════════
-    const EXP_JANELA_DIAS = 30;          // pedidos criados ate N dias antes do dia mais antigo em vista
+    const EXP_JANELA_DIAS = 30;          // 1a fase: pedidos ate N dias antes do dia em vista (carga rapida)
+    const EXP_JANELA_MAX_DIAS = 90;      // 2a fase, em segundo plano: pendentes, programados e atrasos antigos
     const EXP_LOTE = 50;                 // ids por chamada (limite do backend)
     const EXP_TICK_MS = 60000;           // re-render com os pedidos do snapshot
     const EXP_CONSULTA_MS = 110000;      // nova consulta ao backend (cache curto dos pendentes: 120 s)
@@ -14611,6 +14614,8 @@
     let _expPedidos = null;              // pedidos da janela recente, lidos direto da lista
     let _expPedidosChave = null;         // snapshot + selecao + janela em que _expPedidos foi lido
     let _expCarregandoPedidos = false;
+    let _expCursorResto = null;          // onde a 2a fase continua a leitura da lista
+    let _expPedidosCompletos = false;    // a janela inteira (90 dias) ja foi lida
     let _expMetricas = null;             // numeros da ultima carga, para "Detalhes da consulta"
 
     function expHoje() { return hojeBRT(); }
@@ -14739,10 +14744,18 @@
     }
 
     function expContaPadrao() { return SELECAO[0] || CONTA_LEGADA; }
+    /** Inicio da janela COMPLETA (90 dias): pacotes que a aba considera. */
     function expDesde() {
+      const base = expDia() < expHoje() ? expDia() : expHoje();
+      return expSomarDias(base, -EXP_JANELA_MAX_DIAS);
+    }
+    /** Inicio da 1a fase (30 dias): o que e lido antes da primeira consulta. */
+    function expDesdeRapido() {
       const base = expDia() < expHoje() ? expDia() : expHoje();
       return expSomarDias(base, -EXP_JANELA_DIAS);
     }
+    /** A janela ainda esta sendo completada em segundo plano? */
+    function expLeituraParcial() { return !pedidosEmMemoria() && !_expPedidosCompletos; }
     /** Pedidos-base: o historico completo se ja estiver em memoria; senao, a janela recente lida pela aba. */
     function expPedidosBase() { return pedidosEmMemoria() ? allOrders : (_expPedidos || []); }
     function expPronto() { return pedidosEmMemoria() || _expPedidos !== null; }
@@ -14755,33 +14768,61 @@
      * esperar o historico completo. Rele apenas quando o snapshot, a selecao ou
      * a janela mudam: economia de comandos no Redis.
      */
+    /** Le paginas da lista a partir de `cursor` ate passar de `limiteYmd`. */
+    async function expLerPaginas(cursor, limiteYmd) {
+      const lidos = []; let paginas = 0;
+      for (;;) {
+        const res = await backendFetch('/api/orders/list?alvo=ativos&pageSize=' + EXP_PAGINA + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
+        const b = await res.json().catch(() => null);
+        if (res.status === 409 || (res.status === 400 && b && b.error === 'invalid_cursor')) return { mudou: true };
+        if (!res.ok || !b || !Array.isArray(b.items)) throw new Error((b && b.error) || ('HTTP ' + res.status));
+        paginas++;
+        for (const o of b.items) lidos.push(o);
+        const ultimo = b.items.length ? b.items[b.items.length - 1] : null;
+        cursor = b.nextCursor || null;
+        if (!cursor || !ultimo || !ultimo.date_created || ymdBRT(ultimo.date_created) < limiteYmd) return { lidos, paginas, cursor };
+      }
+    }
+
+    /**
+     * 1a fase: so os ultimos 30 dias da lista (mais novos primeiro), sem esperar
+     * o historico completo. Rele apenas quando o snapshot, a selecao ou a janela
+     * mudam: economia de comandos no Redis.
+     */
     async function expCarregarPedidos() {
       if (pedidosEmMemoria() || _expCarregandoPedidos) return;
-      const desde = expDesde();
-      const chave = String(typeof _ultimoUpdatedAt !== 'undefined' ? _ultimoUpdatedAt : '') + '|' + selecaoChave() + '|' + desde;
+      const chave = String(typeof _ultimoUpdatedAt !== 'undefined' ? _ultimoUpdatedAt : '') + '|' + selecaoChave() + '|' + expDesde();
       if (_expPedidos !== null && _expPedidosChave === chave) return;
       _expCarregandoPedidos = true;
       const t0 = Date.now();
       try {
         for (let tentativa = 0; tentativa < 2; tentativa++) {
-          const lidos = []; let cursor = null, paginas = 0, mudou = false;
-          for (;;) {
-            const res = await backendFetch('/api/orders/list?alvo=ativos&pageSize=' + EXP_PAGINA + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
-            const b = await res.json().catch(() => null);
-            if (res.status === 409 && b && b.error === 'snapshot_changed') { mudou = true; break; }
-            if (!res.ok || !b || !Array.isArray(b.items)) throw new Error((b && b.error) || ('HTTP ' + res.status));
-            paginas++;
-            for (const o of b.items) lidos.push(o);
-            const ultimo = b.items.length ? b.items[b.items.length - 1] : null;
-            cursor = b.nextCursor;
-            if (!cursor || !ultimo || !ultimo.date_created || ymdBRT(ultimo.date_created) < desde) break;
-          }
-          if (mudou) continue;
-          _expPedidos = lidos; _expPedidosChave = chave;
-          _expMetricas = Object.assign(_expMetricas || {}, { pedidosLidos: lidos.length, paginas, msPedidos: Date.now() - t0, fontePedidos: 'janela recente' });
+          const r = await expLerPaginas(null, expDesdeRapido());
+          if (r.mudou) continue;
+          _expPedidos = r.lidos; _expPedidosChave = chave;
+          _expCursorResto = r.cursor;
+          _expPedidosCompletos = !r.cursor || ymdBRT((r.lidos[r.lidos.length - 1] || {}).date_created || '2000-01-01') < expDesde();
+          _expMetricas = Object.assign(_expMetricas || {}, { pedidosLidos: r.lidos.length, paginas: r.paginas, msPedidos: Date.now() - t0 });
           return;
         }
         throw new Error('o snapshot de pedidos mudou durante a leitura');
+      } finally {
+        _expCarregandoPedidos = false;
+      }
+    }
+
+    /** 2a fase, em segundo plano: completa a janela ate 90 dias a partir de onde a 1a parou. */
+    async function expCarregarResto() {
+      if (pedidosEmMemoria() || _expPedidosCompletos || _expCarregandoPedidos || !_expCursorResto) return;
+      _expCarregandoPedidos = true;
+      const t0 = Date.now();
+      try {
+        const r = await expLerPaginas(_expCursorResto, expDesde());
+        if (r.mudou) { _expPedidosChave = null; return; }   // snapshot mudou: a proxima passada rele do inicio
+        _expPedidos = (_expPedidos || []).concat(r.lidos);
+        _expCursorResto = r.cursor; _expPedidosCompletos = true;
+        const mt = _expMetricas || {};
+        _expMetricas = Object.assign(mt, { pedidosLidos: (mt.pedidosLidos || 0) + r.lidos.length, paginas: (mt.paginas || 0) + r.paginas, msPedidosResto: Date.now() - t0 });
       } finally {
         _expCarregandoPedidos = false;
       }
@@ -14880,7 +14921,15 @@
       catch (e) { if (!(e && e.selecaoMudou)) _expErro = 'Não foi possível ler os pedidos recentes (' + ((e && e.message) || 'erro') + '). Nova tentativa na próxima atualização.'; }
       expMontarFiltros();
       expRender();
-      if (expPronto()) await expConsultar();
+      if (!expPronto()) return;
+      await expConsultar();
+      // 2a fase: pedidos de 31 a 90 dias, depois que o dia em vista ja respondeu.
+      if (expLeituraParcial()) {
+        try { await expCarregarResto(); }
+        catch (e) { if (!(e && e.selecaoMudou)) _expErro = 'Não foi possível ler os pedidos de 31 a 90 dias (' + ((e && e.message) || 'erro') + '). Nova tentativa na próxima atualização.'; }
+        expRender();
+        await expConsultar();
+      }
     }
 
     function expAbaAtiva() {
@@ -14988,6 +15037,8 @@
       const pacotes = {};
       if (mostrarML) for (const [k, p] of Object.entries(todos)) if (fEmp === '*' || empresaDaConta(p.conta) === fEmp) pacotes[k] = p;
       const r = expResumo(pacotes, _expEnvios, dia, hoje);
+      // Enquanto a janela de 90 dias nao foi lida, um pedido antigo pode mudar as contagens.
+      if (expLeituraParcial()) { r.aEnviarIncompleto = !r.diaPassado; r.despachadoIncompleto = true; r.atrasadoIncompleto = true; }
 
       // Avisos
       const av = [];
@@ -14999,6 +15050,7 @@
         if (r.sem_prazo) falta.push(r.sem_prazo + ' pendente' + (r.sem_prazo > 1 ? 's' : '') + ' sem prazo de postagem informado pelo Mercado Livre');
         if (r.nao_classificado) falta.push(r.nao_classificado + ' não classificado' + (r.nao_classificado > 1 ? 's' : ''));
         if (r.despachado_sem_data) falta.push(r.despachado_sem_data + ' despachado' + (r.despachado_sem_data > 1 ? 's' : '') + ' sem data');
+        if (expLeituraParcial()) falta.push('pedidos de 31 a ' + EXP_JANELA_MAX_DIAS + ' dias ainda sendo lidos em segundo plano');
         if (r.vencidoSemRespostaML) falta.push(r.vencidoSemRespostaML + ' com prazo vencido sem resposta do Mercado Livre sobre atraso');
         if (falta.length) av.push('<div class="exp-aviso"><strong>Consulta incompleta:</strong> ' + falta.join('; ') + '. As contagens marcadas com ? ou ≥ podem ser maiores.</div>');
         if (r.diaPassado) av.push('<div class="exp-aviso neutro">Dia passado: o que ficou sem despachar aparece em <strong>Prazo vencido</strong> ou, se o Mercado Livre confirmar o atraso, em <strong>Atrasados</strong>. Não em A enviar.</div>');
@@ -15032,7 +15084,7 @@
 
       const SECOES = [
         ['atrasado', 'Atrasados', 'atraso confirmado pelo Mercado Livre', 'atraso'],
-        ['prazo_vencido', 'Prazo vencido', 'prazo passou pela nossa comparação de datas; o Mercado Livre não confirma atraso', ''],
+        ['prazo_vencido', 'Prazo vencido', 'prazo passou pela nossa comparação de datas; o Mercado Livre não confirma atraso', 'vencido'],
         ['a_enviar', 'A enviar', 'prazo oficial de postagem em ' + expDiaCurto(dia), ''],
         ['sem_prazo', 'Prazo não informado', 'pendentes sem prazo oficial: podem ser do dia', ''],
         ['consultando', 'Consultando', 'ainda sem resposta; os mais próximos do dia vão primeiro', ''],
@@ -15070,8 +15122,9 @@
       if (mt) {
         const seg = (ms) => ms === null || ms === undefined ? '-' : (ms / 1000).toFixed(1).replace('.', ',') + ' s';
         html.push('<details class="exp-metricas"><summary>Detalhes da consulta</summary><dl>' +
-          '<dt>Pedidos lidos</dt><dd>' + (mt.pedidosLidos !== undefined ? mt.pedidosLidos + ' em ' + mt.paginas + ' página(s), ' + seg(mt.msPedidos) : 'histórico já em memória') + '</dd>' +
-          '<dt>Pacotes na janela</dt><dd>' + (mt.pacotes ?? '-') + ' (desde ' + expDiaCurto(expDesde()) + ')</dd>' +
+          '<dt>Pedidos lidos</dt><dd>' + (mt.pedidosLidos !== undefined ? mt.pedidosLidos + ' em ' + mt.paginas + ' página(s); 30 dias em ' + seg(mt.msPedidos) + (mt.msPedidosResto !== undefined ? ', 31 a ' + EXP_JANELA_MAX_DIAS + ' dias em ' + seg(mt.msPedidosResto) : '') : 'histórico já em memória') + '</dd>' +
+          '<dt>Janela</dt><dd>' + EXP_JANELA_MAX_DIAS + ' dias (desde ' + expDiaCurto(expDesde()) + ')' + (expLeituraParcial() ? ', completando em segundo plano' : '') + '. Pedidos mais antigos não são verificados.</dd>' +
+          '<dt>Pacotes na janela</dt><dd>' + (mt.pacotes ?? '-') + '</dd>' +
           '<dt>Na fila da última consulta</dt><dd>' + (mt.naFila ?? '-') + ', ' + (mt.prioritarios ?? '-') + ' prioritários</dd>' +
           '<dt>Requisições ao backend</dt><dd>' + (mt.requisicoes ?? '-') + '</dd>' +
           '<dt>Chamadas ao Mercado Livre</dt><dd>' + (mt.chamadasML ?? '-') + '</dd>' +
