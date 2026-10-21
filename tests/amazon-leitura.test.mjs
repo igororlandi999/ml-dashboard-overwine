@@ -262,3 +262,83 @@ describe('regras de negócio da Amazon (revisão 10/2026)', () => {
     assert.match(f, /switchTab\('visaogeral'\)/);
   });
 });
+
+describe('rótulos por canal: nome de tela separado da chave de agrupamento', () => {
+  const REG = [
+    { id: 'overwine-ml', empresa: 'alemmar', empresaRotulo: 'Além Mar (Overwine)', canal: 'ml', canalRotulo: 'Mercado Livre' },
+    { id: 'degustar-ml', empresa: 'degustar', empresaRotulo: 'Degustar', canal: 'ml', canalRotulo: 'Mercado Livre' },
+    { id: 'alemmar-amazon', empresa: 'alemmar', empresaRotulo: 'Além Mar (Overwine)', canal: 'amazon', canalRotulo: 'Amazon' },
+  ];
+  function montarRotulos(selecao) {
+    const fonte = [
+      'const CONTAS_DISPONIVEIS = arguments[0];',
+      "const CONTA_LEGADA = 'overwine-ml';",
+      'let SELECAO = arguments[1];',
+      'let allItems = [];',
+      extrairFuncao('selecaoConsolidada'),
+      extrairFuncao('contaInfo'),
+      extrairFuncao('empresaNome'),
+      extrairFuncao('empresaDaConta'),
+      extrairFuncao('canalCurto'),
+      extrairFuncao('contaNome'),
+      'function _skuDoVendedor(i) { return i.seller_custom_field || null; }',
+      'function _skuPorCatalogo() { return new Map(); }',
+      extrairFuncao('itemSKU'),
+      extrairFuncao('textoCatalogoDesatualizado'),
+      extrairFuncao('escHtml'),
+      extrairFuncao('textoFinanceiroAmazon'),
+      extrairFuncao('textoAtualizacaoAmazon'),
+      'return { contaNome, empresaDaConta, itemSKU, textoCatalogoDesatualizado, textoFinanceiroAmazon, textoAtualizacaoAmazon };',
+    ].join('\n');
+    return new Function(fonte)(REG, selecao);
+  }
+
+  test('nome de tela: Amazon sempre com canal; ML ganha "ML" só quando a seleção mistura canais da mesma empresa', () => {
+    assert.equal(montarRotulos(['overwine-ml']).contaNome('overwine-ml'), 'Overwine');
+    assert.equal(montarRotulos(['alemmar-amazon']).contaNome('alemmar-amazon'), 'Overwine Amazon');
+    const mista = montarRotulos(['overwine-ml', 'alemmar-amazon']);
+    assert.deepEqual(['overwine-ml', 'alemmar-amazon'].map(mista.contaNome), ['Overwine ML', 'Overwine Amazon']);
+    const comDegustar = montarRotulos(['overwine-ml', 'degustar-ml']);
+    assert.deepEqual(['overwine-ml', 'degustar-ml'].map(comDegustar.contaNome), ['Overwine', 'Degustar']);
+  });
+
+  test('chave de SKU: mesma empresa = mesma chave, qualquer que seja o nome de tela', () => {
+    const m = montarRotulos(['overwine-ml', 'alemmar-amazon', 'degustar-ml']);
+    const ml = m.itemSKU({ seller_custom_field: '21101', conta: 'overwine-ml' });
+    const amz = m.itemSKU({ seller_custom_field: '21101', conta: 'alemmar-amazon' });
+    const deg = m.itemSKU({ seller_custom_field: '21101', conta: 'degustar-ml' });
+    assert.equal(ml, amz, 'ML e Amazon da Overwine continuam no mesmo grupo');
+    assert.equal(ml, '21101 · Overwine');
+    assert.notEqual(ml, deg, 'Degustar nunca agrupa com a Overwine');
+    assert.notEqual(m.contaNome('overwine-ml'), m.contaNome('alemmar-amazon'), 'mas o nome de tela diferencia o canal');
+    assert.doesNotMatch(extrairFuncao('itemSKU'), /contaNome\(/);
+  });
+
+  test('textos de financeiro e atualização dizem "Overwine Amazon", não "Overwine"', () => {
+    const m = montarRotulos(['overwine-ml', 'alemmar-amazon']);
+    const fin = m.textoFinanceiroAmazon({ 'alemmar-amazon': { amazon: { lidoAte: null } } });
+    assert.match(fin, /^<b>Overwine Amazon: financeiro lan/);
+    const atu = m.textoAtualizacaoAmazon({ 'alemmar-amazon': { ultimoPasso: { ok: true }, proximaConsultaPedidosEm: null } });
+    assert.match(atu.curto, /^Overwine Amazon: /);
+  });
+
+  test('catálogo desatualizado diz de qual canal; no consolidado não chuta', () => {
+    assert.equal(montarRotulos(['overwine-ml']).textoCatalogoDesatualizado(), 'Catalogo Mercado Livre desatualizado');
+    assert.equal(montarRotulos(['alemmar-amazon']).textoCatalogoDesatualizado(), 'Catalogo Amazon desatualizado');
+    assert.match(montarRotulos(['overwine-ml', 'alemmar-amazon']).textoCatalogoDesatualizado(), /ao menos uma conta/);
+  });
+
+  test('KPIs: "ML" só com Mercado Livre, "Amazon" só com Amazon, sem sufixo na mistura', () => {
+    const els = {};
+    const documento = { getElementById: id => (els[id] = els[id] || { textContent: id === 'kpi-liq-pct' ? 'apos tarifas ML + envio' : '' }) };
+    const rodar = (ml, amz) => {
+      Object.keys(els).forEach(k => delete els[k]);
+      new Function('document', 'selecaoTemMercadoLivre', 'selecaoTemAmazon', extrairFuncao('aplicarRotulosPorCanal') + '; aplicarRotulosPorCanal();')(documento, () => ml, () => amz);
+      return [els['kpi-liq-rotulo'].textContent, els['kpi-tarifa-ml-rotulo'].textContent, els['mg-th-liq'].textContent, els['kpi-liq-pct'].textContent];
+    };
+    assert.deepEqual(rodar(true, false), ['Receita Liquida ML', 'Tarifas ML', 'Liq. ML', 'apos tarifas ML + envio']);
+    assert.deepEqual(rodar(false, true), ['Receita Liquida Amazon', 'Tarifas Amazon', 'Liq. Amazon', 'apos tarifas + envio']);
+    assert.deepEqual(rodar(true, true), ['Receita Liquida', 'Tarifas', 'Liq.', 'apos tarifas + envio']);
+    assert.match(extrairFuncao('aplicarAbasPorCanal'), /aplicarRotulosPorCanal\(\)/);
+  });
+});

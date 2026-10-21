@@ -93,6 +93,8 @@ function montar({ guardada = null, fetchFalso = null, itens = [] } = {}) {
     extrairFuncao('selecaoInclui'),
     extrairFuncao('contaInfo'),
     extrairFuncao('empresaNome'),
+    extrairFuncao('empresaDaConta'),
+    extrairFuncao('canalCurto'),
     extrairFuncao('contaNome'),
     extrairFuncao('selecaoTemFinanceiro'),
     extrairFuncao('contasSemFinanceiro'),
