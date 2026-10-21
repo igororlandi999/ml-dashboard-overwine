@@ -14892,8 +14892,8 @@
 
       // Cards
       const card = (g, rotulo, valor, sub, cls) =>
-        '<div class="kpi-card ' + (cls || '') + (_expFiltroCard === g ? ' sel' : '') + '" onclick="expFiltrarCard(\'' + g + '\')" role="button" tabindex="0">' +
-        '<div class="kpi-label">' + rotulo + '</div><div class="kpi-value">' + valor + '</div><div class="kpi-delta neutral">' + sub + '</div></div>';
+        '<div class="kpi-card ' + escHtml(cls || '') + (_expFiltroCard === g ? ' sel' : '') + '" onclick="expFiltrarCard(\'' + escHtml(g) + '\')" role="button" tabindex="0">' +
+        '<div class="kpi-label">' + escHtml(rotulo) + '</div><div class="kpi-value">' + escHtml(valor) + '</div><div class="kpi-delta neutral">' + escHtml(sub) + '</div></div>';
       const kpis = document.getElementById('exp-kpis');
       if (kpis) {
         kpis.style.display = mostrarML ? '' : 'none';
@@ -14928,7 +14928,7 @@
         if (fSt !== 'todos' && fSt !== g && !(fSt === 'nao_classificado' && g === 'consultando')) continue;
         const itens = Object.keys(pacotes).filter(k => r.grupos[k] === g).map(k => ({ p: pacotes[k], e: _expEnvios[k], g })).sort(ordem);
         if (!itens.length && fSt === 'todos' && g !== 'a_enviar' && g !== 'despachado') continue;
-        html.push('<section class="exp-secao ' + cls + '"><div class="exp-secao-titulo"><span>' + titulo + ' (' + itens.length + ')</span><small>' + sub + '</small></div>');
+        html.push('<section class="exp-secao ' + escHtml(cls) + '"><div class="exp-secao-titulo"><span>' + escHtml(titulo) + ' (' + itens.length + ')</span><small>' + escHtml(sub) + '</small></div>');
         if (!itens.length) {
           const incompleto = g === 'a_enviar' ? r.aEnviarIncompleto : r.despachadoIncompleto;
           html.push('<div class="exp-vazio">' + (g === 'a_enviar' && r.diaPassado ? 'Dia passado: pendências estão em Atrasados.'
