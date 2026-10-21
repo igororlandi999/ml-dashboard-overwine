@@ -154,6 +154,16 @@ describe('contagem — ausente nao e zero', () => {
     assert.deepEqual([r.atrasado, r.despachado, r.a_enviar, r.total], [1, 1, 1, 2]);
   });
 
+  test('despachado sem data (caso real 48265507555, in_hub): nao entra em dia nenhum e o dia fica incompleto', () => {
+    const env = { a: { situacao: 'despachado', status: 'ready_to_ship', substatus: 'in_hub', despachadoEm: null, prazoPostagem: '2026-10-20' } };
+    for (const dia of ['2026-10-20', HOJE]) {
+      const r = m.expResumo(pac('a'), env, dia, HOJE);
+      assert.deepEqual([r.despachado, r.atrasado, r.a_enviar, r.despachado_sem_data], [0, 0, 0, 1], dia);
+      assert.equal(r.despachadoIncompleto, true);
+      assert.equal(m.expValorCard(r.despachado, r.despachadoIncompleto), '?');
+    }
+  });
+
   test('dia passado: nada "a enviar" (pendencias sao atrasos), sem falso incompleto em A enviar', () => {
     const r = m.expResumo(pac('a'), { a: { situacao: 'pendente', prazoPostagem: '2026-10-19' } }, '2026-10-19', HOJE);
     assert.equal(r.a_enviar, 0);
