@@ -3140,12 +3140,12 @@
         <div class="kpi-delta neutral">vendas brutas</div>
       </div>
       <div class="kpi-card highlight" style="--highlight-color:var(--green)">
-        <div class="kpi-label">Receita Liquida ML</div>
+        <div class="kpi-label" id="kpi-liq-rotulo">Receita Liquida ML</div>
         <div class="kpi-value" id="kpi-liq" style="color:var(--green)">-</div>
         <div class="kpi-delta neutral" id="kpi-liq-pct">apos tarifas ML + envio</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Tarifas ML</div>
+        <div class="kpi-label" id="kpi-tarifa-ml-rotulo">Tarifas ML</div>
         <div class="kpi-value" id="kpi-tarifa-ml" style="color:var(--red)">-</div>
         <div class="kpi-delta neutral" id="kpi-tarifa-ml-pct">sobre o bruto</div>
       </div>
@@ -3913,7 +3913,7 @@
         <div class="kpi-delta neutral">no periodo</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Receita Liquida ML</div>
+        <div class="kpi-label" id="mg-liq-rotulo">Receita Liquida ML</div>
         <div class="kpi-value" id="mg-liq" style="color:var(--green)">-</div>
         <div class="kpi-delta neutral" id="mg-liq-pct">apos tarifas</div>
       </div>
@@ -3974,9 +3974,9 @@
               <th style="width:30%">Produto</th>
               <th>Qtd</th>
               <th>Bruto</th>
-              <th>Tarifa ML</th>
+              <th id="mg-th-tarifa">Tarifa ML</th>
               <th>Tarifa Env</th>
-              <th>Liq. ML</th>
+              <th id="mg-th-liq">Liq. ML</th>
               <th>Custo/un</th>
               <th>Total Custo</th>
               <th>Pub</th>
@@ -5633,7 +5633,8 @@
       let sku = _skuDoVendedor(i);
       if (!sku && i.catalog_product_id) sku = _skuPorCatalogo().get((i.conta || '') + '|' + i.catalog_product_id) || ('cat:' + i.catalog_product_id);
       if (!sku) sku = 'sem-sku-' + i.id;
-      if (selecaoConsolidada() && i.conta) return sku + ' \u00b7 ' + contaNome(i.conta);
+      // Chave: SKU + EMPRESA (empresaDaConta), nunca o nome de tela da conta.
+      if (selecaoConsolidada() && i.conta) return sku + ' \u00b7 ' + empresaDaConta(i.conta);
       return sku;
     }
 
@@ -5993,10 +5994,35 @@
       const m = /\(([^)]+)\)\s*$/.exec(String(rotulo || ''));
       return m ? m[1] : String(rotulo || '');
     }
-    function contaNome(id) {
+    /**
+     * Nome da EMPRESA da conta — o mesmo para todos os canais dela (Overwine no
+     * ML e Alem Mar na Amazon devolvem "Overwine"). E a parte de empresa da
+     * CHAVE de agrupamento de SKU (itemSKU). Nao muda com canal nem com a
+     * selecao: trocar texto de tela nunca separa grupos.
+     */
+    function empresaDaConta(id) {
       const c = contaInfo(id);
       if (c) return empresaNome(c.empresaRotulo);
       return id === CONTA_LEGADA ? 'Overwine' : String(id || '');
+    }
+    function canalCurto(c) { return !c ? '' : c.canal === 'ml' ? 'ML' : c.canal === 'amazon' ? 'Amazon' : (c.canalRotulo || c.canal); }
+    /**
+     * Nome de TELA da conta. So texto: nunca e chave. Canal fora do ML sempre
+     * aparece ("Overwine Amazon"); o ML ganha " ML" quando a selecao mistura
+     * canais da mesma empresa ("Overwine ML + Overwine Amazon"). Overwine ou
+     * Degustar sozinhas continuam com o nome de sempre.
+     */
+    function contaNome(id) {
+      const emp = empresaDaConta(id);
+      const c = contaInfo(id);
+      if (!c) return emp;
+      if (c.canal !== 'ml') return emp + ' ' + canalCurto(c);
+      const mistura = (typeof SELECAO !== 'undefined' ? SELECAO : []).some(o => {
+        if (o === id) return false;
+        const x = contaInfo(o);
+        return !!x && x.empresa === c.empresa && x.canal !== c.canal;
+      });
+      return mistura ? emp + ' ' + canalCurto(c) : emp;
     }
     function contaRotuloCompleto(id) {
       const c = contaInfo(id);
@@ -6240,7 +6266,23 @@
     // nenhuma conta ML na selecao, somem; com Amazon junto, avisam que a
     // Amazon nao entra nelas.
     const ABAS_SO_MERCADO_LIVRE = ['estoquefull', 'qualidade', 'tipoanuncio', 'tipopedido', 'mlads', 'posicionamento', 'radar', 'relampago', 'entregas', 'cancelamentos'];
+    /**
+     * Rotulos de receita liquida e tarifa pelo canal da selecao: "ML" so
+     * quando so ha Mercado Livre; "Amazon" so com Amazon; sem sufixo quando
+     * mistura. Muda so o texto; os valores continuam vindo de onde vinham.
+     */
+    function aplicarRotulosPorCanal() {
+      if (typeof document === 'undefined') return;
+      const temML = selecaoTemMercadoLivre(), temAmz = selecaoTemAmazon();
+      const suf = temML && !temAmz ? ' ML' : temAmz && !temML ? ' Amazon' : '';
+      const por = { 'kpi-liq-rotulo': 'Receita Liquida' + suf, 'kpi-tarifa-ml-rotulo': 'Tarifas' + suf, 'mg-liq-rotulo': 'Receita Liquida' + suf, 'mg-th-tarifa': 'Tarifa' + suf, 'mg-th-liq': 'Liq.' + suf };
+      Object.keys(por).forEach(id => { const el = document.getElementById(id); if (el) el.textContent = por[id]; });
+      const sub = document.getElementById('kpi-liq-pct');
+      if (sub && /tarifas ML \+ envio/.test(sub.textContent) && !(temML && !temAmz)) sub.textContent = 'apos tarifas + envio';
+    }
+
     function aplicarAbasPorCanal() {
+      aplicarRotulosPorCanal();
       const temML = selecaoTemMercadoLivre(), temAmz = selecaoTemAmazon();
       ABAS_SO_MERCADO_LIVRE.forEach(aba => {
         document.querySelectorAll(`[onclick="switchTab('${aba}')"]`).forEach(b => {
@@ -6749,6 +6791,19 @@
      * Onda E: aviso discreto de catalogo antigo. Nunca esconde a tela e nunca
      * substitui numero real por vazio — apenas informa a idade do snapshot.
      */
+    /**
+     * De QUAL catalogo e o aviso. Uma conta: o nome dela. Consolidado: o
+     * backend devolve so o frescor do mais antigo, sem dizer de qual conta;
+     * entao o texto diz isso, sem chutar o canal.
+     */
+    function textoCatalogoDesatualizado() {
+      if (typeof selecaoConsolidada === 'function' && selecaoConsolidada()) return 'Catalogo desatualizado em ao menos uma conta (mais antigo)';
+      const id = (typeof SELECAO !== 'undefined' && SELECAO[0]) || CONTA_LEGADA;
+      const c = typeof contaInfo === 'function' ? contaInfo(id) : null;
+      const canal = c ? (c.canal === 'ml' ? 'Mercado Livre' : (c.canalRotulo || c.canal)) : 'Mercado Livre';
+      return 'Catalogo ' + canal + ' desatualizado';
+    }
+
     function atualizarIndicadorFrescor() {
       const el = document.getElementById('catalog-freshness');
       const wrap = document.getElementById('catalog-freshness-wrap');
@@ -6765,7 +6820,7 @@
         const d = new Date(_catalogoUpdatedAt);
         if (!isNaN(d)) quando = ' (' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ')';
       }
-      mostrar('Catalogo desatualizado' + quando + ' · use Recarregar tudo');
+      mostrar(textoCatalogoDesatualizado() + quando + ' · use Recarregar tudo');
     }
 
     /**
