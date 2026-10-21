@@ -42,7 +42,10 @@ const m = new Function([
   extrairFuncao('expValorCard'),
   extrairFuncao('expDiaCurto'),
   extrairFuncao('expPrazoTexto'),
-  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto, expPrazoTexto };',
+  extrairFuncao('expDistancia'),
+  extrairFuncao('expOrdenarFila'),
+  extrairFuncao('expMontarLotes'),
+  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto, expPrazoTexto, expDistancia, expOrdenarFila, expMontarLotes };',
 ].join('\n'))();
 
 const HOJE = '2026-10-21';
@@ -88,13 +91,21 @@ describe('pacotes', () => {
 describe('grupo do dia — tres datas separadas', () => {
   const e = (o) => ({ situacao: 'pendente', prazoPostagem: null, liberacaoEm: null, despachadoEm: null, ...o });
 
-  test('pendente: prazo == dia → a enviar; < hoje → atrasado (em qualquer dia); sem prazo → sem_prazo', () => {
+  test('pendente: prazo == dia → a enviar; < hoje → PRAZO VENCIDO (nao atraso); sem prazo → sem_prazo', () => {
     assert.equal(m.expGrupo(e({ prazoPostagem: HOJE }), HOJE, HOJE), 'a_enviar');
     assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-22' }), '2026-10-22', HOJE), 'a_enviar');
     assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-22' }), HOJE, HOJE), 'pendente_outro_dia');
-    assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-20' }), HOJE, HOJE), 'atrasado');
-    assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-20' }), '2026-10-25', HOJE), 'atrasado');
+    assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-20' }), HOJE, HOJE), 'prazo_vencido');
+    assert.equal(m.expGrupo(e({ prazoPostagem: '2026-10-20', atrasoML: 'nao_indicado' }), '2026-10-25', HOJE), 'prazo_vencido');
     assert.equal(m.expGrupo(e({}), HOJE, HOJE), 'sem_prazo');
+  });
+
+  test('atrasado SO quando o Mercado Livre confirma (/delays); caso real dos 4 pedidos com SLA 20/10 12:30', () => {
+    const vencido = (atrasoML) => e({ prazoPostagem: '2026-10-20', prazoLimiteEm: '2026-10-20T12:30:00.000-03:00', slaStatus: 'on_time', atrasoML });
+    assert.equal(m.expGrupo(vencido('nao_indicado'), HOJE, HOJE), 'prazo_vencido');
+    assert.equal(m.expGrupo(vencido(null), HOJE, HOJE), 'prazo_vencido');
+    assert.equal(m.expGrupo(vencido('confirmado'), HOJE, HOJE), 'atrasado');
+    assert.equal(m.expGrupo(vencido('confirmado'), '2026-10-25', HOJE), 'atrasado');
   });
 
   test('programado: a liberacao NUNCA vira prazo nem atraso', () => {
@@ -151,7 +162,10 @@ describe('contagem — ausente nao e zero', () => {
       b: { situacao: 'despachado', despachadoEm: '2026-10-21T15:00:00.000-03:00' },
       c: { situacao: 'pendente', prazoPostagem: HOJE },
     }, HOJE, HOJE);
-    assert.deepEqual([r.atrasado, r.despachado, r.a_enviar, r.total], [1, 1, 1, 2]);
+    assert.deepEqual([r.atrasado, r.prazo_vencido, r.despachado, r.a_enviar, r.total], [0, 1, 1, 1, 2]);
+    // O ML nao respondeu sobre o vencido: o numero de atrasos confirmados nao pode ser afirmado.
+    assert.equal(r.atrasadoIncompleto, true);
+    assert.equal(m.expValorCard(r.atrasado, r.atrasadoIncompleto), '?');
   });
 
   test('despachado sem data (caso real 48265507555, in_hub): nao entra em dia nenhum e o dia fica incompleto', () => {
@@ -167,7 +181,8 @@ describe('contagem — ausente nao e zero', () => {
   test('dia passado: nada "a enviar" (pendencias sao atrasos), sem falso incompleto em A enviar', () => {
     const r = m.expResumo(pac('a'), { a: { situacao: 'pendente', prazoPostagem: '2026-10-19' } }, '2026-10-19', HOJE);
     assert.equal(r.a_enviar, 0);
-    assert.equal(r.atrasado, 1);
+    assert.equal(r.prazo_vencido, 1);
+    assert.equal(r.atrasado, 0);
     assert.equal(r.aEnviarIncompleto, false);
   });
 
@@ -181,6 +196,32 @@ describe('contagem — ausente nao e zero', () => {
   test('dia civil do prazo exibido sem fuso', () => {
     assert.equal(m.expDiaCurto('2026-10-23'), '23/10');
     assert.equal(m.expDiaCurto(null), '-');
+  });
+});
+
+describe('fila priorizada', () => {
+  test('os pedidos mais proximos do dia em vista vao primeiro; finais ficam fora da fila', () => {
+    const p = (chave, data) => ({ chave, compraMaisAntiga: data });
+    const pacotes = {
+      velho: p('velho', '2026-09-25T10:00:00.000-03:00'),
+      ontem: p('ontem', '2026-10-20T18:00:00.000-03:00'),
+      hoje: p('hoje', '2026-10-21T08:00:00.000-03:00'),
+      final: p('final', '2026-10-21T09:00:00.000-03:00'),
+    };
+    const envios = { final: { situacao: 'despachado', despachadoEm: '2026-10-21T10:00:00.000-03:00' } };
+    const ehFinal = (x) => !!x && x.situacao === 'despachado' && !!x.despachadoEm;
+    assert.deepEqual(m.expOrdenarFila(pacotes, envios, HOJE, ehFinal).map(x => x.chave), ['hoje', 'ontem', 'velho']);
+    // Para um dia passado, os pedidos daquele dia vem antes dos de hoje.
+    assert.deepEqual(m.expOrdenarFila(pacotes, envios, '2026-09-25', ehFinal).map(x => x.chave), ['velho', 'ontem', 'hoje']);
+  });
+
+  test('lotes de ate 50 por conta, na ordem da fila, sem misturar contas', () => {
+    const fila = [];
+    for (let i = 0; i < 53; i++) fila.push({ conta: 'overwine-ml', envio: String(1000 + i) });
+    fila.splice(10, 0, { conta: 'degustar-ml', envio: '9000' });
+    const lotes = m.expMontarLotes(fila, 50);
+    assert.deepEqual(lotes.map(l => [l.conta, l.ids.length]), [['overwine-ml', 50], ['degustar-ml', 1], ['overwine-ml', 3]]);
+    assert.equal(lotes[0].ids[0], '1000');
   });
 });
 
