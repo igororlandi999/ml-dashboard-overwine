@@ -3032,6 +3032,80 @@
     }
 
     /* OWCHAT CSS END */
+
+    /* ══ EXPEDICAO (aba so de leitura, mobile-first) ══ */
+    #tab-expedicao .exp-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    #tab-expedicao .exp-dias { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    #tab-expedicao .exp-dia-rotulo { font-family: var(--font-display); font-size: 18px; color: var(--cream); margin-right: 6px; }
+    #tab-expedicao .exp-sinc { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+    #tab-expedicao .exp-sinc .exp-vivo { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 6px; vertical-align: middle; }
+    #tab-expedicao .exp-sinc .exp-vivo.ocupado { background: var(--amber); }
+    #tab-expedicao .exp-aviso { border: 1px solid var(--border); border-left: 3px solid var(--amber); background: rgba(232, 168, 74, 0.06); padding: 10px 14px; font-size: 12px; color: var(--cream); margin-bottom: 10px; line-height: 1.5; }
+    #tab-expedicao .exp-aviso.neutro { border-left-color: var(--border-strong); background: var(--surface); color: var(--muted); }
+    #tab-expedicao .exp-aviso.erro { border-left-color: var(--red); background: rgba(224, 82, 82, 0.06); }
+    #tab-expedicao .exp-aviso strong { color: var(--gold); font-weight: 600; }
+    #tab-expedicao .kpi-grid.exp-kpis { grid-template-columns: repeat(2, 1fr); margin-bottom: 18px; }
+    #tab-expedicao .exp-kpis .kpi-card { padding: 14px 14px 12px; cursor: pointer; }
+    #tab-expedicao .exp-kpis .kpi-card.sel { background: var(--surface2); }
+    #tab-expedicao .exp-kpis .kpi-card.sel::before { background: var(--gold); }
+    #tab-expedicao .exp-kpis .kpi-value { font-size: 26px; }
+    #tab-expedicao .exp-kpis .kpi-card.atraso .kpi-value { color: var(--red); }
+    #tab-expedicao .exp-kpis .kpi-card.incompleto .kpi-value { color: var(--amber); }
+    #tab-expedicao .exp-filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+    #tab-expedicao .exp-filtros .gdr-select { min-width: 0; flex: 1 1 140px; }
+    #tab-expedicao .exp-secao { margin-bottom: 18px; }
+    #tab-expedicao .exp-secao-titulo { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-family: var(--font-display); font-size: 15px; color: var(--gold); padding: 6px 2px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    #tab-expedicao .exp-secao-titulo small { font-family: var(--font-body); font-size: 11px; color: var(--muted); }
+    #tab-expedicao .exp-secao.atraso .exp-secao-titulo { color: var(--red); }
+    #tab-expedicao .exp-secao.vencido .exp-secao-titulo { color: var(--amber); }
+    #tab-expedicao .exp-pacote.g-prazo_vencido { background: rgba(232, 168, 74, 0.05); }
+    #tab-expedicao .exp-lista { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    #tab-expedicao .exp-pacote { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); padding: 12px 14px; }
+    #tab-expedicao .exp-pacote.g-a_enviar { border-left-color: var(--gold); }
+    #tab-expedicao .exp-pacote.g-atrasado { border-left-color: var(--red); }
+    #tab-expedicao .exp-pacote.g-despachado, #tab-expedicao .exp-pacote.g-bipado_sem_horario { border-left-color: var(--green); }
+    #tab-expedicao .exp-pacote.g-sem_prazo, #tab-expedicao .exp-pacote.g-nao_classificado, #tab-expedicao .exp-pacote.g-consultando, #tab-expedicao .exp-pacote.g-prazo_vencido { border-left-color: var(--amber); }
+    #tab-expedicao .exp-kpis .kpi-card:nth-child(7) { grid-column: 1 / -1; }
+    #tab-expedicao .exp-metricas { margin-top: 18px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); padding: 10px 14px; }
+    #tab-expedicao .exp-metricas summary { cursor: pointer; color: var(--cream); }
+    #tab-expedicao .exp-metricas dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin-top: 8px; font-family: var(--font-mono); }
+    #tab-expedicao .exp-metricas dd { color: var(--cream); font-variant-numeric: tabular-nums; }
+    #tab-expedicao .exp-l1 { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+    #tab-expedicao .exp-pedido { font-family: var(--font-mono); font-size: 12px; color: var(--cream); word-break: break-all; }
+    #tab-expedicao .exp-pedido small { color: var(--muted); }
+    #tab-expedicao .exp-conta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    #tab-expedicao .exp-itens { list-style: none; margin: 6px 0 8px; font-size: 13px; color: var(--cream); }
+    #tab-expedicao .exp-itens li { display: flex; gap: 8px; line-height: 1.4; padding: 2px 0; }
+    #tab-expedicao .exp-itens .q { font-family: var(--font-mono); color: var(--gold); min-width: 30px; }
+    #tab-expedicao .exp-l3 { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; font-size: 12px; }
+    #tab-expedicao .exp-data { color: var(--cream); font-weight: 600; }
+    #tab-expedicao .exp-data.atraso { color: var(--red); }
+    #tab-expedicao .exp-data.falta { color: var(--amber); }
+    #tab-expedicao .exp-datas { display: flex; flex-direction: column; gap: 2px; }
+    #tab-expedicao .exp-data.sec { color: var(--muted); font-weight: 500; }
+    #tab-expedicao .exp-subsecao + .exp-subsecao { margin-top: 12px; }
+    #tab-expedicao .exp-subtitulo { font-size: 12px; font-weight: 600; color: var(--cream); margin: 4px 2px 8px; }
+    #tab-expedicao .exp-subsecao.secundaria { opacity: .85; }
+    #tab-expedicao .exp-subsecao.secundaria .exp-subtitulo { color: var(--muted); }
+    #tab-expedicao .exp-det { color: var(--muted); }
+    #tab-expedicao .badge.atraso { border-color: rgba(224, 82, 82, 0.4); color: var(--red); background: rgba(224, 82, 82, 0.06); }
+    #tab-expedicao .badge.alerta { border-color: rgba(232, 168, 74, 0.4); color: var(--amber); }
+    #tab-expedicao .badge.ouro { border-color: rgba(201, 169, 110, 0.4); color: var(--gold); }
+    #tab-expedicao .exp-vazio { padding: 22px 14px; text-align: center; color: var(--muted); font-size: 12px; border: 1px dashed var(--border); }
+    @media (max-width: 640px) {
+      #tab-expedicao .exp-secao-titulo { flex-direction: column; align-items: flex-start; gap: 2px; }
+    }
+    @media (min-width: 641px) {
+      #tab-expedicao .kpi-grid.exp-kpis { grid-template-columns: repeat(3, 1fr); }
+      #tab-expedicao .exp-lista { grid-template-columns: repeat(2, 1fr); }
+      #tab-expedicao .exp-filtros .gdr-select { flex: 0 1 200px; }
+    }
+    @media (min-width: 1201px) {
+      #tab-expedicao .kpi-grid.exp-kpis { grid-template-columns: repeat(7, 1fr); }
+      #tab-expedicao .exp-kpis .kpi-card:nth-child(7) { grid-column: auto; }
+      #tab-expedicao .exp-lista { grid-template-columns: repeat(3, 1fr); }
+    }
+    /* ══ FIM EXPEDICAO ══ */
   </style>
 </head>
 
@@ -3231,6 +3305,7 @@
       <button class="tab-btn" onclick="switchTab('estoquefull')">Estoque Full</button>
       <button class="tab-btn" onclick="switchTab('qualidade')">Qualidade</button>
       <button class="tab-btn" onclick="switchTab('pedidos')">Pedidos</button>
+      <button class="tab-btn" onclick="switchTab('expedicao')">Expedi&ccedil;&atilde;o</button>
       <button class="tab-btn" onclick="switchTab('consolidado')">Consolidado</button>
     </div>
 
@@ -3692,6 +3767,27 @@
           <div class="pagination" id="ord-pagination"></div>
         </div>
       </div>
+    </div>
+
+    <!-- TAB: EXPEDICAO — so leitura: o que sai, o que saiu e o que atrasou, por dia -->
+    <div class="tab-content" id="tab-expedicao">
+      <div class="exp-topo">
+        <div class="exp-dias">
+          <span class="exp-dia-rotulo" id="exp-dia-rotulo">-</span>
+          <button class="filter-btn" id="exp-btn-hoje" onclick="expIrPara('hoje')">Hoje</button>
+          <button class="filter-btn" id="exp-btn-amanha" onclick="expIrPara('amanha')">Amanh&atilde;</button>
+          <input type="date" id="exp-dia" class="periodo-date-input" onchange="expIrPara(this.value)" aria-label="Outra data">
+        </div>
+        <div class="exp-sinc" id="exp-sinc">-</div>
+      </div>
+      <div id="exp-avisos"></div>
+      <div class="kpi-grid exp-kpis" id="exp-kpis"></div>
+      <div class="exp-filtros">
+        <select class="gdr-select" id="exp-f-status" onchange="expFiltrar()" aria-label="Status"></select>
+        <select class="gdr-select" id="exp-f-empresa" onchange="expFiltrar()" aria-label="Empresa"></select>
+        <select class="gdr-select" id="exp-f-canal" onchange="expFiltrar()" aria-label="Marketplace"></select>
+      </div>
+      <div id="exp-conteudo"><div class="exp-vazio">Carregando pedidos...</div></div>
     </div>
 
     <!-- TAB: TIPO DE ANUNCIO -->
@@ -14480,9 +14576,651 @@
 
 
     // Mapa aba → seção
+    // ══════════════════════════════════════
+    // ABA: EXPEDICAO (so leitura)
+    //
+    // Responde, para UM dia (horario de Brasilia): o que tem que ser postado, o
+    // que foi despachado e o que esta atrasado. Fonte: GET /api/ml/expedicao-envios
+    // (prazo oficial do /sla, despacho do /history, atraso do /delays). Nenhum
+    // botao altera pedido ou envio.
+    //
+    // DESEMPENHO: a aba NAO espera o historico completo de pedidos. Le so a
+    // janela recente direto da lista (paginas de 500, mais novos primeiro) e
+    // consulta os envios em ordem de PRIORIDADE: os pedidos mais proximos do dia
+    // em vista primeiro (hoje e amanha resolvem primeiro); os antigos depois,
+    // em segundo plano, contados como "verificando" e nunca como zero.
+    //
+    // ATRASO: prazo vencido na nossa comparacao de datas NAO e atraso. So entra
+    // em Atrasados o que o proprio Mercado Livre confirma em /delays; o resto
+    // aparece em "Prazo vencido", com o que o ML disse (ou nao disse).
+    //
+    // REGRAS:
+    //  - Unidade = PACOTE (id do envio). Pedidos do mesmo carrinho dividem o
+    //    envio e contam uma vez so.
+    //  - Full fica fora (quem despacha e o ML). Logistica desconhecida no mapa
+    //    e consultada: o backend diz se e Full.
+    //  - Tres datas que NUNCA se misturam: liberacao (programado/buffered),
+    //    prazo de postagem (oficial) e despacho real (historico).
+    //  - Ausente nao e zero: pendente sem prazo, envio ainda nao consultado ou
+    //    nao classificado deixam a contagem do dia INCOMPLETA, e a tela diz isso.
+    //  - Amazon: indisponivel ate haver fonte confiavel de prazo e despacho.
+    //    Nenhuma regra do ML e aplicada a ela.
+    // ══════════════════════════════════════
+    const EXP_JANELA_DIAS = 30;          // 1a fase: pedidos ate N dias antes do dia em vista (carga rapida)
+    const EXP_JANELA_MAX_DIAS = 90;      // 2a fase, em segundo plano: pendentes, programados e atrasos antigos
+    const EXP_LOTE = 50;                 // ids por chamada (limite do backend)
+    const EXP_TICK_MS = 60000;           // re-render com os pedidos do snapshot
+    const EXP_CONSULTA_MS = 110000;      // nova consulta ao backend (cache curto dos pendentes: 120 s)
+    const EXP_MAX_PASSADAS = 6;          // por lote, enquanto o backend devolver 'aguardando'
+    const EXP_DIAS_PRIORIDADE = 7;       // pedidos a ate N dias do dia em vista vao primeiro
+    const EXP_PAGINA = 500;              // pedidos por pagina da lista (maximo do backend)
+
+    let _expDia = null;                  // 'YYYY-MM-DD' (BRT); null = hoje
+    let _expEnvios = {};                 // { 'conta|envio': EnvioExpedicao }
+    let _expConsultando = false;
+    let _expUltimaConsulta = null;       // Date da ultima consulta concluida
+    let _expErro = null;
+    let _expSel = null;                  // selecao de contas em que _expEnvios foi lido
+    let _expTimer = null;
+    let _expFiltroCard = null;           // grupo escolhido tocando num card
+    let _expPedidos = null;              // pedidos da janela recente, lidos direto da lista
+    let _expPedidosChave = null;         // snapshot + selecao + janela em que _expPedidos foi lido
+    let _expCarregandoPedidos = false;
+    let _expCursorResto = null;          // onde a 2a fase continua a leitura da lista
+    let _expPedidosCompletos = false;    // a janela inteira (90 dias) ja foi lida
+    let _expMetricas = null;             // numeros da ultima carga, para "Detalhes da consulta"
+
+    function expHoje() { return hojeBRT(); }
+    function expDia() { return _expDia || expHoje(); }
+    function expSomarDias(ymd, n) {
+      const d = new Date(ymd + 'T12:00:00.000-03:00');
+      d.setUTCDate(d.getUTCDate() + n);
+      return ymdBRT(d);
+    }
+    /** 'YYYY-MM-DD' -> 'dd/mm'. Usa a data ESCRITA, sem fuso: e dia civil. */
+    function expDiaCurto(ymd) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || ''));
+      return m ? m[3] + '/' + m[2] : '-';
+    }
+    /** Instante ISO -> 'dd/mm HH:MM' em Brasilia. */
+    function expInstante(iso) {
+      const d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return '-';
+      return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+    /**
+     * Prazo para exibir: com o horario-limite do SLA quando o ML o envia
+     * ("21/10, 23:59", em Brasilia); so a data quando o prazo e data pura.
+     */
+    function expPrazoTexto(e) {
+      if (e && e.prazoLimiteEm) {
+        const d = new Date(e.prazoLimiteEm);
+        if (Number.isFinite(d.getTime())) return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      }
+      return expDiaCurto(e && e.prazoPostagem);
+    }
+    function expLogistica(t) {
+      return ({ xd_drop_off: 'Agência', drop_off: 'Agência', cross_docking: 'Coleta', self_service: 'Flex', fulfillment: 'Full' })[t] || (t || 'logística não informada');
+    }
+
+    /**
+     * Pacotes candidatos a partir dos pedidos em memoria. Puro: recebe tudo.
+     *   - so Mercado Livre, nao cancelado, com id de envio;
+     *   - criado a partir de `desdeYmd` (BRT);
+     *   - Full conhecido pelo mapa de logistica fica fora sem consulta.
+     * Chave: 'conta|envio' — o mesmo numero de envio em duas contas nao se mistura.
+     */
+    function expMontarPacotes(pedidos, logPorEnvio, desdeYmd, contaPadrao) {
+      const pacotes = {};
+      for (const o of pedidos || []) {
+        if (!o || pedidoAmazon(o) || pedidoCancelado(o)) continue;
+        const sid = o.shipping && o.shipping.id != null ? String(o.shipping.id) : null;
+        if (!sid) continue;
+        if (o.shipping.logistic_type === 'fulfillment' || (logPorEnvio && logPorEnvio[sid] === 'fulfillment')) continue;
+        const dia = o.date_created ? ymdBRT(o.date_created) : null;
+        if (!dia || dia < desdeYmd) continue;
+        const conta = o.conta || contaPadrao;
+        const k = conta + '|' + sid;
+        const p = pacotes[k] || (pacotes[k] = { chave: k, envio: sid, conta, pedidos: [], itens: {}, compraMaisAntiga: o.date_created });
+        if (p.pedidos.indexOf(String(o.id)) === -1) p.pedidos.push(String(o.id));
+        if (o.date_created < p.compraMaisAntiga) p.compraMaisAntiga = o.date_created;
+        for (const oi of o.order_items || []) {
+          const ki = (oi.item && oi.item.id || '?') + '#' + (oi.item && oi.item.variation_id || '');
+          const it = p.itens[ki] || (p.itens[ki] = { titulo: (oi.item && oi.item.title) || 'Produto sem título', qtd: 0, qtdDesconhecida: false });
+          if (Number.isFinite(oi.quantity)) it.qtd += oi.quantity; else it.qtdDesconhecida = true;
+        }
+      }
+      return pacotes;
+    }
+
+    /**
+     * Grupo de UM pacote no dia `dia`, com `hoje` (BRT). Puro.
+     *   a_enviar            pendente com prazo oficial == dia (e dia >= hoje)
+     *   atrasado            atraso CONFIRMADO pelo Mercado Livre (/delays), em qualquer dia
+     *   prazo_vencido       prazo < hoje pela nossa comparacao, sem atraso confirmado pelo ML
+     *   pendente_outro_dia  pendente com prazo futuro diferente do dia
+     *   sem_prazo           pendente sem prazo oficial — deixa o dia incompleto
+     *   programado          ML ainda nao liberou (buffered); liberacaoEm NAO e prazo
+     *   despachado          JA BIPADO no dia (horario real da bipagem, em Brasilia)
+     *   despachado_outro_dia bipado em outro dia
+     *   bipado_sem_horario  entrega comprovada por evento posterior, sem o horario
+     *                       da bipagem; aparece no dia do evento-limite (ou sempre,
+     *                       se nem esse limite existe) e NAO entra na contagem
+     *   fora                Full ou envio cancelado
+     *   consultando         ainda sem resposta do backend
+     *   nao_classificado    status fora do mapa ou o ML nao respondeu
+     */
+    function expGrupo(e, dia, hoje) {
+      if (!e || e.situacao === 'aguardando') return 'consultando';
+      switch (e.situacao) {
+        case 'full': case 'cancelado': return 'fora';
+        case 'programado': return 'programado';
+        case 'despachado':
+          if (!e.despachadoEm) return !e.bipagemAte || ymdBRT(e.bipagemAte) === dia ? 'bipado_sem_horario' : 'despachado_outro_dia';
+          return ymdBRT(e.despachadoEm) === dia ? 'despachado' : 'despachado_outro_dia';
+        case 'pendente':
+          if (!e.prazoPostagem) return 'sem_prazo';
+          // Atraso so quando o PROPRIO Mercado Livre confirma (/delays).
+          if (e.atrasoML === 'confirmado') return 'atrasado';
+          // Prazo vencido pela nossa comparacao de datas: NAO e atraso.
+          if (e.prazoPostagem < hoje) return 'prazo_vencido';
+          return e.prazoPostagem === dia ? 'a_enviar' : 'pendente_outro_dia';
+        default: return 'nao_classificado';
+      }
+    }
+
+    /**
+     * Contagem do dia. Puro. `incompleto` lista o que impede afirmar o numero:
+     * a tela NUNCA mostra 0 a enviar com pendentes sem prazo ou sem resposta.
+     */
+    function expResumo(pacotes, envios, dia, hoje) {
+      const r = { a_enviar: 0, despachado: 0, atrasado: 0, prazo_vencido: 0, programado: 0, sem_prazo: 0, consultando: 0, nao_classificado: 0, bipado_sem_horario: 0, fora: 0, vencidoSemRespostaML: 0, grupos: {} };
+      for (const k of Object.keys(pacotes)) {
+        const g = expGrupo(envios[k], dia, hoje);
+        r.grupos[k] = g;
+        if (r[g] !== undefined) r[g]++;
+        if (g === 'prazo_vencido' && !(envios[k] && envios[k].atrasoML)) r.vencidoSemRespostaML++;
+      }
+      r.total = r.a_enviar + r.despachado;
+      r.diaPassado = dia < hoje;
+      // Pendente sem prazo, sem resposta ou nao classificado pode ser do dia.
+      r.aEnviarIncompleto = !r.diaPassado && (r.sem_prazo + r.consultando + r.nao_classificado) > 0;
+      // Bipado sem horario, sem resposta ou a conferir pode ter sido bipado no dia.
+      r.despachadoIncompleto = (r.bipado_sem_horario + r.consultando + r.nao_classificado) > 0;
+      // Atrasos confirmados podem ser mais: envios sem resposta, ou vencidos sobre os quais o ML nao respondeu.
+      r.atrasadoIncompleto = (r.consultando + r.vencidoSemRespostaML) > 0;
+      return r;
+    }
+
+    /** Valor de card: nunca um zero que o dado nao sustenta. */
+    function expValorCard(n, incompleto) {
+      if (!incompleto) return String(n);
+      return n === 0 ? '?' : '≥ ' + n;
+    }
+
+    function expContaPadrao() { return SELECAO[0] || CONTA_LEGADA; }
+    /** Inicio da janela COMPLETA (90 dias): pacotes que a aba considera. */
+    function expDesde() {
+      const base = expDia() < expHoje() ? expDia() : expHoje();
+      return expSomarDias(base, -EXP_JANELA_MAX_DIAS);
+    }
+    /** Inicio da 1a fase (30 dias): o que e lido antes da primeira consulta. */
+    function expDesdeRapido() {
+      const base = expDia() < expHoje() ? expDia() : expHoje();
+      return expSomarDias(base, -EXP_JANELA_DIAS);
+    }
+    /** A janela ainda esta sendo completada em segundo plano? */
+    function expLeituraParcial() { return !pedidosEmMemoria() && !_expPedidosCompletos; }
+    /** Pedidos-base: o historico completo se ja estiver em memoria; senao, a janela recente lida pela aba. */
+    function expPedidosBase() { return pedidosEmMemoria() ? allOrders : (_expPedidos || []); }
+    function expPronto() { return pedidosEmMemoria() || _expPedidos !== null; }
+    function expPacotesAtuais() {
+      return expMontarPacotes(expPedidosBase(), logisticaPorEnvio, expDesde(), expContaPadrao());
+    }
+
+    /**
+     * Le so a janela recente da lista de pedidos (mais novos primeiro), sem
+     * esperar o historico completo. Rele apenas quando o snapshot, a selecao ou
+     * a janela mudam: economia de comandos no Redis.
+     */
+    /** Le paginas da lista a partir de `cursor` ate passar de `limiteYmd`. */
+    async function expLerPaginas(cursor, limiteYmd) {
+      const lidos = []; let paginas = 0;
+      for (;;) {
+        const res = await backendFetch('/api/orders/list?alvo=ativos&pageSize=' + EXP_PAGINA + (cursor ? '&cursor=' + encodeURIComponent(cursor) : ''));
+        const b = await res.json().catch(() => null);
+        if (res.status === 409 || (res.status === 400 && b && b.error === 'invalid_cursor')) return { mudou: true };
+        if (!res.ok || !b || !Array.isArray(b.items)) throw new Error((b && b.error) || ('HTTP ' + res.status));
+        paginas++;
+        for (const o of b.items) lidos.push(o);
+        const ultimo = b.items.length ? b.items[b.items.length - 1] : null;
+        cursor = b.nextCursor || null;
+        if (!cursor || !ultimo || !ultimo.date_created || ymdBRT(ultimo.date_created) < limiteYmd) return { lidos, paginas, cursor };
+      }
+    }
+
+    /**
+     * 1a fase: so os ultimos 30 dias da lista (mais novos primeiro), sem esperar
+     * o historico completo. Rele apenas quando o snapshot, a selecao ou a janela
+     * mudam: economia de comandos no Redis.
+     */
+    async function expCarregarPedidos() {
+      if (pedidosEmMemoria() || _expCarregandoPedidos) return;
+      const chave = String(typeof _ultimoUpdatedAt !== 'undefined' ? _ultimoUpdatedAt : '') + '|' + selecaoChave() + '|' + expDesde();
+      if (_expPedidos !== null && _expPedidosChave === chave) return;
+      _expCarregandoPedidos = true;
+      const t0 = Date.now();
+      try {
+        for (let tentativa = 0; tentativa < 2; tentativa++) {
+          const r = await expLerPaginas(null, expDesdeRapido());
+          if (r.mudou) continue;
+          _expPedidos = r.lidos; _expPedidosChave = chave;
+          _expCursorResto = r.cursor;
+          _expPedidosCompletos = !r.cursor || ymdBRT((r.lidos[r.lidos.length - 1] || {}).date_created || '2000-01-01') < expDesde();
+          _expMetricas = Object.assign(_expMetricas || {}, { pedidosLidos: r.lidos.length, paginas: r.paginas, msPedidos: Date.now() - t0 });
+          return;
+        }
+        throw new Error('o snapshot de pedidos mudou durante a leitura');
+      } finally {
+        _expCarregandoPedidos = false;
+      }
+    }
+
+    /** 2a fase, em segundo plano: completa a janela ate 90 dias a partir de onde a 1a parou. */
+    async function expCarregarResto() {
+      if (pedidosEmMemoria() || _expPedidosCompletos || _expCarregandoPedidos || !_expCursorResto) return;
+      _expCarregandoPedidos = true;
+      const t0 = Date.now();
+      try {
+        const r = await expLerPaginas(_expCursorResto, expDesde());
+        if (r.mudou) { _expPedidosChave = null; return; }   // snapshot mudou: a proxima passada rele do inicio
+        _expPedidos = (_expPedidos || []).concat(r.lidos);
+        _expCursorResto = r.cursor; _expPedidosCompletos = true;
+        const mt = _expMetricas || {};
+        _expMetricas = Object.assign(mt, { pedidosLidos: (mt.pedidosLidos || 0) + r.lidos.length, paginas: (mt.paginas || 0) + r.paginas, msPedidosResto: Date.now() - t0 });
+      } finally {
+        _expCarregandoPedidos = false;
+      }
+    }
+
+    /** Lotes de ate `max` envios por conta, na ordem recebida. Puro. */
+    function expMontarLotes(fila, max) {
+      const lotes = []; const aberto = {};
+      for (const p of fila) {
+        const l = aberto[p.conta] || (aberto[p.conta] = { conta: p.conta, ids: [] });
+        l.ids.push(p.envio);
+        if (l.ids.length === max) { lotes.push(l); delete aberto[p.conta]; }
+      }
+      Object.values(aberto).forEach(l => lotes.push(l));
+      return lotes;
+    }
+
+    /** Distancia, em dias, entre o dia do pedido e o dia em vista: a prioridade da fila. */
+    function expDistancia(p, dia) {
+      const d = p && p.compraMaisAntiga ? ymdBRT(p.compraMaisAntiga) : null;
+      if (!d) return 9999;
+      return Math.abs((Date.parse(d + 'T12:00:00-03:00') - Date.parse(dia + 'T12:00:00-03:00')) / 86400000);
+    }
+
+    /**
+     * Fila de consulta: so o que ainda nao e final, em ordem de prioridade (mais
+     * perto do dia em vista primeiro; empate, o mais recente). Puro.
+     */
+    function expOrdenarFila(pacotes, envios, dia, ehFinal) {
+      return Object.values(pacotes)
+        .filter(p => !ehFinal(envios[p.chave]))
+        .sort((a, b) => (expDistancia(a, dia) - expDistancia(b, dia)) || String(b.compraMaisAntiga || '').localeCompare(String(a.compraMaisAntiga || '')));
+    }
+
+    /** Ja sabido e imutavel: nao precisa ir ao backend de novo nesta sessao. */
+    function expFinal(e) {
+      return !!e && (e.situacao === 'full' || e.situacao === 'cancelado' || (e.situacao === 'despachado' && (!!e.despachadoEm || !!e.bipagemAte)));
+    }
+
+    async function expConsultar() {
+      if (_expConsultando || !SESSION_TOKEN || !selecaoTemMercadoLivre()) return;
+      if (_expSel !== selecaoChave()) { _expEnvios = {}; _expSel = selecaoChave(); }
+      _expConsultando = true; _expErro = null; expRender();
+      const t0 = Date.now();
+      const m = { requisicoes: 0, chamadasML: 0, enviosRespondidos: 0, doCache: 0, msPrimeiraResposta: null, msPrioridade: null, msTotal: null };
+      try {
+        if (!logisticaCarregada) await carregarLogistica();
+        const dia = expDia();
+        const pacotes = expPacotesAtuais();
+        const fila = expOrdenarFila(pacotes, _expEnvios, dia, expFinal);
+        const prioritarios = new Set(fila.filter(p => expDistancia(p, dia) <= EXP_DIAS_PRIORIDADE).map(p => p.chave));
+        Object.assign(m, { pacotes: Object.keys(pacotes).length, naFila: fila.length, prioritarios: prioritarios.size });
+        // Lotes de ate 50 por conta. Os prioritarios formam os PRIMEIROS lotes, sem
+        // mistura com pedidos antigos: um lote menor volta antes, e o dia em vista
+        // aparece completo enquanto o resto segue em segundo plano.
+        const lotes = expMontarLotes(fila.filter(p => prioritarios.has(p.chave)), EXP_LOTE)
+          .concat(expMontarLotes(fila.filter(p => !prioritarios.has(p.chave)), EXP_LOTE));
+        for (const lote of lotes) {
+          const contaParam = selecaoConsolidada() ? lote.conta : undefined;
+          for (let passada = 0; passada < EXP_MAX_PASSADAS; passada++) {
+            const res = await backendFetch('/api/ml/expedicao-envios?ids=' + lote.ids.join(','), { conta: contaParam });
+            const body = await res.json().catch(() => null);
+            if (!res.ok || !body || !Array.isArray(body.envios)) throw new Error((body && body.error) || ('HTTP ' + res.status));
+            m.requisicoes++; m.chamadasML += body.chamadasML || 0;
+            if (Number.isFinite(body.doCache)) m.doCache += body.doCache;
+            if (m.msPrimeiraResposta === null) m.msPrimeiraResposta = Date.now() - t0;
+            for (const e of body.envios) {
+              const k = lote.conta + '|' + e.id;
+              if (e.situacao !== 'aguardando' && !(_expEnvios[k] && _expEnvios[k].situacao !== 'aguardando' && _expEnvios[k].consultadoEm === e.consultadoEm)) m.enviosRespondidos++;
+              // 'aguardando' nao apaga o que ja se sabia do envio.
+              if (e.situacao !== 'aguardando' || !_expEnvios[k]) _expEnvios[k] = e;
+            }
+            if (m.msPrioridade === null && [...prioritarios].every(k => _expEnvios[k] && _expEnvios[k].situacao !== 'aguardando')) m.msPrioridade = Date.now() - t0;
+            expRender();
+            if (!body.aguardando) break;
+            if (body.cooldown) { _expErro = 'O Mercado Livre pediu uma pausa (limite de requisições). A consulta continua na próxima atualização.'; break; }
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          if (_expErro) break;
+        }
+        if (m.msPrioridade === null && !_expErro) m.msPrioridade = Date.now() - t0;
+        m.msTotal = Date.now() - t0;
+        _expUltimaConsulta = new Date();
+      } catch (e) {
+        if (!(e && e.selecaoMudou)) _expErro = 'Não foi possível consultar os envios (' + ((e && e.message) || 'erro') + '). Nova tentativa na próxima atualização.';
+      } finally {
+        _expMetricas = Object.assign(_expMetricas || {}, m, { em: new Date() });
+        _expConsultando = false;
+        expRender();
+      }
+    }
+
+    /** Uma passada completa: pedidos da janela (se mudaram) e depois os envios. */
+    async function expAtualizar() {
+      try { await expCarregarPedidos(); }
+      catch (e) { if (!(e && e.selecaoMudou)) _expErro = 'Não foi possível ler os pedidos recentes (' + ((e && e.message) || 'erro') + '). Nova tentativa na próxima atualização.'; }
+      expMontarFiltros();
+      expRender();
+      if (!expPronto()) return;
+      await expConsultar();
+      // 2a fase: pedidos de 31 a 90 dias, depois que o dia em vista ja respondeu.
+      if (expLeituraParcial()) {
+        try { await expCarregarResto(); }
+        catch (e) { if (!(e && e.selecaoMudou)) _expErro = 'Não foi possível ler os pedidos de 31 a 90 dias (' + ((e && e.message) || 'erro') + '). Nova tentativa na próxima atualização.'; }
+        expRender();
+        await expConsultar();
+      }
+    }
+
+    function expAbaAtiva() {
+      const el = document.getElementById('tab-expedicao');
+      return !!el && el.classList.contains('active');
+    }
+
+    /** Chamado pelo switchTab: render agora e carga propria, sem esperar o historico completo. */
+    function expAbrir() {
+      expMontarFiltros();
+      expRender();
+      expAtualizar();
+      if (!_expTimer) {
+        _expTimer = setInterval(function () {
+          if (!expAbaAtiva() || document.hidden || !SESSION_TOKEN) return;
+          const velha = !_expUltimaConsulta || (Date.now() - _expUltimaConsulta.getTime()) >= EXP_CONSULTA_MS;
+          const semResposta = expPronto() && Object.keys(expPacotesAtuais()).some(k => !_expEnvios[k]);
+          if (velha || semResposta) expAtualizar(); else expRender();
+        }, EXP_TICK_MS);
+      }
+    }
+
+    function expIrPara(v) {
+      if (v === 'hoje') _expDia = null;
+      else if (v === 'amanha') _expDia = expSomarDias(expHoje(), 1);
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) _expDia = v === expHoje() ? null : v;
+      _expFiltroCard = null;
+      const sel = document.getElementById('exp-f-status');
+      if (sel) sel.value = 'todos';
+      expRender();
+      // Dia fora da janela ja lida, ou pacotes sem resposta: nova passada (os do dia escolhido primeiro).
+      expAtualizar();
+    }
+
+    const EXP_STATUS = [
+      ['todos', 'Todos os status'], ['atrasado', 'Atrasados (confirmados pelo ML)'], ['prazo_vencido', 'Prazo vencido'], ['a_enviar', 'A enviar'], ['sem_prazo', 'Prazo não informado'],
+      ['programado', 'Programados'], ['despachado', 'Já bipados'], ['nao_classificado', 'A conferir'],
+    ];
+
+    function expMontarFiltros() {
+      const st = document.getElementById('exp-f-status');
+      if (st && !st.options.length) st.innerHTML = EXP_STATUS.map(([v, t]) => '<option value="' + v + '">' + t + '</option>').join('');
+      const emp = document.getElementById('exp-f-empresa');
+      const can = document.getElementById('exp-f-canal');
+      if (!emp || !can) return;
+      const empresas = [], canais = [];
+      SELECAO.forEach(id => {
+        const c = contaInfo(id);
+        const eNome = empresaDaConta(id);
+        if (!empresas.some(x => x.nome === eNome)) empresas.push({ nome: eNome });
+        const canal = c ? c.canal : 'ml';
+        if (!canais.some(x => x.id === canal)) canais.push({ id: canal, nome: canal === 'ml' ? 'Mercado Livre' : canal === 'amazon' ? 'Amazon (indisponível)' : ((c && c.canalRotulo) || canal) });
+      });
+      const antesE = emp.value, antesC = can.value;
+      emp.innerHTML = (empresas.length > 1 ? '<option value="*">Todas as empresas</option>' : '') + empresas.map(e => '<option value="' + escHtml(e.nome) + '">' + escHtml(e.nome) + '</option>').join('');
+      can.innerHTML = (canais.length > 1 ? '<option value="*">Todos os marketplaces</option>' : '') + canais.map(c => '<option value="' + escHtml(c.id) + '">' + escHtml(c.nome) + '</option>').join('');
+      if ([...emp.options].some(o => o.value === antesE)) emp.value = antesE;
+      if ([...can.options].some(o => o.value === antesC)) can.value = antesC;
+      emp.disabled = empresas.length < 2; can.disabled = canais.length < 2;
+    }
+
+    function expFiltrar() { _expFiltroCard = null; expRender(); }
+    function expFiltrarCard(g) {
+      _expFiltroCard = _expFiltroCard === g ? null : g;
+      const sel = document.getElementById('exp-f-status');
+      if (sel) sel.value = _expFiltroCard || 'todos';
+      expRender();
+    }
+
+    function expRender() {
+      if (!expAbaAtiva()) return;
+      const dia = expDia(), hoje = expHoje();
+      const amanha = expSomarDias(hoje, 1);
+
+      // Topo: dia e botoes
+      const rot = document.getElementById('exp-dia-rotulo');
+      if (rot) {
+        const nome = dia === hoje ? 'Hoje' : dia === amanha ? 'Amanhã' : new Date(dia + 'T12:00:00-03:00').toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
+        rot.textContent = nome.charAt(0).toUpperCase() + nome.slice(1) + ', ' + expDiaCurto(dia);
+      }
+      const bh = document.getElementById('exp-btn-hoje'), ba = document.getElementById('exp-btn-amanha'), inp = document.getElementById('exp-dia');
+      if (bh) bh.classList.toggle('active', dia === hoje);
+      if (ba) ba.classList.toggle('active', dia === amanha);
+      if (inp && inp.value !== dia) inp.value = dia;
+
+      // Sincronizacao
+      const sinc = document.getElementById('exp-sinc');
+      if (sinc) {
+        const quando = _expUltimaConsulta ? _expUltimaConsulta.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : null;
+        const ped = (typeof _ultimoUpdatedAt !== 'undefined' && _ultimoUpdatedAt) ? expInstante(_ultimoUpdatedAt) : null;
+        sinc.innerHTML = '<span class="exp-vivo' + (_expConsultando ? ' ocupado' : '') + '"></span>' +
+          (_expCarregandoPedidos ? 'lendo pedidos recentes...' : _expConsultando ? 'consultando envios...' : quando ? 'envios consultados às ' + quando : 'envios ainda não consultados') +
+          (ped ? ' · pedidos até ' + ped : '') + ' · atualiza sozinho';
+      }
+
+      const temML = selecaoTemMercadoLivre(), temAmz = selecaoTemAmazon();
+      const fEmp = (document.getElementById('exp-f-empresa') || {}).value || '*';
+      const fCan = (document.getElementById('exp-f-canal') || {}).value || '*';
+      const fSt = _expFiltroCard || (document.getElementById('exp-f-status') || {}).value || 'todos';
+      const mostrarML = temML && (fCan === '*' || fCan === 'ml');
+      const mostrarAmz = temAmz && (fCan === '*' || fCan === 'amazon');
+
+      // Pacotes do Mercado Livre, filtrados por empresa
+      const todos = expPronto() ? expPacotesAtuais() : {};
+      const pacotes = {};
+      if (mostrarML) for (const [k, p] of Object.entries(todos)) if (fEmp === '*' || empresaDaConta(p.conta) === fEmp) pacotes[k] = p;
+      const r = expResumo(pacotes, _expEnvios, dia, hoje);
+      // Enquanto a janela de 90 dias nao foi lida, um pedido antigo pode mudar as contagens.
+      if (expLeituraParcial()) { r.aEnviarIncompleto = !r.diaPassado; r.despachadoIncompleto = true; r.atrasadoIncompleto = true; }
+
+      // Avisos
+      const av = [];
+      if (_expErro) av.push('<div class="exp-aviso erro">' + escHtml(_expErro) + '</div>');
+      if (mostrarAmz) av.push('<div class="exp-aviso neutro"><strong>Amazon: indisponível na Expedição.</strong> Ainda não há fonte confiável de prazo de postagem e de bipagem para os pedidos da Amazon. Eles não entram nesta lista nem nas contagens.</div>');
+      if (mostrarML && expPronto()) {
+        const falta = [];
+        if (r.consultando) falta.push(r.consultando + ' envio' + (r.consultando > 1 ? 's' : '') + ' ainda sem resposta (os pedidos mais próximos do dia são consultados primeiro)');
+        if (r.sem_prazo) falta.push(r.sem_prazo + ' pendente' + (r.sem_prazo > 1 ? 's' : '') + ' sem prazo de postagem informado pelo Mercado Livre');
+        if (r.nao_classificado) falta.push(r.nao_classificado + ' a conferir (sem evidência suficiente de bipagem)');
+        if (r.bipado_sem_horario) falta.push(r.bipado_sem_horario + ' com postagem confirmada e horário da bipagem indisponível');
+        if (expLeituraParcial()) falta.push('pedidos de 31 a ' + EXP_JANELA_MAX_DIAS + ' dias ainda sendo lidos em segundo plano');
+        if (r.vencidoSemRespostaML) falta.push(r.vencidoSemRespostaML + ' com prazo vencido sem resposta do Mercado Livre sobre atraso');
+        if (falta.length) av.push('<div class="exp-aviso"><strong>Consulta incompleta:</strong> ' + falta.join('; ') + '. As contagens marcadas com ? ou ≥ podem ser maiores.</div>');
+        if (r.diaPassado) av.push('<div class="exp-aviso neutro">Dia passado: o que não foi bipado aparece em <strong>Prazo vencido</strong> ou, se o Mercado Livre confirmar o atraso, em <strong>Atrasados</strong>. Não em A enviar.</div>');
+      }
+      const avisos = document.getElementById('exp-avisos');
+      if (avisos) avisos.innerHTML = av.join('');
+
+      // Cards
+      const card = (g, rotulo, valor, sub, cls) =>
+        '<div class="kpi-card ' + escHtml(cls || '') + (_expFiltroCard === g ? ' sel' : '') + '" onclick="expFiltrarCard(\'' + escHtml(g) + '\')" role="button" tabindex="0">' +
+        '<div class="kpi-label">' + escHtml(rotulo) + '</div><div class="kpi-value">' + escHtml(valor) + '</div><div class="kpi-delta neutral">' + escHtml(sub) + '</div></div>';
+      const kpis = document.getElementById('exp-kpis');
+      if (kpis) {
+        kpis.style.display = mostrarML ? '' : 'none';
+        kpis.innerHTML = !expPronto() ? '' : [
+          card('a_enviar', 'A enviar', r.diaPassado ? '-' : expValorCard(r.a_enviar, r.aEnviarIncompleto), r.diaPassado ? 'ver atrasados' : 'prazo ' + expDiaCurto(dia), 'highlight' + (r.aEnviarIncompleto ? ' incompleto' : '')),
+          card('despachado', 'Já bipados', expValorCard(r.despachado, r.despachadoIncompleto), 'pela agência em ' + expDiaCurto(dia), r.despachadoIncompleto ? 'incompleto' : ''),
+          card('todos', 'Total do dia', r.diaPassado ? expValorCard(r.despachado, r.despachadoIncompleto) : expValorCard(r.total, r.aEnviarIncompleto || r.despachadoIncompleto), 'a enviar + já bipados', (r.aEnviarIncompleto || r.despachadoIncompleto) ? 'incompleto' : ''),
+          card('atrasado', 'Atrasados', expValorCard(r.atrasado, r.atrasadoIncompleto), 'confirmados pelo ML', r.atrasado ? 'atraso' : (r.atrasadoIncompleto ? 'incompleto' : '')),
+          card('prazo_vencido', 'Prazo vencido', String(r.prazo_vencido), 'sem atraso confirmado', r.prazo_vencido ? 'incompleto' : ''),
+          card('sem_prazo', 'Prazo não informado', String(r.sem_prazo), 'pendentes', r.sem_prazo ? 'incompleto' : ''),
+          card('programado', 'Programados', String(r.programado), 'aguardando liberação', ''),
+        ].join('');
+      }
+
+      // Lista por secao
+      const cont = document.getElementById('exp-conteudo');
+      if (!cont) return;
+      if (!mostrarML) { cont.innerHTML = temML ? '' : '<div class="exp-vazio">Nenhuma conta do Mercado Livre nesta seleção.</div>'; return; }
+      if (!expPronto()) { cont.innerHTML = '<div class="exp-vazio">Lendo os pedidos recentes...</div>'; return; }
+
+      const SECOES = [
+        ['atrasado', 'Atrasados', 'atraso confirmado pelo Mercado Livre', 'atraso'],
+        ['prazo_vencido', 'Prazo vencido', 'prazo passou pela nossa comparação de datas; o Mercado Livre não confirma atraso', 'vencido'],
+        ['a_enviar', 'A enviar', 'prazo oficial de postagem em ' + expDiaCurto(dia), ''],
+        ['sem_prazo', 'Prazo não informado', 'pendentes sem prazo oficial: podem ser do dia', ''],
+        ['consultando', 'Consultando', 'ainda sem resposta; os mais próximos do dia vão primeiro', ''],
+        ['nao_classificado', 'A conferir', 'sem evidência suficiente de bipagem: conferir no Mercado Livre', ''],
+        ['despachado', 'Já bipados', 'bipagem pela agência em ' + expDiaCurto(dia) + ', horário de Brasília', ''],
+        ['bipado_sem_horario', 'Já bipados, horário indisponível', 'postagem confirmada por evento posterior; o Mercado Livre não informou o horário da bipagem', ''],
+        ['programado', 'Programados', 'liberação é quando o Mercado Livre libera a etiqueta; o prazo de postagem vem depois', ''],
+      ];
+      const ordem = (a, b) => (a.e && a.e.prazoPostagem || a.e && a.e.liberacaoEm || a.e && a.e.despachadoEm || a.p.compraMaisAntiga || '').localeCompare(b.e && b.e.prazoPostagem || b.e && b.e.liberacaoEm || b.e && b.e.despachadoEm || b.p.compraMaisAntiga || '');
+      const html = [];
+      for (const [g, titulo, sub, cls] of SECOES) {
+        if (fSt !== 'todos' && fSt !== g && !(fSt === 'nao_classificado' && g === 'consultando') && !(fSt === 'despachado' && g === 'bipado_sem_horario')) continue;
+        const itens = Object.keys(pacotes).filter(k => r.grupos[k] === g).map(k => ({ p: pacotes[k], e: _expEnvios[k], g })).sort(ordem);
+        if (!itens.length && fSt === 'todos' && g !== 'a_enviar' && g !== 'despachado') continue;
+        html.push('<section class="exp-secao ' + escHtml(cls) + '"><div class="exp-secao-titulo"><span>' + escHtml(titulo) + ' (' + itens.length + ')</span><small>' + escHtml(sub) + '</small></div>');
+        if (g === 'consultando') {
+          // Fila em andamento: um contador, nunca uma lista de cartoes vazios.
+          const prox = itens.filter(x => expDistancia(x.p, dia) <= EXP_DIAS_PRIORIDADE).length;
+          html.push('<div class="exp-vazio">' + itens.length + ' envio' + (itens.length > 1 ? 's' : '') + ' na fila' +
+            (prox ? ' (' + prox + ' de pedidos até ' + EXP_DIAS_PRIORIDADE + ' dias do dia escolhido)' : ' (pedidos mais antigos, em segundo plano)') + '.</div>');
+        } else if (!itens.length) {
+          const incompleto = g === 'a_enviar' ? r.aEnviarIncompleto : r.despachadoIncompleto;
+          html.push('<div class="exp-vazio">' + (g === 'a_enviar' && r.diaPassado ? 'Dia passado: pendências estão em Atrasados.'
+            : incompleto ? 'Nenhum confirmado até agora, mas a consulta está incompleta (veja o aviso acima).'
+              : 'Nenhum envio ' + (g === 'a_enviar' ? 'com prazo nesta data.' : 'bipado nesta data.')) + '</div>');
+        } else if (g === 'programado') {
+          const { naData, proximas } = expDividirProgramados(itens, dia);
+          html.push('<div class="exp-subsecao"><div class="exp-subtitulo">Liberam em ' + escHtml(expDiaCurto(dia)) + ' (' + naData.length + ')</div>' +
+            (naData.length ? '<div class="exp-lista">' + naData.map(expCartao).join('') + '</div>' : '<div class="exp-vazio">Nenhum programado libera nesta data.</div>') + '</div>');
+          if (proximas.length) {
+            html.push('<div class="exp-subsecao secundaria"><div class="exp-subtitulo">Próximas liberações (' + proximas.length + ')</div>' +
+              '<div class="exp-lista">' + proximas.map(expCartao).join('') + '</div></div>');
+          }
+        } else {
+          html.push('<div class="exp-lista">' + itens.map(expCartao).join('') + '</div>');
+        }
+        html.push('</section>');
+      }
+      // Detalhes da consulta: os numeros da ultima carga, para medir em uso real.
+      const mt = _expMetricas;
+      if (mt) {
+        const seg = (ms) => ms === null || ms === undefined ? '-' : (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+        html.push('<details class="exp-metricas"><summary>Detalhes da consulta</summary><dl>' +
+          '<dt>Pedidos lidos</dt><dd>' + (mt.pedidosLidos !== undefined ? mt.pedidosLidos + ' em ' + mt.paginas + ' página(s); 30 dias em ' + seg(mt.msPedidos) + (mt.msPedidosResto !== undefined ? ', 31 a ' + EXP_JANELA_MAX_DIAS + ' dias em ' + seg(mt.msPedidosResto) : '') : 'histórico já em memória') + '</dd>' +
+          '<dt>Janela</dt><dd>' + EXP_JANELA_MAX_DIAS + ' dias (desde ' + expDiaCurto(expDesde()) + ')' + (expLeituraParcial() ? ', completando em segundo plano' : '') + '. Pedidos mais antigos não são verificados.</dd>' +
+          '<dt>Pacotes na janela</dt><dd>' + (mt.pacotes ?? '-') + '</dd>' +
+          '<dt>Na fila da última consulta</dt><dd>' + (mt.naFila ?? '-') + ', ' + (mt.prioritarios ?? '-') + ' prioritários</dd>' +
+          '<dt>Requisições ao backend</dt><dd>' + (mt.requisicoes ?? '-') + '</dd>' +
+          '<dt>Chamadas ao Mercado Livre</dt><dd>' + (mt.chamadasML ?? '-') + '</dd>' +
+          '<dt>Envios resolvidos</dt><dd>' + (mt.enviosRespondidos ?? '-') + '</dd>' +
+          '<dt>Respostas vindas do cache</dt><dd>' + (mt.doCache ?? '-') + '</dd>' +
+          '<dt>Primeira resposta</dt><dd>' + seg(mt.msPrimeiraResposta) + '</dd>' +
+          '<dt>Prioritários resolvidos</dt><dd>' + seg(mt.msPrioridade) + '</dd>' +
+          '<dt>Consulta completa</dt><dd>' + seg(mt.msTotal) + '</dd>' +
+          '</dl></details>');
+      }
+      cont.innerHTML = html.join('') || '<div class="exp-vazio">Nenhum envio para este filtro.</div>';
+    }
+
+    /**
+     * Programados do dia escolhido x proximas liberacoes. Puro.
+     * Cada item e UM envio (pacote), com todos os pedidos e produtos dele.
+     * `naData`: liberacaoEm igual ao dia. `proximas`: os demais, em ordem
+     * cronologica de liberacao; sem data de liberacao vao por ultimo.
+     */
+    function expDividirProgramados(itens, dia) {
+      const lib = x => (x.e && x.e.liberacaoEm) || '';
+      const naData = itens.filter(x => lib(x) === dia);
+      const proximas = itens.filter(x => lib(x) !== dia).sort((a, b) => {
+        const la = lib(a), lb = lib(b);
+        if (!la || !lb) return la ? -1 : lb ? 1 : 0;
+        return la.localeCompare(lb) || String(a.p.compraMaisAntiga || '').localeCompare(String(b.p.compraMaisAntiga || ''));
+      });
+      return { naData, proximas };
+    }
+
+    /** Evidencia da bipagem, dita no cartao. */
+    function expFonteDespacho(e) {
+      switch (e && e.despachoFonte) {
+        case 'agencia': return 'horário confirmado pela agência';
+        case 'coleta': return 'horário confirmado na coleta';
+        case 'evento_posterior': return 'horário da bipagem indisponível';
+        default: return '';
+      }
+    }
+
+    function expCartao(x) {
+      const p = x.p, e = x.e || {}, g = x.g;
+      const ped = g === 'programado' && p.pedidos.length > 1
+        ? p.pedidos.map(id => '#' + escHtml(id)).join(', ') + ' <small>' + p.pedidos.length + ' pedidos no pacote</small>'
+        : '#' + escHtml(p.pedidos[0]) + (p.pedidos.length > 1 ? ' <small>+' + (p.pedidos.length - 1) + ' pedido' + (p.pedidos.length > 2 ? 's' : '') + ' no pacote</small>' : '');
+      const itens = Object.values(p.itens).map(it => '<li><span class="q">' + (it.qtdDesconhecida ? '?' : it.qtd + '×') + '</span><span>' + escHtml(it.titulo) + '</span></li>').join('');
+      let data = '', badge = '';
+      if (g === 'a_enviar') { data = '<span class="exp-data">Postar até ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge ouro">A enviar</span>'; }
+      else if (g === 'atrasado') { data = '<span class="exp-data atraso">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge atraso">Atraso no ML</span>'; }
+      else if (g === 'prazo_vencido') { data = '<span class="exp-data falta">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge alerta">Prazo vencido</span>'; }
+      else if (g === 'sem_prazo') { data = '<span class="exp-data falta">Prazo não informado</span>'; badge = '<span class="badge alerta">Sem prazo</span>'; }
+      else if (g === 'programado') {
+        data = '<span class="exp-datas"><span class="exp-data">Liberação: ' + escHtml(e.liberacaoEm ? expDiaCurto(e.liberacaoEm) : 'não informada') + '</span>' +
+          '<span class="exp-data sec">Prazo de postagem: ' + (e.prazoPostagem ? expPrazoTexto(e) : 'definido após a liberação') + '</span></span>';
+        badge = '<span class="badge paused">Programado</span>';
+      }
+      else if (g === 'despachado') { data = '<span class="exp-data">' + (e.despachoFonte === 'coleta' ? 'Coletado ' : 'Bipado ') + escHtml(expInstante(e.despachadoEm)) + '</span>'; badge = '<span class="badge active">Já bipado</span>'; }
+      else if (g === 'bipado_sem_horario') { data = '<span class="exp-datas"><span class="exp-data">Postagem confirmada</span><span class="exp-data sec">' + (e.bipagemAte ? 'horário da bipagem indisponível; registro posterior em ' + escHtml(expInstante(e.bipagemAte)) : 'horário da bipagem indisponível') + '</span></span>'; badge = '<span class="badge active">Já bipado</span>'; }
+      else if (g === 'consultando') { data = '<span class="exp-data falta">Consultando...</span>'; badge = '<span class="badge alerta">Consultando</span>'; }
+      else { data = '<span class="exp-data falta">' + escHtml(e.status || 'sem resposta') + (e.substatus ? ' / ' + escHtml(e.substatus) : '') + '</span>'; badge = '<span class="badge alerta">A conferir</span>'; }
+      const etiqueta = e.substatus === 'printed' ? 'etiqueta impressa' : e.substatus === 'ready_to_print' ? 'etiqueta a imprimir' : '';
+      const sobreAtraso = g === 'atrasado' ? 'atraso confirmado pelo ML' + (e.atrasoTipos && e.atrasoTipos.length ? ' (' + e.atrasoTipos.join(', ') + ')' : '')
+        : g === 'prazo_vencido' ? (e.atrasoML === 'nao_indicado' ? 'ML não indica atraso' : 'ML não respondeu sobre atraso') : '';
+      const limitePassou = g === 'a_enviar' && e.prazoLimiteEm && Date.parse(e.prazoLimiteEm) < Date.now() ? 'horário-limite já passou' : '';
+      const det = [expLogistica(e.logistica), etiqueta, sobreAtraso, limitePassou, g === 'despachado' ? expFonteDespacho(e) : '', g === 'nao_classificado' && (e.avisos || []).includes('packing_list_sem_bipagem') ? 'packing list sem bipagem registrada' : '', g !== 'despachado' && g !== 'bipado_sem_horario' && g !== 'programado' && e.prazoPostagem && g !== 'a_enviar' && g !== 'atrasado' && g !== 'prazo_vencido' ? 'prazo ' + expDiaCurto(e.prazoPostagem) : ''].filter(Boolean).join(' · ');
+      return '<article class="exp-pacote g-' + g + '">' +
+        '<div class="exp-l1"><div><div class="exp-pedido">' + ped + '</div><div class="exp-conta">' + escHtml(empresaDaConta(p.conta)) + ' · Mercado Livre</div></div>' + badge + '</div>' +
+        '<ul class="exp-itens">' + itens + '</ul>' +
+        '<div class="exp-l3">' + data + '<span class="exp-det">' + escHtml(det) + '</span></div>' +
+        '</article>';
+    }
+
     const TAB_SECTION_MAP = {
       visaogeral: 'visaogeral', catalogo: 'visaogeral', topvendas: 'visaogeral',
-      estoque: 'visaogeral', estoquefull: 'visaogeral', qualidade: 'visaogeral', pedidos: 'visaogeral', consolidado: 'visaogeral',
+      estoque: 'visaogeral', estoquefull: 'visaogeral', qualidade: 'visaogeral', pedidos: 'visaogeral', expedicao: 'visaogeral', consolidado: 'visaogeral',
       tipoanuncio: 'marketing', tipopedido: 'marketing', mlads: 'marketing',
       posicionamento: 'marketing', radar: 'marketing', relampago: 'marketing',
       margem: 'financeiro', entregas: 'financeiro', cancelamentos: 'financeiro', analisepreco: 'financeiro', previsao: 'financeiro', giro: 'financeiro',
@@ -14662,6 +15400,7 @@
       // comHistorico renderiza de imediato, dispara a carga uma unica vez e
       // re-renderiza ao concluir — sem esconder o dashboard.
       if (tab === 'pedidos') abrirAbaPedidos();   // Onda F: 1a pagina + historico em background
+      if (tab === 'expedicao') expAbrir();   // carga propria: nao espera o historico completo
       if (tab === 'tipopedido') comHistorico('Full vs Proprio', renderTipoPedido);
       if (tab === 'consolidado') comHistorico('Consolidado', renderConsolidado);
       if (tab === 'estoquefull') comHistorico('Estoque Full', renderEstoqueFull);

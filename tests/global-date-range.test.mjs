@@ -76,9 +76,14 @@ function montarGdr({ hoje = '2026-09-28', preset = 'mes_atual', customDe, custom
 
 describe('regra principal — nenhum filtro de data local sobrou', () => {
   test('o unico par de <input type="date"> e o Personalizado do filtro global', () => {
-    const inputs = [...html.matchAll(/<input[^>]*type="date"[^>]*>/g)].map(m => m[0]);
+    // EXCECAO UNICA e explicita: o dia da aba Expedicao. Nao e filtro de
+    // PERIODO (a aba responde "o que sai neste dia", nunca um intervalo) e por
+    // isso nao le nem altera o globalDateRange.
+    const inputs = [...html.matchAll(/<input[^>]*type="date"[^>]*>/g)].map(m => m[0])
+      .filter(i => !/id="exp-dia"/.test(i));
     assert.equal(inputs.length, 2, inputs.join('\n'));
     assert.ok(inputs.every(i => /id="gdr-(de|ate)"/.test(i)));
+    assert.equal([...html.matchAll(/id="exp-dia"/g)].length, 1, 'um so seletor de dia na Expedicao');
   });
 
   test('ids dos filtros locais antigos nao existem mais', () => {
