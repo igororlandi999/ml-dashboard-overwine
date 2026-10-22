@@ -45,7 +45,9 @@ const m = new Function([
   extrairFuncao('expDistancia'),
   extrairFuncao('expOrdenarFila'),
   extrairFuncao('expMontarLotes'),
-  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto, expPrazoTexto, expDistancia, expOrdenarFila, expMontarLotes };',
+  extrairFuncao('expDividirProgramados'),
+  extrairFuncao('expFonteDespacho'),
+  'return { expMontarPacotes, expGrupo, expResumo, expValorCard, expDiaCurto, expPrazoTexto, expDistancia, expOrdenarFila, expMontarLotes, expDividirProgramados, expFonteDespacho };',
 ].join('\n'))();
 
 const HOJE = '2026-10-21';
@@ -234,6 +236,87 @@ describe('fila priorizada', () => {
     const lotes = m.expMontarLotes(fila, 50);
     assert.deepEqual(lotes.map(l => [l.conta, l.ids.length]), [['overwine-ml', 50], ['degustar-ml', 1], ['overwine-ml', 3]]);
     assert.equal(lotes[0].ids[0], '1000');
+  });
+});
+
+describe('despacho = postagem na agencia (dropped_off), dias 19 a 23/10', () => {
+  // Saida do backend para os envios reais: despachadoEm = dropped_off em -04:00.
+  const desp = (iso, fonte = 'agencia', substatus = 'in_packing_list') =>
+    ({ situacao: 'despachado', status: 'ready_to_ship', substatus, despachadoEm: iso, despachoFonte: fonte, prazoPostagem: null, liberacaoEm: null });
+  const reais = {
+    '48276931841': desp('2026-10-21T11:13:53.000-04:00'),
+    '48288871607': desp('2026-10-20T11:18:10.000-04:00', 'agencia', 'in_hub'),
+    '48282048911': desp('2026-10-20T11:18:12.000-04:00', 'agencia', null),
+    '48281437716': desp('2026-10-20T11:18:14.000-04:00', 'agencia', 'picked_up'),
+    '48279810057': desp('2026-10-20T11:18:16.000-04:00', 'agencia', null),
+    '48265507555': desp('2026-10-19T11:20:05.000-04:00', 'agencia', 'in_hub'),
+    '48263520283': desp('2026-10-21T11:13:40.000-04:00'),
+  };
+  const esperado = {
+    '2026-10-19': ['48265507555'],
+    '2026-10-20': ['48279810057', '48281437716', '48282048911', '48288871607'],
+    '2026-10-21': ['48263520283', '48276931841'],
+    '2026-10-22': [],
+    '2026-10-23': [],
+  };
+  for (const [dia, ids] of Object.entries(esperado)) {
+    test('despachados em ' + dia + ': ' + (ids.join(', ') || 'nenhum destes'), () => {
+      const doDia = Object.keys(reais).filter(id => m.expGrupo(reais[id], dia, '2026-10-22') === 'despachado').sort();
+      assert.deepEqual(doDia, ids);
+    });
+  }
+
+  test('in_packing_list despachado nunca cai em prazo vencido nem em a enviar', () => {
+    for (const dia of Object.keys(esperado)) {
+      const g = m.expGrupo(reais['48276931841'], dia, '2026-10-22');
+      assert.ok(g === 'despachado' || g === 'despachado_outro_dia', dia + ': ' + g);
+    }
+  });
+
+  test('fonte da data: agencia e dita; fallback diz que nao houve registro da agencia', () => {
+    assert.equal(m.expFonteDespacho({ despachoFonte: 'agencia' }), 'recebido na agência');
+    assert.match(m.expFonteDespacho({ despachoFonte: 'evento_logistico' }), /sem registro da agência/);
+    assert.match(m.expFonteDespacho({ despachoFonte: 'date_shipped' }), /sem registro da agência/);
+    assert.equal(m.expFonteDespacho({}), '');
+    assert.equal(m.expFonteDespacho(undefined), '');
+  });
+});
+
+describe('programados: liberam na data x proximas liberacoes', () => {
+  const item = (envio, liberacaoEm, pedidos = [envio], compra = '2026-10-20T10:00:00.000-03:00') =>
+    ({ p: { envio, pedidos, compraMaisAntiga: compra, itens: {} }, e: { situacao: 'programado', liberacaoEm, prazoPostagem: null }, g: 'programado' });
+
+  test('48315271920 (2 pedidos, libera 27/10) NUNCA aparece como liberando em 23/10', () => {
+    const itens = [item('48315271920', '2026-10-27', ['2000019100000001', '2000019100000002']), item('A', '2026-10-23'), item('B', '2026-10-24')];
+    const r = m.expDividirProgramados(itens, '2026-10-23');
+    assert.deepEqual(r.naData.map(x => x.p.envio), ['A']);
+    assert.deepEqual(r.proximas.map(x => x.p.envio), ['B', '48315271920']);
+    // O pacote segue UM item, com os dois pedidos.
+    assert.equal(r.proximas[1].p.pedidos.length, 2);
+    const r27 = m.expDividirProgramados(itens, '2026-10-27');
+    assert.deepEqual(r27.naData.map(x => x.p.envio), ['48315271920']);
+  });
+
+  test('proximas em ordem cronologica de liberacao; sem liberacao informada por ultimo', () => {
+    const itens = [item('C', null), item('D', '2026-10-30'), item('E', '2026-10-25'), item('F', '2026-10-21')];
+    const r = m.expDividirProgramados(itens, '2026-10-23');
+    assert.deepEqual(r.naData, []);
+    assert.deepEqual(r.proximas.map(x => x.p.envio), ['F', 'E', 'D', 'C']);
+  });
+
+  test('nenhum programado e perdido nem duplicado na divisao', () => {
+    const itens = [item('1', '2026-10-23'), item('2', '2026-10-23'), item('3', '2026-10-24'), item('4', null)];
+    const r = m.expDividirProgramados(itens, '2026-10-23');
+    assert.equal(r.naData.length + r.proximas.length, itens.length);
+    assert.equal(new Set([...r.naData, ...r.proximas].map(x => x.p.envio)).size, itens.length);
+  });
+});
+
+describe('"A enviar" intocado', () => {
+  test('regra do grupo e cartao de a enviar seguem identicos', () => {
+    assert.ok(html.includes("return e.prazoPostagem === dia ? 'a_enviar' : 'pendente_outro_dia';"));
+    assert.ok(html.includes(`if (g === 'a_enviar') { data = '<span class="exp-data">Postar até ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge ouro">A enviar</span>'; }`));
+    assert.ok(html.includes("['a_enviar', 'A enviar', 'prazo oficial de postagem em ' + expDiaCurto(dia), ''],"));
   });
 });
 

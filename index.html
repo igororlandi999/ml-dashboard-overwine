@@ -3081,6 +3081,12 @@
     #tab-expedicao .exp-data { color: var(--cream); font-weight: 600; }
     #tab-expedicao .exp-data.atraso { color: var(--red); }
     #tab-expedicao .exp-data.falta { color: var(--amber); }
+    #tab-expedicao .exp-datas { display: flex; flex-direction: column; gap: 2px; }
+    #tab-expedicao .exp-data.sec { color: var(--muted); font-weight: 500; }
+    #tab-expedicao .exp-subsecao + .exp-subsecao { margin-top: 12px; }
+    #tab-expedicao .exp-subtitulo { font-size: 12px; font-weight: 600; color: var(--cream); margin: 4px 2px 8px; }
+    #tab-expedicao .exp-subsecao.secundaria { opacity: .85; }
+    #tab-expedicao .exp-subsecao.secundaria .exp-subtitulo { color: var(--muted); }
     #tab-expedicao .exp-det { color: var(--muted); }
     #tab-expedicao .badge.atraso { border-color: rgba(224, 82, 82, 0.4); color: var(--red); background: rgba(224, 82, 82, 0.06); }
     #tab-expedicao .badge.alerta { border-color: rgba(232, 168, 74, 0.4); color: var(--amber); }
@@ -15089,7 +15095,7 @@
         ['sem_prazo', 'Prazo não informado', 'pendentes sem prazo oficial: podem ser do dia', ''],
         ['consultando', 'Consultando', 'ainda sem resposta; os mais próximos do dia vão primeiro', ''],
         ['nao_classificado', 'Não classificados', 'status fora do mapa ou consulta sem resposta', ''],
-        ['programado', 'Programados', 'o Mercado Livre libera a etiqueta na data indicada; o prazo vem depois', ''],
+        ['programado', 'Programados', 'liberação é quando o Mercado Livre libera a etiqueta; o prazo de postagem vem depois', ''],
         ['despachado', 'Despachados', 'despacho confirmado em ' + expDiaCurto(dia), ''],
       ];
       const ordem = (a, b) => (a.e && a.e.prazoPostagem || a.e && a.e.liberacaoEm || a.e && a.e.despachadoEm || a.p.compraMaisAntiga || '').localeCompare(b.e && b.e.prazoPostagem || b.e && b.e.liberacaoEm || b.e && b.e.despachadoEm || b.p.compraMaisAntiga || '');
@@ -15109,6 +15115,14 @@
           html.push('<div class="exp-vazio">' + (g === 'a_enviar' && r.diaPassado ? 'Dia passado: pendências estão em Atrasados.'
             : incompleto ? 'Nenhum confirmado até agora, mas a consulta está incompleta (veja o aviso acima).'
               : 'Nenhum envio ' + (g === 'a_enviar' ? 'com prazo nesta data.' : 'despachado nesta data.')) + '</div>');
+        } else if (g === 'programado') {
+          const { naData, proximas } = expDividirProgramados(itens, dia);
+          html.push('<div class="exp-subsecao"><div class="exp-subtitulo">Liberam em ' + expDiaCurto(dia) + ' (' + naData.length + ')</div>' +
+            (naData.length ? '<div class="exp-lista">' + naData.map(expCartao).join('') + '</div>' : '<div class="exp-vazio">Nenhum programado libera nesta data.</div>') + '</div>');
+          if (proximas.length) {
+            html.push('<div class="exp-subsecao secundaria"><div class="exp-subtitulo">Próximas liberações (' + proximas.length + ')</div>' +
+              '<div class="exp-lista">' + proximas.map(expCartao).join('') + '</div></div>');
+          }
         } else {
           html.push('<div class="exp-lista">' + itens.map(expCartao).join('') + '</div>');
         }
@@ -15138,16 +15152,49 @@
       cont.innerHTML = html.join('') || '<div class="exp-vazio">Nenhum envio para este filtro.</div>';
     }
 
+    /**
+     * Programados do dia escolhido x proximas liberacoes. Puro.
+     * Cada item e UM envio (pacote), com todos os pedidos e produtos dele.
+     * `naData`: liberacaoEm igual ao dia. `proximas`: os demais, em ordem
+     * cronologica de liberacao; sem data de liberacao vao por ultimo.
+     */
+    function expDividirProgramados(itens, dia) {
+      const lib = x => (x.e && x.e.liberacaoEm) || '';
+      const naData = itens.filter(x => lib(x) === dia);
+      const proximas = itens.filter(x => lib(x) !== dia).sort((a, b) => {
+        const la = lib(a), lb = lib(b);
+        if (!la || !lb) return la ? -1 : lb ? 1 : 0;
+        return la.localeCompare(lb) || String(a.p.compraMaisAntiga || '').localeCompare(String(b.p.compraMaisAntiga || ''));
+      });
+      return { naData, proximas };
+    }
+
+    /** Origem da data de despacho, dita no cartao quando nao e a agencia. */
+    function expFonteDespacho(e) {
+      switch (e && e.despachoFonte) {
+        case 'agencia': return 'recebido na agência';
+        case 'evento_logistico': return 'sem registro da agência: data do primeiro evento logístico';
+        case 'date_shipped': return 'sem registro da agência: data de saída informada pelo ML';
+        default: return '';
+      }
+    }
+
     function expCartao(x) {
       const p = x.p, e = x.e || {}, g = x.g;
-      const ped = '#' + escHtml(p.pedidos[0]) + (p.pedidos.length > 1 ? ' <small>+' + (p.pedidos.length - 1) + ' pedido' + (p.pedidos.length > 2 ? 's' : '') + ' no pacote</small>' : '');
+      const ped = g === 'programado' && p.pedidos.length > 1
+        ? p.pedidos.map(id => '#' + escHtml(id)).join(', ') + ' <small>' + p.pedidos.length + ' pedidos no pacote</small>'
+        : '#' + escHtml(p.pedidos[0]) + (p.pedidos.length > 1 ? ' <small>+' + (p.pedidos.length - 1) + ' pedido' + (p.pedidos.length > 2 ? 's' : '') + ' no pacote</small>' : '');
       const itens = Object.values(p.itens).map(it => '<li><span class="q">' + (it.qtdDesconhecida ? '?' : it.qtd + '×') + '</span><span>' + escHtml(it.titulo) + '</span></li>').join('');
       let data = '', badge = '';
       if (g === 'a_enviar') { data = '<span class="exp-data">Postar até ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge ouro">A enviar</span>'; }
       else if (g === 'atrasado') { data = '<span class="exp-data atraso">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge atraso">Atraso no ML</span>'; }
       else if (g === 'prazo_vencido') { data = '<span class="exp-data falta">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge alerta">Prazo vencido</span>'; }
       else if (g === 'sem_prazo') { data = '<span class="exp-data falta">Prazo não informado</span>'; badge = '<span class="badge alerta">Sem prazo</span>'; }
-      else if (g === 'programado') { data = '<span class="exp-data">' + (e.liberacaoEm ? 'Liberação em ' + expDiaCurto(e.liberacaoEm) : 'Liberação não informada') + '</span>'; badge = '<span class="badge paused">Programado</span>'; }
+      else if (g === 'programado') {
+        data = '<span class="exp-datas"><span class="exp-data">Liberação: ' + (e.liberacaoEm ? expDiaCurto(e.liberacaoEm) : 'não informada') + '</span>' +
+          '<span class="exp-data sec">Prazo de postagem: ' + (e.prazoPostagem ? expPrazoTexto(e) : 'definido após a liberação') + '</span></span>';
+        badge = '<span class="badge paused">Programado</span>';
+      }
       else if (g === 'despachado') { data = '<span class="exp-data">Despachado ' + expInstante(e.despachadoEm) + '</span>'; badge = '<span class="badge active">Despachado</span>'; }
       else if (g === 'consultando') { data = '<span class="exp-data falta">Consultando...</span>'; badge = '<span class="badge alerta">Consultando</span>'; }
       else { data = '<span class="exp-data falta">' + escHtml(e.status || 'sem resposta') + (e.substatus ? ' / ' + escHtml(e.substatus) : '') + '</span>'; badge = '<span class="badge alerta">Não classificado</span>'; }
@@ -15155,7 +15202,7 @@
       const sobreAtraso = g === 'atrasado' ? 'atraso confirmado pelo ML' + (e.atrasoTipos && e.atrasoTipos.length ? ' (' + e.atrasoTipos.join(', ') + ')' : '')
         : g === 'prazo_vencido' ? (e.atrasoML === 'nao_indicado' ? 'ML não indica atraso' : 'ML não respondeu sobre atraso') : '';
       const limitePassou = g === 'a_enviar' && e.prazoLimiteEm && Date.parse(e.prazoLimiteEm) < Date.now() ? 'horário-limite já passou' : '';
-      const det = [expLogistica(e.logistica), etiqueta, sobreAtraso, limitePassou, g !== 'despachado' && e.prazoPostagem && g !== 'a_enviar' && g !== 'atrasado' && g !== 'prazo_vencido' ? 'prazo ' + expDiaCurto(e.prazoPostagem) : ''].filter(Boolean).join(' · ');
+      const det = [expLogistica(e.logistica), etiqueta, sobreAtraso, limitePassou, g === 'despachado' ? expFonteDespacho(e) : '', g !== 'despachado' && g !== 'programado' && e.prazoPostagem && g !== 'a_enviar' && g !== 'atrasado' && g !== 'prazo_vencido' ? 'prazo ' + expDiaCurto(e.prazoPostagem) : ''].filter(Boolean).join(' · ');
       return '<article class="exp-pacote g-' + g + '">' +
         '<div class="exp-l1"><div><div class="exp-pedido">' + ped + '</div><div class="exp-conta">' + escHtml(empresaDaConta(p.conta)) + ' · Mercado Livre</div></div>' + badge + '</div>' +
         '<ul class="exp-itens">' + itens + '</ul>' +
