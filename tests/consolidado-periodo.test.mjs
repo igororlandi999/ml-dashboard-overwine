@@ -51,6 +51,8 @@ function montar({ preset = 'mes_atual', de, ate, itens, pedidos }) {
     'function hojeBRT() { return _hoje; }',
     extrairConstante('MESES_GDR'),
     extrairConstante('globalDateRange'),
+    extrairConstante('GDR_PRESETS_DIA'),
+    extrairFuncao('gdrPrecisaVirar'),
     extrairFuncao('gdrUltimoDia'), extrairFuncao('gdrYmd'), extrairFuncao('gdrDiasEntre'),
     extrairFuncao('gdrCalcularRange'), extrairFuncao('gdrRotulo'), extrairFuncao('gdrGet'),
     extrairFuncao('dentroDoPeriodo'),
