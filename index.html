@@ -15117,7 +15117,7 @@
               : 'Nenhum envio ' + (g === 'a_enviar' ? 'com prazo nesta data.' : 'despachado nesta data.')) + '</div>');
         } else if (g === 'programado') {
           const { naData, proximas } = expDividirProgramados(itens, dia);
-          html.push('<div class="exp-subsecao"><div class="exp-subtitulo">Liberam em ' + expDiaCurto(dia) + ' (' + naData.length + ')</div>' +
+          html.push('<div class="exp-subsecao"><div class="exp-subtitulo">Liberam em ' + escHtml(expDiaCurto(dia)) + ' (' + naData.length + ')</div>' +
             (naData.length ? '<div class="exp-lista">' + naData.map(expCartao).join('') + '</div>' : '<div class="exp-vazio">Nenhum programado libera nesta data.</div>') + '</div>');
           if (proximas.length) {
             html.push('<div class="exp-subsecao secundaria"><div class="exp-subtitulo">Próximas liberações (' + proximas.length + ')</div>' +
@@ -15191,7 +15191,7 @@
       else if (g === 'prazo_vencido') { data = '<span class="exp-data falta">Prazo era ' + expPrazoTexto(e) + '</span>'; badge = '<span class="badge alerta">Prazo vencido</span>'; }
       else if (g === 'sem_prazo') { data = '<span class="exp-data falta">Prazo não informado</span>'; badge = '<span class="badge alerta">Sem prazo</span>'; }
       else if (g === 'programado') {
-        data = '<span class="exp-datas"><span class="exp-data">Liberação: ' + (e.liberacaoEm ? expDiaCurto(e.liberacaoEm) : 'não informada') + '</span>' +
+        data = '<span class="exp-datas"><span class="exp-data">Liberação: ' + escHtml(e.liberacaoEm ? expDiaCurto(e.liberacaoEm) : 'não informada') + '</span>' +
           '<span class="exp-data sec">Prazo de postagem: ' + (e.prazoPostagem ? expPrazoTexto(e) : 'definido após a liberação') + '</span></span>';
         badge = '<span class="badge paused">Programado</span>';
       }
