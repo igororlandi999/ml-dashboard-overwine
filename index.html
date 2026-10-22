@@ -5419,15 +5419,20 @@
     // pedidos ja vem liquido do estorno (decisao do proprietario, 18/08/2026).
     // ══════════════════════════════════════
     function contaComoVenda(status) {
-      return status === 'paid' || status === 'partially_refunded' || STATUS_VENDA_AMAZON.has(status);
+      return status === 'paid' || status === 'partially_refunded' || contaComoVendaAmazon(status);
     }
 
-    // AMAZON — lista PROPRIA (espelho de src/lib/status-venda.ts e
-    // src/amazon/leitura.ts do backend), decidida sobre o contrato da Orders
-    // API v2026-01-01. Os pedidos da Amazon chegam com status `amazon:*`:
-    // entram so os aprovados (a enviar, enviado em parte, enviado); pendente,
-    // pre-venda, cancelado e nao atendivel ficam de fora.
-    const STATUS_VENDA_AMAZON = new Set(['amazon:unshipped', 'amazon:partially_shipped', 'amazon:shipped']);
+    // AMAZON — regra de EXCLUSAO (espelho de contaComoVendaAmazon em
+    // src/lib/status-venda.ts do backend). Decisao do proprietario, 21/10/2026:
+    // todo pedido Amazon entra no faturamento, exceto cancelado — inclusive
+    // pendente, pre-venda, nao atendivel e status desconhecido. Os pedidos da
+    // Amazon chegam com status `amazon:*`, entao a regra nunca alcanca o ML.
+    // So o calculo muda: o status continua exibido como veio.
+    function contaComoVendaAmazon(status) {
+      return typeof status === 'string' && status.indexOf('amazon:') === 0 && status !== 'amazon:cancelled';
+    }
+    // Selo verde na tabela (exibicao apenas, nao decide faturamento): os aprovados.
+    const STATUS_AMAZON_SELO_ATIVO = new Set(['amazon:unshipped', 'amazon:partially_shipped', 'amazon:shipped']);
     const ROTULO_STATUS_AMAZON = {
       'amazon:pending_availability': 'Pr\u00e9-venda', 'amazon:pending': 'Pendente', 'amazon:unshipped': 'A enviar',
       'amazon:partially_shipped': 'Enviado em parte', 'amazon:shipped': 'Enviado', 'amazon:cancelled': 'Cancelado',
@@ -5450,7 +5455,8 @@
     function pedidoCancelado(o) { return pedidoAmazon(o) ? o.status === 'amazon:cancelled' : o.status === 'cancelled'; }
     function badgeStatusAmazon(s) {
       const rot = ROTULO_STATUS_AMAZON[s] || String(s || '-').replace('amazon:', '');
-      const cls = STATUS_VENDA_AMAZON.has(s) ? 'active' : s === 'amazon:cancelled' ? 'closed' : 'paused';
+      // Exibicao inalterada: pendente e desconhecido continuam com o selo de antes, mesmo contando como venda.
+      const cls = STATUS_AMAZON_SELO_ATIVO.has(s) ? 'active' : s === 'amazon:cancelled' ? 'closed' : 'paused';
       return `<span class="badge ${cls}" title="Status da Amazon">${escHtml(rot)}</span>`;
     }
 
@@ -16827,9 +16833,10 @@
 
         lista.forEach(function (o) {
           var st = o && o.status;
-          if (st === 'cancelled') { cancelados++; return; }
+          // ML: exatamente a comparacao de antes ('cancelled' / 'paid'). Amazon: tudo menos cancelado.
+          if (pedidoCancelado(o)) { cancelados++; return; }
           if (st === 'partially_refunded') { parcial++; }
-          if (st !== 'paid') return; // hoje/7d/mes e ticket geral: SOMENTE paid
+          if (!pedidoPago(o)) return; // hoje/7d/mes e ticket geral: SOMENTE pagos
 
           pagos++;
           var dia = podeParidade ? ymdBRT(o.date_created) : owcDiaBRT(o && o.date_created);
