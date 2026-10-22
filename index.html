@@ -3063,7 +3063,7 @@
     #tab-expedicao .exp-pacote { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); padding: 12px 14px; }
     #tab-expedicao .exp-pacote.g-a_enviar { border-left-color: var(--gold); }
     #tab-expedicao .exp-pacote.g-atrasado { border-left-color: var(--red); }
-    #tab-expedicao .exp-pacote.g-despachado { border-left-color: var(--green); }
+    #tab-expedicao .exp-pacote.g-despachado, #tab-expedicao .exp-pacote.g-bipado_sem_horario { border-left-color: var(--green); }
     #tab-expedicao .exp-pacote.g-sem_prazo, #tab-expedicao .exp-pacote.g-nao_classificado, #tab-expedicao .exp-pacote.g-consultando, #tab-expedicao .exp-pacote.g-prazo_vencido { border-left-color: var(--amber); }
     #tab-expedicao .exp-kpis .kpi-card:nth-child(7) { grid-column: 1 / -1; }
     #tab-expedicao .exp-metricas { margin-top: 18px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); padding: 10px 14px; }
@@ -14695,8 +14695,11 @@
      *   pendente_outro_dia  pendente com prazo futuro diferente do dia
      *   sem_prazo           pendente sem prazo oficial — deixa o dia incompleto
      *   programado          ML ainda nao liberou (buffered); liberacaoEm NAO e prazo
-     *   despachado          despacho real no dia
-     *   despachado_outro_dia, despachado_sem_data
+     *   despachado          JA BIPADO no dia (horario real da bipagem, em Brasilia)
+     *   despachado_outro_dia bipado em outro dia
+     *   bipado_sem_horario  entrega comprovada por evento posterior, sem o horario
+     *                       da bipagem; aparece no dia do evento-limite (ou sempre,
+     *                       se nem esse limite existe) e NAO entra na contagem
      *   fora                Full ou envio cancelado
      *   consultando         ainda sem resposta do backend
      *   nao_classificado    status fora do mapa ou o ML nao respondeu
@@ -14707,7 +14710,7 @@
         case 'full': case 'cancelado': return 'fora';
         case 'programado': return 'programado';
         case 'despachado':
-          if (!e.despachadoEm) return 'despachado_sem_data';
+          if (!e.despachadoEm) return !e.bipagemAte || ymdBRT(e.bipagemAte) === dia ? 'bipado_sem_horario' : 'despachado_outro_dia';
           return ymdBRT(e.despachadoEm) === dia ? 'despachado' : 'despachado_outro_dia';
         case 'pendente':
           if (!e.prazoPostagem) return 'sem_prazo';
@@ -14725,7 +14728,7 @@
      * a tela NUNCA mostra 0 a enviar com pendentes sem prazo ou sem resposta.
      */
     function expResumo(pacotes, envios, dia, hoje) {
-      const r = { a_enviar: 0, despachado: 0, atrasado: 0, prazo_vencido: 0, programado: 0, sem_prazo: 0, consultando: 0, nao_classificado: 0, despachado_sem_data: 0, fora: 0, vencidoSemRespostaML: 0, grupos: {} };
+      const r = { a_enviar: 0, despachado: 0, atrasado: 0, prazo_vencido: 0, programado: 0, sem_prazo: 0, consultando: 0, nao_classificado: 0, bipado_sem_horario: 0, fora: 0, vencidoSemRespostaML: 0, grupos: {} };
       for (const k of Object.keys(pacotes)) {
         const g = expGrupo(envios[k], dia, hoje);
         r.grupos[k] = g;
@@ -14736,8 +14739,8 @@
       r.diaPassado = dia < hoje;
       // Pendente sem prazo, sem resposta ou nao classificado pode ser do dia.
       r.aEnviarIncompleto = !r.diaPassado && (r.sem_prazo + r.consultando + r.nao_classificado) > 0;
-      // Despachado sem data, sem resposta ou nao classificado pode ter saido no dia.
-      r.despachadoIncompleto = (r.despachado_sem_data + r.consultando + r.nao_classificado) > 0;
+      // Bipado sem horario, sem resposta ou a conferir pode ter sido bipado no dia.
+      r.despachadoIncompleto = (r.bipado_sem_horario + r.consultando + r.nao_classificado) > 0;
       // Atrasos confirmados podem ser mais: envios sem resposta, ou vencidos sobre os quais o ML nao respondeu.
       r.atrasadoIncompleto = (r.consultando + r.vencidoSemRespostaML) > 0;
       return r;
@@ -14865,7 +14868,7 @@
 
     /** Ja sabido e imutavel: nao precisa ir ao backend de novo nesta sessao. */
     function expFinal(e) {
-      return !!e && (e.situacao === 'full' || e.situacao === 'cancelado' || (e.situacao === 'despachado' && !!e.despachadoEm));
+      return !!e && (e.situacao === 'full' || e.situacao === 'cancelado' || (e.situacao === 'despachado' && (!!e.despachadoEm || !!e.bipagemAte)));
     }
 
     async function expConsultar() {
@@ -14972,7 +14975,7 @@
 
     const EXP_STATUS = [
       ['todos', 'Todos os status'], ['atrasado', 'Atrasados (confirmados pelo ML)'], ['prazo_vencido', 'Prazo vencido'], ['a_enviar', 'A enviar'], ['sem_prazo', 'Prazo não informado'],
-      ['programado', 'Programados'], ['despachado', 'Despachados'], ['nao_classificado', 'Não classificados'],
+      ['programado', 'Programados'], ['despachado', 'Já bipados'], ['nao_classificado', 'A conferir'],
     ];
 
     function expMontarFiltros() {
@@ -15049,17 +15052,17 @@
       // Avisos
       const av = [];
       if (_expErro) av.push('<div class="exp-aviso erro">' + escHtml(_expErro) + '</div>');
-      if (mostrarAmz) av.push('<div class="exp-aviso neutro"><strong>Amazon: indisponível na Expedição.</strong> Ainda não há fonte confiável de prazo de postagem e de despacho para os pedidos da Amazon. Eles não entram nesta lista nem nas contagens.</div>');
+      if (mostrarAmz) av.push('<div class="exp-aviso neutro"><strong>Amazon: indisponível na Expedição.</strong> Ainda não há fonte confiável de prazo de postagem e de bipagem para os pedidos da Amazon. Eles não entram nesta lista nem nas contagens.</div>');
       if (mostrarML && expPronto()) {
         const falta = [];
         if (r.consultando) falta.push(r.consultando + ' envio' + (r.consultando > 1 ? 's' : '') + ' ainda sem resposta (os pedidos mais próximos do dia são consultados primeiro)');
         if (r.sem_prazo) falta.push(r.sem_prazo + ' pendente' + (r.sem_prazo > 1 ? 's' : '') + ' sem prazo de postagem informado pelo Mercado Livre');
-        if (r.nao_classificado) falta.push(r.nao_classificado + ' não classificado' + (r.nao_classificado > 1 ? 's' : ''));
-        if (r.despachado_sem_data) falta.push(r.despachado_sem_data + ' despachado' + (r.despachado_sem_data > 1 ? 's' : '') + ' sem data');
+        if (r.nao_classificado) falta.push(r.nao_classificado + ' a conferir (sem evidência suficiente de bipagem)');
+        if (r.bipado_sem_horario) falta.push(r.bipado_sem_horario + ' com postagem confirmada e horário da bipagem indisponível');
         if (expLeituraParcial()) falta.push('pedidos de 31 a ' + EXP_JANELA_MAX_DIAS + ' dias ainda sendo lidos em segundo plano');
         if (r.vencidoSemRespostaML) falta.push(r.vencidoSemRespostaML + ' com prazo vencido sem resposta do Mercado Livre sobre atraso');
         if (falta.length) av.push('<div class="exp-aviso"><strong>Consulta incompleta:</strong> ' + falta.join('; ') + '. As contagens marcadas com ? ou ≥ podem ser maiores.</div>');
-        if (r.diaPassado) av.push('<div class="exp-aviso neutro">Dia passado: o que ficou sem despachar aparece em <strong>Prazo vencido</strong> ou, se o Mercado Livre confirmar o atraso, em <strong>Atrasados</strong>. Não em A enviar.</div>');
+        if (r.diaPassado) av.push('<div class="exp-aviso neutro">Dia passado: o que não foi bipado aparece em <strong>Prazo vencido</strong> ou, se o Mercado Livre confirmar o atraso, em <strong>Atrasados</strong>. Não em A enviar.</div>');
       }
       const avisos = document.getElementById('exp-avisos');
       if (avisos) avisos.innerHTML = av.join('');
@@ -15073,8 +15076,8 @@
         kpis.style.display = mostrarML ? '' : 'none';
         kpis.innerHTML = !expPronto() ? '' : [
           card('a_enviar', 'A enviar', r.diaPassado ? '-' : expValorCard(r.a_enviar, r.aEnviarIncompleto), r.diaPassado ? 'ver atrasados' : 'prazo ' + expDiaCurto(dia), 'highlight' + (r.aEnviarIncompleto ? ' incompleto' : '')),
-          card('despachado', 'Despachados', expValorCard(r.despachado, r.despachadoIncompleto), 'em ' + expDiaCurto(dia), r.despachadoIncompleto ? 'incompleto' : ''),
-          card('todos', 'Total do dia', r.diaPassado ? expValorCard(r.despachado, r.despachadoIncompleto) : expValorCard(r.total, r.aEnviarIncompleto || r.despachadoIncompleto), 'a enviar + despachados', (r.aEnviarIncompleto || r.despachadoIncompleto) ? 'incompleto' : ''),
+          card('despachado', 'Já bipados', expValorCard(r.despachado, r.despachadoIncompleto), 'pela agência em ' + expDiaCurto(dia), r.despachadoIncompleto ? 'incompleto' : ''),
+          card('todos', 'Total do dia', r.diaPassado ? expValorCard(r.despachado, r.despachadoIncompleto) : expValorCard(r.total, r.aEnviarIncompleto || r.despachadoIncompleto), 'a enviar + já bipados', (r.aEnviarIncompleto || r.despachadoIncompleto) ? 'incompleto' : ''),
           card('atrasado', 'Atrasados', expValorCard(r.atrasado, r.atrasadoIncompleto), 'confirmados pelo ML', r.atrasado ? 'atraso' : (r.atrasadoIncompleto ? 'incompleto' : '')),
           card('prazo_vencido', 'Prazo vencido', String(r.prazo_vencido), 'sem atraso confirmado', r.prazo_vencido ? 'incompleto' : ''),
           card('sem_prazo', 'Prazo não informado', String(r.sem_prazo), 'pendentes', r.sem_prazo ? 'incompleto' : ''),
@@ -15094,14 +15097,15 @@
         ['a_enviar', 'A enviar', 'prazo oficial de postagem em ' + expDiaCurto(dia), ''],
         ['sem_prazo', 'Prazo não informado', 'pendentes sem prazo oficial: podem ser do dia', ''],
         ['consultando', 'Consultando', 'ainda sem resposta; os mais próximos do dia vão primeiro', ''],
-        ['nao_classificado', 'Não classificados', 'status fora do mapa ou consulta sem resposta', ''],
+        ['nao_classificado', 'A conferir', 'sem evidência suficiente de bipagem: conferir no Mercado Livre', ''],
+        ['despachado', 'Já bipados', 'bipagem pela agência em ' + expDiaCurto(dia) + ', horário de Brasília', ''],
+        ['bipado_sem_horario', 'Já bipados, horário indisponível', 'postagem confirmada por evento posterior; o Mercado Livre não informou o horário da bipagem', ''],
         ['programado', 'Programados', 'liberação é quando o Mercado Livre libera a etiqueta; o prazo de postagem vem depois', ''],
-        ['despachado', 'Despachados', 'despacho confirmado em ' + expDiaCurto(dia), ''],
       ];
       const ordem = (a, b) => (a.e && a.e.prazoPostagem || a.e && a.e.liberacaoEm || a.e && a.e.despachadoEm || a.p.compraMaisAntiga || '').localeCompare(b.e && b.e.prazoPostagem || b.e && b.e.liberacaoEm || b.e && b.e.despachadoEm || b.p.compraMaisAntiga || '');
       const html = [];
       for (const [g, titulo, sub, cls] of SECOES) {
-        if (fSt !== 'todos' && fSt !== g && !(fSt === 'nao_classificado' && g === 'consultando')) continue;
+        if (fSt !== 'todos' && fSt !== g && !(fSt === 'nao_classificado' && g === 'consultando') && !(fSt === 'despachado' && g === 'bipado_sem_horario')) continue;
         const itens = Object.keys(pacotes).filter(k => r.grupos[k] === g).map(k => ({ p: pacotes[k], e: _expEnvios[k], g })).sort(ordem);
         if (!itens.length && fSt === 'todos' && g !== 'a_enviar' && g !== 'despachado') continue;
         html.push('<section class="exp-secao ' + escHtml(cls) + '"><div class="exp-secao-titulo"><span>' + escHtml(titulo) + ' (' + itens.length + ')</span><small>' + escHtml(sub) + '</small></div>');
@@ -15114,7 +15118,7 @@
           const incompleto = g === 'a_enviar' ? r.aEnviarIncompleto : r.despachadoIncompleto;
           html.push('<div class="exp-vazio">' + (g === 'a_enviar' && r.diaPassado ? 'Dia passado: pendências estão em Atrasados.'
             : incompleto ? 'Nenhum confirmado até agora, mas a consulta está incompleta (veja o aviso acima).'
-              : 'Nenhum envio ' + (g === 'a_enviar' ? 'com prazo nesta data.' : 'despachado nesta data.')) + '</div>');
+              : 'Nenhum envio ' + (g === 'a_enviar' ? 'com prazo nesta data.' : 'bipado nesta data.')) + '</div>');
         } else if (g === 'programado') {
           const { naData, proximas } = expDividirProgramados(itens, dia);
           html.push('<div class="exp-subsecao"><div class="exp-subtitulo">Liberam em ' + escHtml(expDiaCurto(dia)) + ' (' + naData.length + ')</div>' +
@@ -15127,9 +15131,6 @@
           html.push('<div class="exp-lista">' + itens.map(expCartao).join('') + '</div>');
         }
         html.push('</section>');
-      }
-      if (r.despachado_sem_data && (fSt === 'todos' || fSt === 'despachado')) {
-        html.push('<div class="exp-aviso neutro">' + r.despachado_sem_data + ' envio' + (r.despachado_sem_data > 1 ? 's' : '') + ' despachado' + (r.despachado_sem_data > 1 ? 's' : '') + ' sem data informada pelo Mercado Livre: não entra' + (r.despachado_sem_data > 1 ? 'm' : '') + ' em nenhum dia.</div>');
       }
       // Detalhes da consulta: os numeros da ultima carga, para medir em uso real.
       const mt = _expMetricas;
@@ -15169,12 +15170,12 @@
       return { naData, proximas };
     }
 
-    /** Origem da data de despacho, dita no cartao quando nao e a agencia. */
+    /** Evidencia da bipagem, dita no cartao. */
     function expFonteDespacho(e) {
       switch (e && e.despachoFonte) {
-        case 'agencia': return 'recebido na agência';
-        case 'evento_logistico': return 'sem registro da agência: data do primeiro evento logístico';
-        case 'date_shipped': return 'sem registro da agência: data de saída informada pelo ML';
+        case 'agencia': return 'horário confirmado pela agência';
+        case 'coleta': return 'horário confirmado na coleta';
+        case 'evento_posterior': return 'horário da bipagem indisponível';
         default: return '';
       }
     }
@@ -15195,14 +15196,15 @@
           '<span class="exp-data sec">Prazo de postagem: ' + (e.prazoPostagem ? expPrazoTexto(e) : 'definido após a liberação') + '</span></span>';
         badge = '<span class="badge paused">Programado</span>';
       }
-      else if (g === 'despachado') { data = '<span class="exp-data">Despachado ' + expInstante(e.despachadoEm) + '</span>'; badge = '<span class="badge active">Despachado</span>'; }
+      else if (g === 'despachado') { data = '<span class="exp-data">' + (e.despachoFonte === 'coleta' ? 'Coletado ' : 'Bipado ') + escHtml(expInstante(e.despachadoEm)) + '</span>'; badge = '<span class="badge active">Já bipado</span>'; }
+      else if (g === 'bipado_sem_horario') { data = '<span class="exp-datas"><span class="exp-data">Postagem confirmada</span><span class="exp-data sec">' + (e.bipagemAte ? 'horário da bipagem indisponível; registro posterior em ' + escHtml(expInstante(e.bipagemAte)) : 'horário da bipagem indisponível') + '</span></span>'; badge = '<span class="badge active">Já bipado</span>'; }
       else if (g === 'consultando') { data = '<span class="exp-data falta">Consultando...</span>'; badge = '<span class="badge alerta">Consultando</span>'; }
-      else { data = '<span class="exp-data falta">' + escHtml(e.status || 'sem resposta') + (e.substatus ? ' / ' + escHtml(e.substatus) : '') + '</span>'; badge = '<span class="badge alerta">Não classificado</span>'; }
+      else { data = '<span class="exp-data falta">' + escHtml(e.status || 'sem resposta') + (e.substatus ? ' / ' + escHtml(e.substatus) : '') + '</span>'; badge = '<span class="badge alerta">A conferir</span>'; }
       const etiqueta = e.substatus === 'printed' ? 'etiqueta impressa' : e.substatus === 'ready_to_print' ? 'etiqueta a imprimir' : '';
       const sobreAtraso = g === 'atrasado' ? 'atraso confirmado pelo ML' + (e.atrasoTipos && e.atrasoTipos.length ? ' (' + e.atrasoTipos.join(', ') + ')' : '')
         : g === 'prazo_vencido' ? (e.atrasoML === 'nao_indicado' ? 'ML não indica atraso' : 'ML não respondeu sobre atraso') : '';
       const limitePassou = g === 'a_enviar' && e.prazoLimiteEm && Date.parse(e.prazoLimiteEm) < Date.now() ? 'horário-limite já passou' : '';
-      const det = [expLogistica(e.logistica), etiqueta, sobreAtraso, limitePassou, g === 'despachado' ? expFonteDespacho(e) : '', g !== 'despachado' && g !== 'programado' && e.prazoPostagem && g !== 'a_enviar' && g !== 'atrasado' && g !== 'prazo_vencido' ? 'prazo ' + expDiaCurto(e.prazoPostagem) : ''].filter(Boolean).join(' · ');
+      const det = [expLogistica(e.logistica), etiqueta, sobreAtraso, limitePassou, g === 'despachado' ? expFonteDespacho(e) : '', g === 'nao_classificado' && (e.avisos || []).includes('packing_list_sem_bipagem') ? 'packing list sem bipagem registrada' : '', g !== 'despachado' && g !== 'bipado_sem_horario' && g !== 'programado' && e.prazoPostagem && g !== 'a_enviar' && g !== 'atrasado' && g !== 'prazo_vencido' ? 'prazo ' + expDiaCurto(e.prazoPostagem) : ''].filter(Boolean).join(' · ');
       return '<article class="exp-pacote g-' + g + '">' +
         '<div class="exp-l1"><div><div class="exp-pedido">' + ped + '</div><div class="exp-conta">' + escHtml(empresaDaConta(p.conta)) + ' · Mercado Livre</div></div>' + badge + '</div>' +
         '<ul class="exp-itens">' + itens + '</ul>' +

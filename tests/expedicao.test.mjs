@@ -132,7 +132,7 @@ describe('grupo do dia — tres datas separadas', () => {
     const d = e({ situacao: 'despachado', despachadoEm: '2026-10-21T01:30:00.000Z', prazoPostagem: '2026-10-21' });
     assert.equal(m.expGrupo(d, '2026-10-20', HOJE), 'despachado');
     assert.equal(m.expGrupo(d, HOJE, HOJE), 'despachado_outro_dia');
-    assert.equal(m.expGrupo(e({ situacao: 'despachado' }), HOJE, HOJE), 'despachado_sem_data');
+    assert.equal(m.expGrupo(e({ situacao: 'despachado' }), HOJE, HOJE), 'bipado_sem_horario');
   });
 
   test('Full/cancelado fora; sem resposta = consultando; outro/indisponivel = nao classificado', () => {
@@ -182,14 +182,22 @@ describe('contagem — ausente nao e zero', () => {
     assert.equal(m.expValorCard(r.atrasado, r.atrasadoIncompleto), '?');
   });
 
-  test('despachado sem data (caso real 48265507555, in_hub): nao entra em dia nenhum e o dia fica incompleto', () => {
-    const env = { a: { situacao: 'despachado', status: 'ready_to_ship', substatus: 'in_hub', despachadoEm: null, prazoPostagem: '2026-10-20' } };
+  test('bipado sem horario e sem limite: nunca contado como bipado no dia, e o dia fica incompleto', () => {
+    const env = { a: { situacao: 'despachado', status: 'delivered', despachadoEm: null, despachoFonte: 'evento_posterior', bipagemAte: null } };
     for (const dia of ['2026-10-20', HOJE]) {
       const r = m.expResumo(pac('a'), env, dia, HOJE);
-      assert.deepEqual([r.despachado, r.atrasado, r.a_enviar, r.despachado_sem_data], [0, 0, 0, 1], dia);
+      assert.deepEqual([r.despachado, r.atrasado, r.a_enviar, r.prazo_vencido, r.bipado_sem_horario], [0, 0, 0, 0, 1], dia);
       assert.equal(r.despachadoIncompleto, true);
       assert.equal(m.expValorCard(r.despachado, r.despachadoIncompleto), '?');
     }
+  });
+
+  test('bipado sem horario com limite: aparece (sem contar) so no dia do registro posterior; antes/depois nao', () => {
+    const env = { a: { situacao: 'despachado', despachadoEm: null, despachoFonte: 'evento_posterior', bipagemAte: '2026-10-21T09:00:00.000-04:00' } };
+    const r21 = m.expResumo(pac('a'), env, '2026-10-21', HOJE);
+    assert.deepEqual([r21.despachado, r21.bipado_sem_horario, r21.despachadoIncompleto], [0, 1, true]);
+    const r20 = m.expResumo(pac('a'), env, '2026-10-20', HOJE);
+    assert.deepEqual([r20.despachado, r20.bipado_sem_horario, r20.prazo_vencido, r20.despachadoIncompleto], [0, 0, 0, false]);
   });
 
   test('dia passado: nada "a enviar" (pendencias sao atrasos), sem falso incompleto em A enviar', () => {
@@ -273,10 +281,10 @@ describe('despacho = postagem na agencia (dropped_off), dias 19 a 23/10', () => 
     }
   });
 
-  test('fonte da data: agencia e dita; fallback diz que nao houve registro da agencia', () => {
-    assert.equal(m.expFonteDespacho({ despachoFonte: 'agencia' }), 'recebido na agência');
-    assert.match(m.expFonteDespacho({ despachoFonte: 'evento_logistico' }), /sem registro da agência/);
-    assert.match(m.expFonteDespacho({ despachoFonte: 'date_shipped' }), /sem registro da agência/);
+  test('evidencia da bipagem: horario confirmado x indisponivel', () => {
+    assert.equal(m.expFonteDespacho({ despachoFonte: 'agencia' }), 'horário confirmado pela agência');
+    assert.equal(m.expFonteDespacho({ despachoFonte: 'coleta' }), 'horário confirmado na coleta');
+    assert.equal(m.expFonteDespacho({ despachoFonte: 'evento_posterior' }), 'horário da bipagem indisponível');
     assert.equal(m.expFonteDespacho({}), '');
     assert.equal(m.expFonteDespacho(undefined), '');
   });
@@ -309,6 +317,40 @@ describe('programados: liberam na data x proximas liberacoes', () => {
     const r = m.expDividirProgramados(itens, '2026-10-23');
     assert.equal(r.naData.length + r.proximas.length, itens.length);
     assert.equal(new Set([...r.naData, ...r.proximas].map(x => x.p.envio)).size, itens.length);
+  });
+});
+
+describe('pedido 2000019019653362 e os 6 pacotes antigos', () => {
+  const bip = (iso) => ({ situacao: 'despachado', substatus: 'in_packing_list', despachadoEm: iso, despachoFonte: 'agencia', prazoPostagem: null, atrasoML: null });
+  test('bipado: nunca Prazo vencido, Atrasados ou A enviar, em nenhum dia de 19 a 23/10', () => {
+    // Saida do backend para o envio do pedido (in_packing_list, SLA vencido 20/10, dropped_off 21/10 12:13 BRT).
+    const e = bip('2026-10-21T11:13:00.000-04:00');
+    for (const dia of ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23']) {
+      const g = m.expGrupo(e, dia, '2026-10-22');
+      assert.ok(g === 'despachado' || g === 'despachado_outro_dia', dia + ': ' + g);
+    }
+    assert.equal(m.expGrupo(e, '2026-10-21', '2026-10-22'), 'despachado');
+  });
+
+  test('os 6 pacotes antigos nao aparecem em Ja bipados de 22/10', () => {
+    const env = {
+      a: bip('2026-10-20T11:18:10.000-04:00'), b: bip('2026-10-20T11:18:12.000-04:00'), c: bip('2026-10-20T11:18:14.000-04:00'),
+      d: bip('2026-10-20T11:18:16.000-04:00'), e: bip('2026-10-21T11:13:53.000-04:00'), f: bip('2026-10-21T11:13:40.000-04:00'),
+    };
+    const pacs = Object.fromEntries(Object.keys(env).map(k => [k, { conta: 'overwine-ml', envio: k, pedidos: [k], itens: {}, compraMaisAntiga: '2026-10-18T10:00:00.000-03:00' }]));
+    assert.equal(m.expResumo(pacs, env, '2026-10-22', '2026-10-22').despachado, 0);
+    assert.equal(m.expResumo(pacs, env, '2026-10-20', '2026-10-22').despachado, 4);
+    assert.equal(m.expResumo(pacs, env, '2026-10-21', '2026-10-22').despachado, 2);
+  });
+
+  test('a interface diz "Ja bipados", nunca "Despachados"', () => {
+    const ini = html.indexOf('const EXP_JANELA_DIAS'), fim = html.indexOf('const TAB_SECTION_MAP');
+    const bloco = html.slice(ini, fim);
+    // So textos exibidos (entre aspas simples); nomes internos de grupo continuam.
+    const textos = bloco.match(/'[^'\n]*'/g).join(' ');
+    assert.doesNotMatch(textos, /Despachad|despachad[oa]s? (nesta|em|sem)/);
+    assert.match(textos, /Já bipados/);
+    assert.match(textos, /Já bipado/);
   });
 });
 
