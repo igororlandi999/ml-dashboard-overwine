@@ -52,7 +52,8 @@ function montar(contas = []) {
     "function selecaoLegada() { return SELECAO.length === 1 && SELECAO[0] === CONTA_LEGADA; }",
     'function contaNome(id) { return id; }',
     extrairFuncao('escHtml'),
-    extrairConstante('STATUS_VENDA_AMAZON'),
+    extrairFuncao('contaComoVendaAmazon'),
+    extrairConstante('STATUS_AMAZON_SELO_ATIVO'),
     extrairConstante('ROTULO_STATUS_AMAZON'),
     extrairFuncao('contaComoVenda'),
     extrairFuncao('pedidoAmazon'),
@@ -102,9 +103,9 @@ describe('status por canal', () => {
     }
     assert.equal(m.contaComoVenda('partially_refunded'), true);
   });
-  test('Amazon: só aprovados contam; pendente, pré-venda, cancelado e não atendível ficam fora', () => {
+  test('Amazon: tudo conta, menos cancelado — inclusive status que a tela não conhece', () => {
     const m = montar(CONTAS);
-    const conta = { 'amazon:unshipped': true, 'amazon:partially_shipped': true, 'amazon:shipped': true, 'amazon:pending': false, 'amazon:pending_availability': false, 'amazon:cancelled': false, 'amazon:unfulfillable': false, 'amazon:desconhecido': false };
+    const conta = { 'amazon:unshipped': true, 'amazon:partially_shipped': true, 'amazon:shipped': true, 'amazon:pending': true, 'amazon:pending_availability': true, 'amazon:cancelled': false, 'amazon:unfulfillable': true, 'amazon:desconhecido': true, 'amazon:novo_status_futuro': true };
     for (const [status, venda] of Object.entries(conta)) {
       const o = { status, canal: 'amazon' };
       assert.equal(m.pedidoPago(o), venda, status);
@@ -113,12 +114,78 @@ describe('status por canal', () => {
     assert.equal(m.pedidoCancelado({ status: 'amazon:cancelled', canal: 'amazon' }), true);
     assert.equal(m.pedidoCancelado({ status: 'amazon:pending', canal: 'amazon' }), false);
     assert.equal(m.filtroStatusPedido({ status: 'amazon:shipped', canal: 'amazon' }, 'paid'), true);
-    assert.match(m.ordStatusBadge('amazon:pending'), /Pendente/);
+    // Exibição inalterada: pendente com rótulo e selo de pendente; status desconhecido com o texto original.
+    assert.match(m.ordStatusBadge('amazon:pending'), /badge paused[^>]*>Pendente</);
+    assert.match(m.ordStatusBadge('amazon:novo_status_futuro'), /badge paused[^>]*>novo_status_futuro</);
+    assert.match(m.ordStatusBadge('amazon:cancelled'), /badge closed[^>]*>Cancelado</);
     assert.match(m.ordStatusBadge('amazon:shipped'), /badge active/);
   });
   test('nenhuma tela compara status cru, exceto a lista de cancelados que vem do proxy do ML', () => {
     const cru = html.split('\n').filter(l => /o\.status (===|!==) '(paid|cancelled)'/.test(l) && !/function pedido/.test(l));
     assert.deepEqual(cru.map(l => l.trim()), ["const lista = allRes.filter(o => o.status === 'cancelled');"]);
+  });
+});
+
+describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora', () => {
+  // 21/10/2026 12:00 em Brasília. Hoje = 21/10; 7 dias = 15/10 a 21/10; mês = outubro.
+  const AGORA = Date.parse('2026-10-21T15:00:00.000Z');
+  class DataFixa extends Date {
+    constructor(...a) { super(...(a.length ? a : [AGORA])); }
+    static now() { return AGORA; }
+  }
+  const amz = (id, quando, status, valor) => ({ id, canal: 'amazon', status: 'amazon:' + status, date_created: quando, paid_amount: valor });
+  const PEDIDOS_AMZ = [
+    amz('A', '2026-10-21T13:00:00.000Z', 'pending', 100),
+    amz('B', '2026-10-21T14:00:00.000Z', 'shipped', 250),
+    amz('C', '2026-10-21T14:30:00.000Z', 'cancelled', 60),
+    amz('D', '2026-10-17T15:00:00.000Z', 'pending', 40),
+    amz('E', '2026-10-05T15:00:00.000Z', 'unshipped', 30),
+    amz('H', '2026-10-10T15:00:00.000Z', 'novo_status_futuro', 15),
+    amz('F', '2026-09-25T15:00:00.000Z', 'pending', 70),
+  ];
+  function kpis(pedidos) {
+    const els = {};
+    const documento = { getElementById: id => (els[id] = els[id] || { textContent: '' }) };
+    const fonte = [
+      'const Date = arguments[0], document = arguments[1], allOrders = arguments[2];',
+      extrairFuncao('contaComoVendaAmazon'),
+      extrairFuncao('contaComoVenda'), extrairFuncao('pedidoAmazon'), extrairFuncao('pedidoPago'),
+      extrairFuncao('pedidoForaDaVenda'), extrairFuncao('pedidoCancelado'),
+      extrairFuncao('brtStartOfDay'), extrairFuncao('brtEndOfDay'), extrairFuncao('ymdBRT'),
+      extrairFuncao('dentroDoPeriodo'), extrairFuncao('hojeBRT'),
+      extrairFuncao('renderPedidosKPIsLocal'),
+      'renderPedidosKPIsLocal();',
+    ].join('\n');
+    new Function(fonte)(DataFixa, documento, pedidos);
+    const n = id => Number(String(els[id].textContent).replace(/[^0-9]/g, ''));
+    return { hoje: [n('ord-hoje-val'), n('ord-hoje-cnt')], sem: [n('ord-sem-val'), n('ord-sem-cnt')], mes: [n('ord-mes-val'), n('ord-mes-cnt')], ticket: n('ord-ticket'), cancel: n('ord-cancel') };
+  }
+
+  test('hoje, últimos 7 dias, mês atual e ticket: pendente, enviado, a enviar e desconhecido entram; cancelado não', () => {
+    const k = kpis(PEDIDOS_AMZ);
+    assert.deepEqual(k.hoje, [350, 2]);        // A pendente + B enviado; C cancelado fora
+    assert.deepEqual(k.sem, [390, 3]);         // + D pendente
+    assert.deepEqual(k.mes, [435, 5]);         // + E a enviar + H status desconhecido
+    assert.equal(k.ticket, 84);                // (100+250+40+30+15+70) / 6 = 84,17 (exibido sem centavos)
+    assert.equal(k.cancel, 1);
+  });
+
+  test('Mercado Livre: KPIs idênticos aos da regra antiga (só paid entra)', () => {
+    const ml = (id, quando, status, valor) => ({ id, status, date_created: quando, paid_amount: valor });
+    const k = kpis([
+      ml(1, '2026-10-21T13:00:00.000Z', 'paid', 100),
+      ml(2, '2026-10-21T13:00:00.000Z', 'pending', 500),
+      ml(3, '2026-10-21T13:00:00.000Z', 'cancelled', 0),
+      ml(4, '2026-10-17T13:00:00.000Z', 'payment_required', 300),
+    ]);
+    assert.deepEqual([k.hoje, k.sem, k.mes, k.ticket, k.cancel], [[100, 1], [100, 1], [100, 1], 100, 1]);
+  });
+
+  test('o resumo de pedidos do chat usa as mesmas regras (sem comparar status cru)', () => {
+    const f = extrairFuncao('owChatCalcPedidos');
+    assert.match(f, /if \(pedidoCancelado\(o\)\)/);
+    assert.match(f, /if \(!pedidoPago\(o\)\) return;/);
+    assert.doesNotMatch(f, /st !== 'paid'/);
   });
 });
 
