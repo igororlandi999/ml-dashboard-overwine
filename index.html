@@ -3722,7 +3722,7 @@
         <div class="kpi-card highlight" id="ord-filtro-card">
           <div class="kpi-label">Periodo Filtrado</div>
           <div class="kpi-value gold" id="ord-filtro-val">-</div>
-          <div class="kpi-delta neutral"><span id="ord-filtro-cnt">-</span> pedidos pagos</div>
+          <div class="kpi-delta neutral"><span id="ord-filtro-cnt">-</span> pedidos considerados venda</div>
         </div>
       </div>
 
@@ -5578,12 +5578,22 @@
       'amazon:unfulfillable': 'N\u00e3o atend\u00edvel', 'amazon:desconhecido': 'Status n\u00e3o informado',
     };
     function pedidoAmazon(o) { return !!o && (o.canal === 'amazon' || String(o.status || '').indexOf('amazon:') === 0); }
-    // As telas comparavam `status` direto com 'paid' e 'cancelled'. Para pedido
-    // do Mercado Livre os auxiliares devolvem EXATAMENTE a comparacao antiga
-    // (nenhum numero da Overwine ou da Degustar muda); para pedido da Amazon,
-    // usam a lista acima.
-    function pedidoPago(o) { return pedidoAmazon(o) ? contaComoVenda(o.status) : o.status === 'paid'; }
-    function pedidoForaDaVenda(o) { return pedidoAmazon(o) ? !contaComoVenda(o.status) : o.status === 'cancelled'; }
+    // FASE A1 — regra UNICA de venda. Os dois auxiliares abaixo sao a mesma
+    // pergunta ("este pedido conta como venda?") e delegam a contaComoVenda,
+    // em todos os canais. Antes, para o Mercado Livre, pedidoPago era
+    // `=== 'paid'` e pedidoForaDaVenda era `=== 'cancelled'`: tres populacoes
+    // sob o nome "venda" (partially_refunded entrava numa e nao na outra;
+    // pendente idem), e o mesmo card mudava de valor conforme o calculo fosse
+    // local ou do agregado do backend. O nome `pedidoPago` fica por
+    // compatibilidade dos call sites; o significado e "conta como venda".
+    // Cancelamento e exibicao de status NAO passam por aqui: ver
+    // pedidoCancelado, filtroStatusPedido e os badges.
+    // ALIAS LEGADO: apesar do nome, pedidoPago NAO significa `status === 'paid'`.
+    // Semantica: "conta como venda" (inclui partially_refunded no ML e todo
+    // pedido Amazon nao cancelado, inclusive amazon:pending). Para "so paid"
+    // use comparacao explicita, como filtroStatusPedido faz.
+    function pedidoPago(o) { return !!o && contaComoVenda(o.status); }
+    function pedidoForaDaVenda(o) { return !pedidoPago(o); }
     /** Filtro "Pagos"/"Cancelados" das tabelas: para a Amazon, pelos auxiliares; para o ML, igualdade como antes. */
     function filtroStatusPedido(o, f) {
       if (!pedidoAmazon(o)) return o.status === f;
@@ -8861,14 +8871,14 @@
 
       // ── Base de periodo (ultimos N dias) para vendas E faturamento ──
       // Vendas: usa metrics.sales.completed (numero oficial do ML para a janela
-      // de 60 dias). Faturamento: soma os pedidos pagos dos MESMOS 60 dias.
+      // de 60 dias). Faturamento: soma as vendas (contaComoVenda) dos MESMOS 60 dias.
       // Assim vendas e faturamento ficam na mesma base — nunca historico.
       const PERIODO_DIAS = ML_REPUTATION_TARGETS.periodoDias || 60;
       const vendasPeriodo = (mSales !== undefined && mSales !== null)
         ? mSales
         : 0; // fallback defensivo
 
-      // Faturamento dos ultimos PERIODO_DIAS (pedidos pagos, sem cancelados)
+      // Faturamento dos ultimos PERIODO_DIAS (vendas: paid e partially_refunded; sem cancelados)
       // Onda D: mesma regra (paid; paid_amount || total_amount) local ou do
       // agregado — nunca as duas para a mesma renderizacao.
       let faturamentoPeriodo = 0;
@@ -9216,7 +9226,7 @@
 
     // Calcula receita bruta e líquida do período usando allOrders.
     // Usa EXATAMENTE o mesmo range (periodoDateInicio/Fim) do resto da Visao Geral,
-    // garantindo que o Faturamento Bruto bata com os pedidos pagos do periodo.
+    // garantindo que o Faturamento Bruto bata com as vendas do periodo.
     function calcLiquidoPeriodo() {
       // Fallback: se ainda nao houver range carregado, usa o periodo global
       let inicio = periodoDateInicio;
@@ -9263,7 +9273,7 @@
       let bruto = 0, tarifaML = 0, tarifaEnv = 0;
 
       allOrders.forEach(o => {
-        if (!pedidoPago(o)) return; // somente pagos (nao cancelados, nao pendentes)
+        if (!pedidoPago(o)) return; // somente vendas (contaComoVenda: nao cancelados, nao pendentes)
         if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
 
         // Receita bruta = paid_amount (o que o comprador pagou pelo produto)
@@ -9952,7 +9962,7 @@
 
     function updateOrdFiltroCard() {
       const orders = getFilteredOrders();
-      // O card diz "pedidos pagos" — contar somente pagos (nao pendentes, nao cancelados)
+      // O card diz "pedidos considerados venda" — contar so vendas (contaComoVenda: nao pendentes, nao cancelados)
       const pagos = orders.filter(o => pedidoPago(o));
       const fat = pagos.reduce((s, o) => s + (o.paid_amount || o.total_amount || 0), 0);
       const card = document.getElementById('ord-filtro-card');
@@ -10550,8 +10560,8 @@
      * Vendas de cada produto (SKU) no PERIODO GLOBAL. Pura.
      * Mesmos criterios das abas Pedidos e Analise de Preco: data do pedido
      * (date_created) dentro de [inicio, fim] em BRT, via dentroDoPeriodo;
-     * so pedidos pagos (pedidoPago — cancelado, devolvido e pendente ficam
-     * fora; partially_refunded tambem, como nas outras abas). Cada item do
+     * so vendas (pedidoPago = contaComoVenda: cancelado e pendente ficam
+     * fora; partially_refunded ENTRA, como nas outras abas). Cada item do
      * pedido conta (nao so o primeiro); valor = unit_price x quantity, o
      * preco realmente cobrado por unidade, sem frete. Um pedido conta UMA vez
      * por produto, mesmo com dois anuncios do mesmo produto no carrinho.
@@ -12151,7 +12161,7 @@
       apRender();
     }
 
-    // Coleta as vendas reais (pagas) do produto selecionado dentro do periodo
+    // Coleta as vendas reais (contaComoVenda) do produto selecionado dentro do periodo
     function apColetarVendas() {
       const sku = document.getElementById('ap-produto').value;
       if (!sku) return [];
@@ -12165,7 +12175,7 @@
       const vistos = new Set(); // evita duplicar o mesmo order_item do mesmo pedido
 
       allOrders.forEach(o => {
-        if (!pedidoPago(o)) return;                       // somente pagas
+        if (!pedidoPago(o)) return;                       // somente vendas
         if (!dentroDoPeriodo(o.date_created, ini, fim)) return; // respeita periodo BRT
         (o.order_items || []).forEach((oi, idx) => {
           const itemId = oi.item?.id;
@@ -12212,7 +12222,7 @@
       if (!_apVendas.length) {
         empty.style.display = 'block';
         empty.querySelector('.empty-state').innerHTML =
-          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas pagas em ' + escHtml(gdrGet().label) + '. Ajuste o periodo global, no topo.</span>';
+          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas em ' + escHtml(gdrGet().label) + '. Ajuste o periodo global, no topo.</span>';
         cont.style.display = 'none';
         return;
       }
@@ -12420,7 +12430,7 @@
     // ABA: PREVISAO DE VENDAS
     // ══════════════════════════════════════
     // Fonte de dados: allOrders (pedidos reais do ML). Vendas diarias calculadas
-    // automaticamente — soma de pedidos pagos por dia. ZERO input manual de vendas.
+    // automaticamente — soma das vendas por dia. ZERO input manual de vendas.
     // Unico campo configuravel: a meta mensal. Mes/ano apenas filtram o periodo.
 
     let _pvInited = false;
@@ -12431,12 +12441,12 @@
       return 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
     }
 
-    // Agrupa pedidos pagos por dia (1..N) do PERIODO GLOBAL. Fonte: allOrders.
+    // Agrupa vendas (contaComoVenda) por dia (1..N) do PERIODO GLOBAL. Fonte: allOrders.
     // O indice 1 e o primeiro dia do periodo; `datas[d]` da o "YYYY-MM-DD".
     function pvGroupByDay(fromYmd, toYmd) {
       const porDia = {}; // indice do dia no periodo -> total
       (allOrders || []).forEach(o => {
-        if (!pedidoPago(o)) return;                 // somente pagos
+        if (!pedidoPago(o)) return;                 // somente vendas
         const ymd = ymdBRT(o.date_created);              // "YYYY-MM-DD" BRT
         if (!ymd || ymd < fromYmd || ymd > toYmd) return; // so o periodo global
         const d = gdrDiasEntre(fromYmd, ymd);
@@ -12810,7 +12820,7 @@
     // ABA: GIRO DE ESTOQUE (Analytics ML)
     // ══════════════════════════════════════
     // Tudo automatico: estoque vem de allItems (consolidado/deduplicado por SKU),
-    // vendas vem de allOrders (pagas) mapeadas por SKU. Meta semanal = estoque/semanas.
+    // vendas vem de allOrders (contaComoVenda) mapeadas por SKU. Meta semanal = estoque/semanas.
     // Sem input manual por produto. Configuravel: ciclo (datas) e semanas padrao.
 
     let _grInited = false;
@@ -12860,7 +12870,7 @@
       return 'Outro';
     }
 
-    // Vendas por SKU dentro do ciclo: total + por semana. Fonte: allOrders pagos.
+    // Vendas por SKU dentro do ciclo: total + por semana. Fonte: allOrders (contaComoVenda).
     function grVendasPorSku(ini, fim) {
       const skuMap = apItemSkuMap(); // item_id -> sku (reuso)
       const out = {}; // sku -> { totalQty, totalRev, porSemana: {semana: qtd} }
@@ -16974,7 +16984,9 @@
       allItems.forEach(i => { itemMap[i.id] = i; });
 
       return allOrders
-        .filter(o => !pedidoForaDaVenda(o))
+        // Entregas acompanha ENVIOS, nao vendas: so o cancelado sai (como antes
+        // da FASE A1, quando pedidoForaDaVenda era `=== 'cancelled'` no ML).
+        .filter(o => !pedidoCancelado(o))
         .map(o => {
           const oi = o.order_items?.[0];
           const itemId = oi?.item?.id || '';
@@ -17201,15 +17213,15 @@
           // lido como "ticket de hoje", que e outro numero.
           var linhas = [
             'Resumo de hoje (' + ctx.periodo.hojeBRT + ', horario de Brasilia):',
-            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento pago hoje: ' + owcMoeda(p.hoje.faturamento) +
+            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento hoje: ' + owcMoeda(p.hoje.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.hoje.qtd, p.hoje.faturamento),
             '- Ultimos 7 dias: ' + p.ultimos7.qtd + ' pedidos | ' + owcMoeda(p.ultimos7.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.ultimos7.qtd, p.ultimos7.faturamento),
             '- Mes atual: ' + p.mesAtual.qtd + ' pedidos | ' + owcMoeda(p.mesAtual.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.mesAtual.qtd, p.mesAtual.faturamento),
             '',
-            '- Ticket medio de todo o historico carregado (pedidos pagos): ' +
-              (p.ticketMedioGeral == null ? 'sem pedidos pagos' : owcMoeda(p.ticketMedioGeral))
+            '- Ticket medio de todo o historico carregado (pedidos considerados venda): ' +
+              (p.ticketMedioGeral == null ? 'sem vendas' : owcMoeda(p.ticketMedioGeral))
           ];
           if (ctx.origem.snapshotPartial) linhas.push('(sincronizacao mais recente em andamento; usando a ultima versao publicada.)');
           if (ctx.origem.ordersServedFrom === 'proxy_fallback') linhas.push('(origem: proxy/fallback — sem versao de snapshot.)');
@@ -17635,14 +17647,14 @@
 
         var total = lista.length, pagos = 0, cancelados = 0, parcial = 0;
         var hojeQtd = 0, hojeFat = 0, s7Qtd = 0, s7Fat = 0, mesQtd = 0, mesFat = 0;
-        var totalPago = 0, cntPago = 0; // ticket geral (todos os pagos carregados)
+        var totalPago = 0, cntPago = 0; // ticket geral (todas as vendas carregadas)
 
         lista.forEach(function (o) {
           var st = o && o.status;
-          // ML: exatamente a comparacao de antes ('cancelled' / 'paid'). Amazon: tudo menos cancelado.
+          // Cancelado por pedidoCancelado; venda por pedidoPago (= contaComoVenda, regra unica da FASE A1).
           if (pedidoCancelado(o)) { cancelados++; return; }
           if (st === 'partially_refunded') { parcial++; }
-          if (!pedidoPago(o)) return; // hoje/7d/mes e ticket geral: SOMENTE pagos
+          if (!pedidoPago(o)) return; // hoje/7d/mes e ticket geral: SOMENTE vendas (contaComoVenda)
 
           pagos++;
           var dia = podeParidade ? ymdBRT(o.date_created) : owcDiaBRT(o && o.date_created);
@@ -17810,7 +17822,7 @@
       /**
        * Ticket medio de UMA janela, derivado dos dois numeros que a propria
        * linha exibe. E a mesma definicao do backend — `receita / pedidos` do
-       * sales-metrics, incluindo o `null` quando nao ha pedido pago (divisao
+       * sales-metrics, incluindo o `null` quando nao ha venda (divisao
        * por zero nao vira R$ 0,00, que seria lido como "vendemos a zero").
        *
        * Derivar da linha, em vez de buscar um ticket calculado a parte, e o que
@@ -17820,7 +17832,7 @@
        */
       function owcTicket(qtd, faturamento) {
         var n = Number(qtd) || 0;
-        if (n <= 0) return 'sem pedidos pagos';
+        if (n <= 0) return 'sem vendas';
         return owcMoeda((Number(faturamento) || 0) / n);
       }
 

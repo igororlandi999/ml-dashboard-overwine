@@ -4,7 +4,8 @@
  * Travado aqui:
  *  - Vendas Total, Pedidos e Preco Medio Vendido sao do periodo do filtro
  *    global (gdrGet), com o mesmo criterio de data e de status das abas
- *    Pedidos e Analise de Preco (dentroDoPeriodo + pedidoPago);
+ *    Pedidos e Analise de Preco (dentroDoPeriodo + pedidoPago, que desde a
+ *    FASE A1 e a regra unica contaComoVenda: paid e partially_refunded);
  *  - Produto, Anuncios, Estoque Total e Preco Medio NAO mudam com o periodo;
  *  - pedido conta uma vez por produto; todos os itens do pedido entram;
  *  - sem venda no periodo: 0 unidades, 0 pedidos e preco medio vendido nulo;
@@ -86,7 +87,7 @@ const PEDIDOS = [
   ped(2, '2026-10-20T23:30:00.000-03:00', 'paid', [it('MLB1', 1, 100), it('MLB2', 1, 120)]),// A: mesmo pedido, 2 anuncios -> 1 pedido
   ped(3, '2026-10-02T09:00:00.000-03:00', 'paid', [it('MLB3', 3, 80), it('MLB1', 1, 100)]), // B e A no mesmo carrinho
   ped(4, '2026-10-19T12:00:00.000-03:00', 'cancelled', [it('MLB1', 5, 100)]),              // cancelado: fora
-  ped(5, '2026-10-18T12:00:00.000-03:00', 'partially_refunded', [it('MLB3', 1, 80)]),      // pedidoPago: fora (como nas outras abas)
+  ped(5, '2026-10-18T12:00:00.000-03:00', 'partially_refunded', [it('MLB3', 1, 80)]),      // venda (FASE A1): o dinheiro entrou
   // Virada de mes em horario de Brasilia: 30/09 23:30 BRT (02:30Z de 01/10) fica em setembro.
   ped(6, '2026-10-01T00:30:00.000-03:00', 'paid', [it('MLB3', 1, 70)]),
   ped(7, '2026-09-30T23:30:00.000-03:00', 'paid', [it('MLB3', 1, 75)]),
@@ -108,19 +109,19 @@ describe('mes atual (outubro/2026)', () => {
   test('preco medio vendido = media ponderada de unit_price por unidade (desconto incluso, frete e paid_amount fora)', () => {
     // (2x90 + 100 + 120 + 100) / 5 = 100
     assert.equal(c.A.precoMedioVendido, 100);
-    // B: 3x80 + 1x70 = 310 / 4
-    assert.equal(c.B.vendasTotal, 4);
-    assert.equal(c.B.pedidosCnt, 2);
-    assert.equal(c.B.precoMedioVendido, 310 / 4);
+    // B: 3x80 + 1x80 (partially_refunded) + 1x70 = 390 / 5
+    assert.equal(c.B.vendasTotal, 5);
+    assert.equal(c.B.pedidosCnt, 3);
+    assert.equal(c.B.precoMedioVendido, 390 / 5);
   });
 
-  test('cancelado e partially_refunded nao entram, como no card "pagos" da aba Pedidos', () => {
+  test('cancelado nao entra; partially_refunded entra (regra unica de venda, FASE A1)', () => {
     assert.equal(c.A.vendasTotal, 5); // o cancelado de 5 un nao somou
-    assert.equal(c.B.vendasTotal, 4); // o partially_refunded nao somou
+    assert.equal(c.B.vendasTotal, 5); // o partially_refunded de 1 un somou
   });
 
   test('virada de mes em horario de Brasilia: 30/09 23:30 fica fora de outubro', () => {
-    assert.equal(c.B.vendasTotal, 4);
+    assert.equal(c.B.vendasTotal, 5); // 3 + 1 + 1 de outubro; o de 30/09 nao
   });
 
   test('sem venda no periodo: zero unidades, zero pedidos e preco medio vendido nulo (nunca inventado)', () => {
@@ -141,17 +142,17 @@ describe('mes atual (outubro/2026)', () => {
 });
 
 describe('outros periodos', () => {
-  test('ultimos 7 dias (16 a 22/10, personalizado): so os pedidos 1 e 2', () => {
+  test('ultimos 7 dias (16 a 22/10, personalizado): pedidos 1 e 2 (A) e o partially_refunded 5 (B)', () => {
     const c = montar({ preset: 'custom', de: '2026-10-16', ate: '2026-10-22', itens: ITENS, pedidos: PEDIDOS }).porSku();
-    assert.deepEqual([c.A.vendasTotal, c.A.pedidosCnt, c.B.vendasTotal, c.B.pedidosCnt], [4, 2, 0, 0]);
+    assert.deepEqual([c.A.vendasTotal, c.A.pedidosCnt, c.B.vendasTotal, c.B.pedidosCnt], [4, 2, 1, 1]);
     assert.equal(c.A.precoMedioVendido, (180 + 100 + 120) / 4);
-    assert.equal(c.B.precoMedioVendido, null);
+    assert.equal(c.B.precoMedioVendido, 80);
   });
 
   test('historico inteiro (personalizado desde 2020): todos os pagos, ainda sem cancelados', () => {
     const c = montar({ preset: 'custom', de: '2020-01-01', ate: HOJE, itens: ITENS, pedidos: PEDIDOS }).porSku();
     assert.deepEqual([c.A.vendasTotal, c.A.pedidosCnt], [9, 4]);
-    assert.deepEqual([c.B.vendasTotal, c.B.pedidosCnt], [5, 3]);
+    assert.deepEqual([c.B.vendasTotal, c.B.pedidosCnt], [6, 4]);
     // Nunca o sold_quantity do anuncio (900 + 400 de vida inteira)
     assert.notEqual(c.A.vendasTotal, 1300);
   });
@@ -174,16 +175,16 @@ describe('outros periodos', () => {
 
   test('ultimos 3 meses (preset existente)', () => {
     const c = montar({ preset: 'ultimos:3', itens: ITENS, pedidos: PEDIDOS }).porSku();
-    assert.deepEqual([c.A.vendasTotal, c.B.vendasTotal], [5, 5]);
+    assert.deepEqual([c.A.vendasTotal, c.B.vendasTotal], [5, 6]);
   });
 });
 
 describe('consistencia com a aba Pedidos no mesmo periodo', () => {
-  test('soma de pedidos por produto = pedidos pagos do periodo que tem item do produto', () => {
+  test('soma de pedidos por produto = vendas do periodo (paid + partially_refunded) que tem item do produto', () => {
     const m = montar({ itens: ITENS, pedidos: PEDIDOS });
     const g = m.gdrGet();
     // Mesmo filtro de getFilteredOrders (aba Pedidos) + card "pagos".
-    const pagos = PEDIDOS.filter(o => o.status === 'paid' && new Date(o.date_created) >= g.fromDate && new Date(o.date_created) <= g.toDate);
+    const pagos = PEDIDOS.filter(o => ['paid', 'partially_refunded'].includes(o.status) && new Date(o.date_created) >= g.fromDate && new Date(o.date_created) <= g.toDate);
     const comA = pagos.filter(o => o.order_items.some(oi => ['MLB1', 'MLB2'].includes(oi.item.id))).length;
     const comB = pagos.filter(o => o.order_items.some(oi => oi.item.id === 'MLB3')).length;
     const c = m.porSku();

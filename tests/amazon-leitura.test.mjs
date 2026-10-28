@@ -90,16 +90,19 @@ const CONTAS = [
 ];
 
 describe('status por canal', () => {
-  test('Mercado Livre: exatamente a comparação antiga, para todo status', () => {
+  test('Mercado Livre: regra unica de venda (FASE A1) — paid e partially_refunded contam; o resto nao', () => {
     const m = montar(CONTAS);
+    const VENDA = new Set(['paid', 'partially_refunded']);
     for (const status of ['paid', 'cancelled', 'partially_refunded', 'pending', 'payment_required', 'xpto', null]) {
       const o = { status, canal: 'ml' };
-      assert.equal(m.pedidoPago(o), status === 'paid', 'pago ' + status);
-      assert.equal(m.pedidoForaDaVenda(o), status === 'cancelled', 'fora ' + status);
+      assert.equal(m.pedidoPago(o), VENDA.has(status), 'pago ' + status);
+      assert.equal(m.pedidoForaDaVenda(o), !VENDA.has(status), 'fora ' + status);
       assert.equal(m.pedidoCancelado(o), status === 'cancelled');
+      // Filtro "Pagos" da tabela e EXIBICAO: segue a igualdade estrita.
       assert.equal(m.filtroStatusPedido(o, 'paid'), status === 'paid');
-      // Pedido ML sem campo `canal` (Overwine sozinha) também segue a regra antiga.
-      assert.equal(m.pedidoPago({ status }), status === 'paid');
+      // Pedido ML sem campo `canal` (Overwine sozinha) segue a mesma regra.
+      assert.equal(m.pedidoPago({ status }), VENDA.has(status));
+      assert.equal(m.pedidoPago(o), m.contaComoVenda(status), 'pedidoPago == contaComoVenda ' + status);
     }
     assert.equal(m.contaComoVenda('partially_refunded'), true);
   });
