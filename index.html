@@ -5284,13 +5284,17 @@
     // trocar de aba obrigava a escolher o periodo de novo, e duas abas nunca
     // falavam do mesmo intervalo. Agora todas leem gdrGet().
     //
-    // Presets: 'mes_atual' | 'mes:YYYY-MM' | 'ultimos:N' (meses) | 'ano:YYYY'
-    // | 'custom'. `from`/`to` sao "YYYY-MM-DD" (BRT). `to` pode estar no
+    // Presets: 'hoje' | 'ontem' | 'mes_atual' | 'mes:YYYY-MM' | 'ultimos:N'
+    // (meses) | 'ano:YYYY' | 'custom'. Hoje e Ontem sao DIAS CIVIS de Brasilia
+    // e acompanham a virada da meia-noite (gdrVirarDia). `from`/`to` sao "YYYY-MM-DD" (BRT). `to` pode estar no
     // futuro (mes atual termina no fim do mes); quem chama API usa `toEfetivo`,
     // que nunca passa de hoje.
     // ══════════════════════════════════════
     const MESES_GDR = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    const globalDateRange = { preset: 'mes_atual', from: null, to: null };
+    // calculadoEm: o "hoje" (BRT) em que from/to foram calculados.
+    const globalDateRange = { preset: 'mes_atual', from: null, to: null, calculadoEm: null };
+    /** Presets que mudam de dia sozinhos na meia-noite de Brasilia. */
+    const GDR_PRESETS_DIA = ['hoje', 'ontem'];
 
     function gdrUltimoDia(ano, mes1a12) { return new Date(Date.UTC(ano, mes1a12, 0)).getUTCDate(); }
     function gdrYmd(ano, mes1a12, dia) { return `${ano}-${String(mes1a12).padStart(2, '0')}-${String(dia).padStart(2, '0')}`; }
@@ -5304,7 +5308,15 @@
      * testavel. `custom` usa os dois valores dados.
      */
     function gdrCalcularRange(preset, hojeYmd, customDe, customAte) {
-      const [hy, hm] = hojeYmd.split('-').map(Number);
+      const [hy, hm, hd] = hojeYmd.split('-').map(Number);
+      if (preset === 'hoje') return { from: hojeYmd, to: hojeYmd };
+      if (preset === 'ontem') {
+        // Dia civil anterior: aritmetica de calendario em UTC puro (sem fuso,
+        // sem horario de verao), sobre a data que ja e a de Brasilia.
+        const d = new Date(Date.UTC(hy, hm - 1, hd - 1));
+        const ontem = gdrYmd(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+        return { from: ontem, to: ontem };
+      }
       if (preset === 'mes_atual') return { from: gdrYmd(hy, hm, 1), to: gdrYmd(hy, hm, gdrUltimoDia(hy, hm)) };
       let m;
       if ((m = /^mes:(\d{4})-(\d{2})$/.exec(preset))) {
@@ -5326,6 +5338,8 @@
     function gdrRotulo(preset, from, to) {
       const fmt = ymd => { const [y, m, d] = ymd.split('-'); return `${d}/${m}/${y.slice(2)}`; };
       let m;
+      if (preset === 'hoje') return `Hoje (${fmt(from)})`;
+      if (preset === 'ontem') return `Ontem (${fmt(from)})`;
       if (preset === 'mes_atual') { const [y, mo] = from.split('-').map(Number); return `${MESES_GDR[mo - 1]} ${y}`; }
       if ((m = /^mes:(\d{4})-(\d{2})$/.exec(preset))) return `${MESES_GDR[Number(m[2]) - 1]} ${m[1]}`;
       if ((m = /^ultimos:(\d+)$/.exec(preset))) return `\u00daltimos ${m[1]} meses`;
@@ -5354,11 +5368,17 @@
 
     /** A leitura que TODAS as abas fazem. Nunca devolve datas nulas. */
     function gdrGet() {
-      if (!globalDateRange.from || !globalDateRange.to) {
-        const r = gdrCalcularRange('mes_atual', hojeBRT());
-        globalDateRange.from = r.from; globalDateRange.to = r.to;
-      }
       const hoje = hojeBRT();
+      if (!globalDateRange.from || !globalDateRange.to) {
+        const r = gdrCalcularRange('mes_atual', hoje);
+        globalDateRange.from = r.from; globalDateRange.to = r.to; globalDateRange.calculadoEm = hoje;
+      }
+      // Hoje/Ontem depois da meia-noite: o intervalo e o do NOVO dia, mesmo
+      // antes de gdrVirarDia recarregar os dados (nunca o dia velho com rotulo novo).
+      if (gdrPrecisaVirar(globalDateRange.preset, globalDateRange.calculadoEm, hoje)) {
+        const r = gdrCalcularRange(globalDateRange.preset, hoje);
+        globalDateRange.from = r.from; globalDateRange.to = r.to; globalDateRange.calculadoEm = hoje;
+      }
       const from = globalDateRange.from, to = globalDateRange.to;
       const toEfetivo = to < hoje ? to : hoje;
       return {
@@ -5374,13 +5394,31 @@
       };
     }
 
+    /** true se o preset e Hoje/Ontem e o dia de Brasilia mudou desde o calculo. Pura. */
+    function gdrPrecisaVirar(preset, calculadoEm, hojeYmd) {
+      return GDR_PRESETS_DIA.indexOf(preset) !== -1 && calculadoEm !== hojeYmd;
+    }
+
+    /**
+     * Virada da meia-noite com Hoje/Ontem selecionado: recalcula o intervalo
+     * e recarrega pelo mesmo caminho da troca de periodo (gdrAplicar). Os
+     * outros presets nao mudam aqui.
+     */
+    let _gdrViradaTimer = null;
+    function gdrVirarDia() {
+      if (_gdrAplicando) return;
+      if (!gdrPrecisaVirar(globalDateRange.preset, globalDateRange.calculadoEm, hojeBRT())) return;
+      gdrDefinir(globalDateRange.preset);
+      gdrAplicar();
+    }
+
     /** Preenche o <select> com os presets. Idempotente. */
     function gdrMontarSelect() {
       const sel = document.getElementById('gdr-preset');
       if (!sel || sel.options.length) return;
       const hoje = hojeBRT();
       const [hy, hm] = hoje.split('-').map(Number);
-      const ops = [['mes_atual', `M\u00eas atual (${MESES_GDR[hm - 1]} ${hy})`]];
+      const ops = [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['mes_atual', `M\u00eas atual (${MESES_GDR[hm - 1]} ${hy})`]];
       let a = hy, me = hm;
       for (let i = 0; i < 12; i++) {
         me--; if (me <= 0) { me = 12; a--; }
@@ -5401,10 +5439,12 @@
 
     /** Define o periodo (estado + rotulos). NAO recarrega dados: quem chama decide. */
     function gdrDefinir(preset, customDe, customAte) {
-      const r = gdrCalcularRange(preset, hojeBRT(), customDe, customAte);
+      const hoje = hojeBRT();
+      const r = gdrCalcularRange(preset, hoje, customDe, customAte);
       globalDateRange.preset = (preset === 'custom' && !(customDe && customAte && customDe <= customAte)) ? 'mes_atual' : preset;
       globalDateRange.from = r.from;
       globalDateRange.to = r.to;
+      globalDateRange.calculadoEm = hoje;
       currentPeriodoDias = Math.max(1, gdrGet().dias);
       const sel = document.getElementById('gdr-preset');
       if (sel && sel.value !== globalDateRange.preset) sel.value = globalDateRange.preset;
@@ -5416,6 +5456,8 @@
     function gdrInit() {
       gdrMontarSelect();
       gdrDefinir('mes_atual');
+      // Um relogio leve: so age com Hoje/Ontem selecionado e o dia tendo virado.
+      if (!_gdrViradaTimer) _gdrViradaTimer = setInterval(gdrVirarDia, 60000);
       // Pagina recarregada por troca de conta: o periodo que estava na tela volta.
       const troca = trocaConsumir();
       if (troca) {

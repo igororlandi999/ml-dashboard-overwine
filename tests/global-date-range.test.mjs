@@ -51,6 +51,8 @@ function montarGdr({ hoje = '2026-09-28', preset = 'mes_atual', customDe, custom
     'function hojeBRT() { return _hoje; }',
     extrairConstante('MESES_GDR'),
     extrairConstante('globalDateRange'),
+    extrairConstante('GDR_PRESETS_DIA'),
+    extrairFuncao('gdrPrecisaVirar'),
     extrairFuncao('gdrUltimoDia'),
     extrairFuncao('gdrYmd'),
     extrairFuncao('gdrDiasEntre'),
