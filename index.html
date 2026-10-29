@@ -5172,7 +5172,12 @@
     const CANC_PAGE_SIZE = 20;
     let shipmentsCache = {}; // { [shipmentId]: { status, substatus, logistic_type } }
     let shipmentsLoading = false;
-    let periodoData = []; // dados de visitas/vendas da API por periodo
+    let periodoData = []; // dados de visitas/vendas POR ANUNCIO do periodo (graficos/tabelas por produto)
+    // FASE A2 — TOTAIS do periodo (pedidos e unidades) com uma populacao so:
+    // todos os pedidos validos, cada um uma vez, todos os order_items, sem
+    // olhar o status atual do anuncio. Preenchido por loadPeriodoData via
+    // totaisDoPeriodo; null = ainda nao calculado para o periodo corrente.
+    let periodoTotais = null;
 
     // ══════════════════════════════════════════════════════════
     // METAS DE REPUTACAO — MercadoLider Gold / Platinum
@@ -7949,11 +7954,19 @@
     // METRICAS DO PERIODO VIA API
     // ══════════════════════════════════════
     /**
-     * Onda D — opcao B. Agregado por item do periodo, com fonte UNICA por
+     * Onda D — opcao B. Agregado POR ANUNCIO do periodo, com fonte UNICA por
      * interacao: historico em memoria => calculo local (zero requisicao);
      * caso contrario => agregado ja recebido do backend. As duas fontes aplicam
-     * a MESMA regra (vendasPorItem): exclui 'cancelled' (pendentes contam),
-     * indexa somente order_items[0] e usa paid_amount do pedido inteiro.
+     * a MESMA regra (vendasPorItem do backend): venda = contaComoVenda,
+     * indexa somente order_items[0] e atribui o paid_amount do pedido INTEIRO
+     * a esse primeiro item.
+     *
+     * FASE A2: isto alimenta SO as visoes por produto (Receita por Produto,
+     * Qualidade, conversao por anuncio). Os TOTAIS do periodo nao saem daqui —
+     * ver totaisDoPeriodo. O quirk do 1o item e uma regra financeira por
+     * produto preservada de proposito nesta fase (um pedido multi-item concentra
+     * toda a receita no 1o anuncio); mudar isso e decisao de produto registrada
+     * para etapa futura, nao um ajuste silencioso.
      */
     function fontePorItemPeriodo(fromYmd, toYmd) {
       const out = {};
@@ -7979,8 +7992,57 @@
       return out;
     }
 
+    /**
+     * FASE A2 — TOTAIS do periodo para os KPIs da Home (Transacoes, Unidades e,
+     * por divisao, Ticket). Contrato aprovado:
+     *   - venda valida = contaComoVenda (via pedidoForaDaVenda);
+     *   - 1 transacao = 1 pedido (o.id), contado uma unica vez;
+     *   - unidades = soma de `quantity` de TODOS os order_items (`?? 1` como o
+     *     sales-metrics do backend: ausente vira 1, zero continua zero);
+     *   - o status ATUAL do anuncio nao apaga uma venda historica: nenhum filtro
+     *     por allItems/active aqui.
+     * So existe com o historico em memoria (allOrders), que e a unica fonte
+     * local com todos os pedidos e todos os itens.
+     *
+     * SEM historico: indisponivel, de proposito. O agregado do backend nao tem
+     * total confiavel de pedidos nem de unidades do periodo. `periodo.porItem`
+     * (vendasPorItem) indexa so order_items[0]: pedido cujo 1o item nao tem
+     * item.id nao entra, entao Σ porItem.pedidos pode ficar ABAIXO do total; e
+     * Σ porItem.unidades ignora os itens 2+ de todo carrinho. Numero parcial
+     * nao vira KPI. O historico inteiro tambem NAO e carregado no boot so para
+     * isto (decisao de arquitetura separada).
+     *
+     * DEPENDENCIA DO BACKEND (proxima evolucao de /api/orders/metrics):
+     * expor `periodo.pedidos` e `periodo.unidades`, calculados sobre TODOS os
+     * pedidos validos (contaComoVenda) e TODOS os order_items do periodo —
+     * a mesma regra do sales-metrics usado em `janelas`. Ate la, sem historico,
+     * Transacoes/Unidades/Ticket mostram placeholder.
+     *
+     * O faturamento NAO sai daqui: continua em calcLiquidoPeriodo (A3).
+     */
+    function totaisDoPeriodo(fromYmd, toYmd) {
+      if (!pedidosEmMemoria()) {
+        return { disponivel: false, fonte: null, pedidos: null, unidades: null, motivo: 'aguarda_historico' };
+      }
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      let pedidos = 0, unidades = 0;
+      allOrders.forEach(o => {
+        if (pedidoForaDaVenda(o)) return;
+        if (!dentroDoPeriodo(o.date_created, ini, fim)) return;
+        pedidos++;
+        (o.order_items || []).forEach(oi => { unidades += (oi && oi.quantity != null) ? Number(oi.quantity) : 1; });
+      });
+      return { disponivel: true, fonte: 'local', pedidos, unidades, motivo: null };
+    }
+
+    /** Ticket medio EXIBIDO = faturamento exibido / pedidos exibidos. Zero pedidos => 0 (a tela trata o placeholder). */
+    function ticketMedioExibido(faturamento, pedidos) {
+      return pedidos > 0 ? faturamento / pedidos : 0;
+    }
+
     async function loadPeriodoData(fromYmd, toYmd) {
       periodoData = [];
+      periodoTotais = null;
 
       // Range do periodo global como objetos Date (BRT) em globais, para que
       // renderKPIsPeriodo / calcLiquidoPeriodo usem exatamente o mesmo intervalo.
@@ -8038,6 +8100,8 @@
       // Onda D: agregado por item do periodo — local quando o historico esta em
       // memoria, senao do backend. Nunca as duas coisas na mesma interacao.
       const ordsByItemPeriod = fontePorItemPeriodo(fromYmd, toYmd);
+      // FASE A2: totais do periodo com populacao unica (ver totaisDoPeriodo).
+      periodoTotais = totaisDoPeriodo(fromYmd, toYmd);
 
       periodoData = allItems
         .filter(i => i.status === 'active')
@@ -9013,16 +9077,30 @@
       if (_kpiPubEl && kpiPubManual > 0 && !_kpiPubEl.value) {
         _kpiPubEl.value = kpiPubManual.toFixed(2);
       }
+      // POR ANUNCIO (periodoData): alimenta visitas e conversao, cujo universo e o
+      // dos anuncios ativos do ML (as visitas so existem para eles).
       const totalFaturamento = periodoData.reduce((s, d) => s + d.receita, 0);
       const totalVisitas = periodoData.reduce((s, d) => s + d.visitas, 0);
-      const totalTransacoes = periodoData.reduce((s, d) => s + d.vendas, 0);
-      const totalUnidades = periodoData.reduce((s, d) => s + d.unidades, 0);
-      const conversaoGeral = totalVisitas > 0 ? (totalTransacoes / totalVisitas * 100) : 0;
-      const ticketMedio = totalTransacoes > 0 ? (totalFaturamento / totalTransacoes) : 0;
+      const vendasAnunciosAtivos = periodoData.reduce((s, d) => s + d.vendas, 0);
+      // Conversao: numerador e denominador do MESMO universo (anuncios ativos do
+      // ML, 1o item do pedido, visitas rateadas por sold_quantity). Nao usa os
+      // totais abaixo de proposito: eles incluem pausados e Amazon, que nao tem
+      // visitas, e a taxa ficaria falsa. Limitacao conhecida, declarada aqui.
+      const conversaoGeral = totalVisitas > 0 ? (vendasAnunciosAtivos / totalVisitas * 100) : 0;
+
+      // TOTAIS do periodo (FASE A2): uma populacao so — todos os pedidos
+      // validos, cada um uma vez, todos os order_items, sem filtro de anuncio.
+      const _tot = periodoTotais || { disponivel: false, pedidos: null, unidades: null, motivo: null };
+      const totalTransacoes = _tot.disponivel ? _tot.pedidos : null;
+      const totalUnidades = _tot.disponivel ? _tot.unidades : null;
 
       // Calcular receita líquida com base nos pedidos do período
       const _liq = calcLiquidoPeriodo();
       const { bruto, tarifaML, tarifaEnv, liquido } = _liq;
+      // Ticket = EXATAMENTE o faturamento exibido no card ao lado / transacoes
+      // exibidas. `fatExibido` e o mesmo valor escrito em kpi-faturamento.
+      const fatExibido = bruto || totalFaturamento;
+      const ticketMedio = ticketMedioExibido(fatExibido, totalTransacoes || 0);
 
       const fmt = v => 'R$\u00a0' + v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const pct = (v, base) => base > 0 ? (Math.abs(v) / base * 100).toFixed(1) + '%' : '-';
@@ -9040,7 +9118,7 @@
         // Selecao sem tarifas medias proprias. Cada card mostra o TOTAL real
         // quando a cobertura e completa; senao, indisponivel, com o subtotal
         // conhecido ao lado — rotulado como subtotal, nunca no lugar do total.
-        document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
+        document.getElementById('kpi-faturamento').textContent = fmt(fatExibido);
         const _ap = _liq.apurado;
         const _k = _ap && _ap.conhecido;
         const _met = rotuloMetodo(_ap && _ap.metodo);
@@ -9077,7 +9155,7 @@
           _avisoFin.innerHTML = partes.length ? htmlAvisoSelecao(partes.join('<br>')) : '';
         }
       } else {
-        document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
+        document.getElementById('kpi-faturamento').textContent = fmt(fatExibido);
         document.getElementById('kpi-liq').textContent = fmt(liquido);
         document.getElementById('kpi-liq-pct').textContent = pct(liquido, bruto || totalFaturamento) + ' do bruto';
         document.getElementById('kpi-tarifa-ml').textContent = fmt(Math.abs(tarifaML));
@@ -9129,11 +9207,19 @@
       if (_perOk && _amzVis && !selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motVis);
       else document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       if (_perOk && _amzVis && selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').title = 'S\u00f3 Mercado Livre: ' + _motVis.toLowerCase();
-      document.getElementById('kpi-transacoes').textContent = _perOk ? totalTransacoes.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
-      document.getElementById('kpi-unidades').textContent = _perOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      // FASE A2: sem totais confiaveis (sem historico em memoria), Transacoes,
+      // Unidades e Ticket mostram placeholder — nunca zero, nunca a soma
+      // parcial de porItem. O title diz por que. Ver totaisDoPeriodo.
+      const _totOk = _perOk && _tot.disponivel && !_liq.indisponivel;
+      const _totTitle = (!_totOk && _perOk && _tot.motivo === 'aguarda_historico')
+        ? 'Total aguarda dados completos do per\u00edodo.'
+        : '';
+      document.getElementById('kpi-transacoes').textContent = _totOk ? totalTransacoes.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      document.getElementById('kpi-unidades').textContent = _totOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].forEach(id => { document.getElementById(id).title = _totTitle; });
       if (_perOk && _amzVis) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
       else document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
-      document.getElementById('kpi-ticket').textContent = _perOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
+      document.getElementById('kpi-ticket').textContent = _totOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
     }
 
     /**
