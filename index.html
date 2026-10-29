@@ -8001,27 +8001,30 @@
      *     sales-metrics do backend: ausente vira 1, zero continua zero);
      *   - o status ATUAL do anuncio nao apaga uma venda historica: nenhum filtro
      *     por allItems/active aqui.
-     * So existe com o historico em memoria (allOrders), que e a unica fonte
-     * local com todos os pedidos e todos os itens.
+     * Fontes, nesta ordem (uma so por interacao):
+     *   1. historico em memoria (allOrders): calculo local acima;
+     *   2. sem historico — FASE A2c: `_metrics.periodo.pedidos` e
+     *      `_metrics.periodo.unidades` do backend (A2b, /api/orders/metrics),
+     *      calculados la com a MESMA regra (contaComoVenda, todos os
+     *      order_items). So valem se o agregado for do periodo EXATO e os DOIS
+     *      campos forem inteiros >= 0 — zero e dado valido; contrato parcial
+     *      (so um dos dois) nao e aceito;
+     *   3. senao (backend antigo, sem os campos): indisponivel. Os tres KPIs
+     *      ficam em placeholder.
      *
-     * SEM historico: indisponivel, de proposito. O agregado do backend nao tem
-     * total confiavel de pedidos nem de unidades do periodo. `periodo.porItem`
-     * (vendasPorItem) indexa so order_items[0]: pedido cujo 1o item nao tem
-     * item.id nao entra, entao Σ porItem.pedidos pode ficar ABAIXO do total; e
-     * Σ porItem.unidades ignora os itens 2+ de todo carrinho. Numero parcial
-     * nao vira KPI. O historico inteiro tambem NAO e carregado no boot so para
-     * isto (decisao de arquitetura separada).
-     *
-     * DEPENDENCIA DO BACKEND (proxima evolucao de /api/orders/metrics):
-     * expor `periodo.pedidos` e `periodo.unidades`, calculados sobre TODOS os
-     * pedidos validos (contaComoVenda) e TODOS os order_items do periodo —
-     * a mesma regra do sales-metrics usado em `janelas`. Ate la, sem historico,
-     * Transacoes/Unidades/Ticket mostram placeholder.
+     * `periodo.porItem` NUNCA entra aqui: indexa so order_items[0], perde
+     * pedido sem item.id e ignora itens 2+. O historico inteiro tambem NAO e
+     * carregado no boot so para isto (decisao de arquitetura separada).
      *
      * O faturamento NAO sai daqui: continua em calcLiquidoPeriodo (A3).
      */
     function totaisDoPeriodo(fromYmd, toYmd) {
       if (!pedidosEmMemoria()) {
+        const mp = _metrics && _metrics.periodo;
+        const contagem = v => Number.isInteger(v) && v >= 0;
+        if (mp && mp.fromYmd === fromYmd && mp.toYmd === toYmd && contagem(mp.pedidos) && contagem(mp.unidades)) {
+          return { disponivel: true, fonte: 'agregado', pedidos: mp.pedidos, unidades: mp.unidades, motivo: null };
+        }
         return { disponivel: false, fonte: null, pedidos: null, unidades: null, motivo: 'aguarda_historico' };
       }
       const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);

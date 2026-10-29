@@ -14,12 +14,13 @@
  *    conversao) ficam como eram — inclusive o paid_amount inteiro no 1o item e
  *    o filtro de anuncios ativos — e nao alimentam mais os totais;
  *  - conversao continua vendas de anuncios ativos (1o item) / visitas ML;
- *  - SEM historico em memoria: Transacoes, Unidades e Ticket ficam em
- *    placeholder com title explicativo — nunca zero e nunca a soma de
- *    `porItem`, que nao e total oficial (pedido sem item.id no 1o item fica
- *    fora, e itens 2+ nunca contam). Faturamento continua aparecendo pelo
- *    agregado. Dependencia: /api/orders/metrics expor periodo.pedidos e
- *    periodo.unidades.
+ *  - SEM historico em memoria (FASE A2c): os totais vem de
+ *    `_metrics.periodo.pedidos` e `_metrics.periodo.unidades` (backend A2b),
+ *    quando o agregado e do periodo exato e os DOIS campos sao inteiros >= 0
+ *    (zero e dado valido). Backend antigo (sem os campos) ou contrato
+ *    parcial: placeholder com title — nunca zero e NUNCA a soma de `porItem`,
+ *    que nao e total oficial (pedido sem item.id no 1o item fica fora, e
+ *    itens 2+ nunca contam). Faturamento continua pelo agregado.
  *
  * Rodar: node --test tests/*.test.mjs
  */
@@ -70,8 +71,12 @@ const ITENS = [
 const ESPERADO = { faturamento: 100 + 30.51 + 60 + 250 + 80, pedidos: 5, unidades: 1 + 1 + 1 + 4 + 2 };
 const FROM = '2026-10-01', TO = '2026-10-31';
 
-/** Agregado do backend para o periodo, como montarMetrics o devolve (porItem = vendasPorItem: 1o item, paid_amount inteiro). */
-function metricsDoBackend(pedidos, fromYmd, toYmd) {
+/**
+ * Agregado do backend para o periodo, como montarMetrics o devolve (porItem = vendasPorItem: 1o item, paid_amount inteiro).
+ * Padrao: backend ANTIGO (publicado hoje), sem os totais. `{ novo: true }`: backend A2b, com `periodo.pedidos` e
+ * `periodo.unidades` calculados como calcularMetricas (contaComoVenda, todos os order_items, quantity ?? 1).
+ */
+function metricsDoBackend(pedidos, fromYmd, toYmd, { novo = false } = {}) {
   const venda = o => o.status === 'paid' || o.status === 'partially_refunded' || (String(o.status).startsWith('amazon:') && o.status !== 'amazon:cancelled');
   const porItem = {}; let bruto = 0;
   for (const o of pedidos) {
@@ -81,7 +86,13 @@ function metricsDoBackend(pedidos, fromYmd, toYmd) {
     porItem[id] ??= { itemId: id, pedidos: 0, unidades: 0, receita: 0 };
     porItem[id].pedidos++; porItem[id].unidades += oi.quantity || 1; porItem[id].receita += o.paid_amount || 0;
   }
-  return { periodo: { fromYmd, toYmd, faturamento: { bruto, tarifaML: -bruto * 0.148, tarifaEnv: -bruto * 0.144, liquido: bruto * 0.708 }, porItem: Object.values(porItem) } };
+  const periodo = { fromYmd, toYmd, faturamento: { bruto, tarifaML: -bruto * 0.148, tarifaEnv: -bruto * 0.144, liquido: bruto * 0.708 }, porItem: Object.values(porItem) };
+  if (novo) {
+    const vendas = pedidos.filter(venda);
+    periodo.pedidos = vendas.length;
+    periodo.unidades = vendas.reduce((s, o) => s + (o.order_items || []).reduce((u, oi) => u + (oi.quantity ?? 1), 0), 0);
+  }
+  return { periodo };
 }
 
 /** Monta loadPeriodoData + renderKPIsPeriodo REAIS com stubs minimos; devolve o que a Home escreve. */
@@ -214,7 +225,7 @@ describe('Home com historico em memoria', () => {
   });
 });
 
-describe('Home sem historico (so o agregado do backend)', () => {
+describe('Home sem historico + backend ANTIGO (sem periodo.pedidos/unidades)', () => {
   const PH = '\u2014';
 
   test('faturamento aparece pelo agregado; transacoes, unidades e ticket ficam em placeholder com title — nunca numero parcial', async () => {
@@ -258,6 +269,104 @@ describe('Home sem historico (so o agregado do backend)', () => {
   test('com historico os titles ficam vazios (nada a declarar)', async () => {
     const d = (await montar().run(FROM, TO)).dom;
     for (const id of ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket']) assert.equal(d[id].title, '', id);
+  });
+});
+
+describe('Home sem historico + backend NOVO (FASE A2c: periodo.pedidos/unidades)', () => {
+  const PH = '\u2014';
+  const novo = (pedidos = PEDIDOS) => metricsDoBackend(pedidos, FROM, TO, { novo: true });
+
+  test('cards exibem 5 / 9 / ticket = faturamento exibido / periodo.pedidos', async () => {
+    const mb = novo();
+    assert.deepEqual([mb.periodo.pedidos, mb.periodo.unidades], [5, 9]);
+    const r = await montar({ historico: false, metrics: mb }).run(FROM, TO);
+    const d = r.dom;
+    assert.equal(r.totais.fonte, 'agregado');
+    const fat = reais(d['kpi-faturamento'].textContent);
+    assert.equal(fat, Math.round(ESPERADO.faturamento));
+    assert.equal(inteiro(d['kpi-transacoes'].textContent), 5);
+    assert.equal(inteiro(d['kpi-unidades'].textContent), 9);
+    assert.equal(reais(d['kpi-ticket'].textContent), Math.round(ESPERADO.faturamento / 5));
+    for (const id of ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket']) assert.equal(d[id].title, '', id);
+  });
+
+  test('mesmos numeros que o calculo local com historico (as duas fontes concordam)', async () => {
+    const local = (await montar().run(FROM, TO)).dom;
+    const boot = (await montar({ historico: false, metrics: novo() }).run(FROM, TO)).dom;
+    for (const id of ['kpi-faturamento', 'kpi-transacoes', 'kpi-unidades', 'kpi-ticket']) {
+      assert.equal(boot[id].textContent, local[id].textContent, id);
+    }
+  });
+
+  test('porItem com numeros diferentes: os campos novos vencem — porItem nao voltou a ser usado', async () => {
+    const mb = novo();
+    // Σ porItem daria 5 pedidos e 6 unidades; aqui vira lixo proposital.
+    mb.periodo.porItem = mb.periodo.porItem.map(l => ({ ...l, pedidos: 777, unidades: 888 }));
+    const d = (await montar({ historico: false, metrics: mb }).run(FROM, TO)).dom;
+    assert.equal(inteiro(d['kpi-transacoes'].textContent), 5);
+    assert.equal(inteiro(d['kpi-unidades'].textContent), 9);
+    // E sem os campos novos, o mesmo porItem adulterado tambem nao aparece.
+    const antigo = metricsDoBackend(PEDIDOS, FROM, TO);
+    antigo.periodo.porItem = antigo.periodo.porItem.map(l => ({ ...l, pedidos: 777, unidades: 888 }));
+    const d2 = (await montar({ historico: false, metrics: antigo }).run(FROM, TO)).dom;
+    assert.deepEqual(['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].map(id => d2[id].textContent), [PH, PH, PH]);
+  });
+
+  test('pedidos = 0 e unidades = 0 sao dado valido: exibe 0, nao placeholder', async () => {
+    const mb = metricsDoBackend([], FROM, TO, { novo: true });
+    assert.deepEqual([mb.periodo.pedidos, mb.periodo.unidades], [0, 0]);
+    const r = await montar({ pedidos: [], historico: false, metrics: mb }).run(FROM, TO);
+    assert.equal(r.totais.disponivel, true);
+    assert.deepEqual([r.totais.pedidos, r.totais.unidades], [0, 0]);
+    assert.equal(r.dom['kpi-transacoes'].textContent, '0');
+    assert.equal(r.dom['kpi-unidades'].textContent, '0');
+    // Ticket com zero pedidos: comportamento seguro de sempre (ticketMedioExibido -> 0), sem divisao por zero.
+    assert.equal(reais(r.dom['kpi-ticket'].textContent), 0);
+  });
+
+  test('apenas um dos dois campos presente: contrato parcial nao e aceito — os tres KPIs indisponiveis', async () => {
+    for (const falta of ['pedidos', 'unidades']) {
+      const mb = novo();
+      delete mb.periodo[falta];
+      const r = await montar({ historico: false, metrics: mb }).run(FROM, TO);
+      assert.equal(r.totais.disponivel, false, 'sem ' + falta);
+      assert.deepEqual(['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].map(id => r.dom[id].textContent), [PH, PH, PH], 'sem ' + falta);
+    }
+  });
+
+  test('valores invalidos (null, negativo, fracionario, string) contam como ausentes', async () => {
+    for (const ruim of [null, -1, 2.5, '5']) {
+      const mb = novo();
+      mb.periodo.pedidos = ruim;
+      const r = await montar({ historico: false, metrics: mb }).run(FROM, TO);
+      assert.equal(r.dom['kpi-transacoes'].textContent, PH, String(ruim));
+    }
+  });
+
+  test('agregado de OUTRO periodo nao vale, mesmo com os campos novos', async () => {
+    const outro = metricsDoBackend(PEDIDOS, '2026-09-01', '2026-09-30', { novo: true });
+    const d = (await montar({ historico: false, metrics: outro }).run(FROM, TO)).dom;
+    for (const id of ['kpi-faturamento', 'kpi-transacoes', 'kpi-unidades', 'kpi-ticket']) assert.equal(d[id].textContent, PH, id);
+  });
+
+  test('com historico em memoria o calculo local continua vencendo, mesmo com os campos novos no agregado', async () => {
+    const mb = novo();
+    mb.periodo.pedidos = 123; mb.periodo.unidades = 456;
+    const r = await montar({ historico: true, metrics: mb }).run(FROM, TO);
+    assert.equal(r.totais.fonte, 'local');
+    assert.deepEqual([r.totais.pedidos, r.totais.unidades], [5, 9]);
+  });
+
+  test('contrato de codigo: totaisDoPeriodo nao le porItem', () => {
+    assert.doesNotMatch(extrairFuncao('totaisDoPeriodo'), /porItem/);
+  });
+
+  test('Receita por Produto, Qualidade e Conversao continuam saindo de porItem/periodoData, como antes', async () => {
+    const antigo = await montar({ historico: false, metrics: metricsDoBackend(PEDIDOS, FROM, TO) }).run(FROM, TO);
+    const comNovo = await montar({ historico: false, metrics: novo() }).run(FROM, TO);
+    assert.deepEqual(comNovo.periodoData, antigo.periodoData);
+    assert.equal(comNovo.dom['kpi-conversao'].textContent, antigo.dom['kpi-conversao'].textContent);
+    assert.equal(comNovo.dom['kpi-visitas'].textContent, antigo.dom['kpi-visitas'].textContent);
   });
 });
 
