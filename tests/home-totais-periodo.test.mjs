@@ -115,8 +115,9 @@ function montar({ pedidos = PEDIDOS, itens = ITENS, historico = true, metrics = 
     'const USER_ID = 1; async function mlFetch() { return { results: [{ date: "2026-10-20", total: 1000 }] }; }',
     'async function visitasDaSelecao() { return { results: [] }; }',
     // Publicidade e textos auxiliares: neutros (fora do escopo).
-    'let kpiPubManual = 0, adCostTotal = 0, adCostDisponivel = true, _adsLoadState = "loaded", _periodoLoadState = "loaded", currentPeriodoDias = 31;',
-    'function getAdsDataParaPeriodo() { return { match: null, totalInvestimento: 0, label: "" }; }',
+    'let _adsLoadState = "loaded", _periodoLoadState = "loaded";',
+    'function publicidadeDoPeriodo() { return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial: false, motivo: "sem_fonte_confiavel" }; }',
+    'function rotuloFontePublicidade() { return ""; } function textoPublicidadeIndisponivel() { return "dados de Ads indisponiveis"; }',
     'const MOD_PLACEHOLDER = "\\u2014", INDISPONIVEL = "indisponivel";',
     'function htmlIndisponivel(m) { return "[indisponivel: " + m + "]"; } function htmlAvisoSelecao(x) { return x; } function escHtml(x) { return String(x); }',
     'function rotuloMetodo() { return ""; } function textoRessalvas() { return ""; } function textoCobertura() { return ""; } function textoFinanceiroAmazon() { return ""; }',

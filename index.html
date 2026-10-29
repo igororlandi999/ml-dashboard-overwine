@@ -5203,10 +5203,6 @@
       },
     };
 
-    // ── CUSTO DE PUBLICIDADE ──────────────────────────────────
-    let adCostTotal = 0;   // gasto total com publicidade no periodo (via API)
-    let adCostByItem = {}; // { 'MLB123': custo } por item
-
     // ── CUSTOS: fonte unica no backend ────────────────────────
     // Aqui existia CUSTO_PRODUTO, uma SEGUNDA tabela de custos, com
     // getCustoUnitario casando por titulo. Ela ja havia divergido do backend:
@@ -5239,9 +5235,6 @@
     let reputacaoData = null;
     let visitasPorDia = [];
 
-    // Dias DECORRIDOS do periodo global (derivado de gdrGet(); nunca editado a
-    // mao). Continua existindo porque a extrapolacao de publicidade e por dia.
-    let currentPeriodoDias = 7;
     // Range de datas do periodo selecionado na Visao Geral (objetos Date, em horario do Brasil)
     let periodoDateInicio = null; // Date — inicio do dia (00:00:00.000 BRT)
     let periodoDateFim = null; // Date — fim do dia (23:59:59.999 BRT)
@@ -5392,7 +5385,7 @@
         fromDate: brtStartOfDay(from),
         toDate: brtEndOfDay(to),
         toDateEfetivo: brtEndOfDay(toEfetivo),
-        // dias DECORRIDOS do periodo (ate hoje) — base de extrapolacoes por dia
+        // dias DECORRIDOS do periodo (ate hoje)
         dias: from > hoje ? 0 : gdrDiasEntre(from, toEfetivo),
         diasCalendario: gdrDiasEntre(from, to),
         label: gdrRotulo(globalDateRange.preset, from, to),
@@ -5450,7 +5443,6 @@
       globalDateRange.from = r.from;
       globalDateRange.to = r.to;
       globalDateRange.calculadoEm = hoje;
-      currentPeriodoDias = Math.max(1, gdrGet().dias);
       const sel = document.getElementById('gdr-preset');
       if (sel && sel.value !== globalDateRange.preset) sel.value = globalDateRange.preset;
       const custom = document.getElementById('gdr-custom');
@@ -5943,94 +5935,59 @@
       };
     }
 
-    // Lidos em pubManualCarregar(), DEPOIS de a selecao de contas ser conhecida:
-    // a publicidade informada a mao e de uma empresa, e a chave leva a selecao.
-    let mgPubManual = 0;
-    let kpiPubManual = 0;
-
-    // ── Repositório de relatórios ML Ads carregados ──
-    // Cada entrada = um relatório importado, com seu período real
-    let ADS_DATA = {
-      periodo: { de: '2026-03-06', ate: '2026-03-12' },
-      totalInvestimento: 147.91,
-      porMLB: {
-        'MLB4027199755': 53.28,
-        'MLB4473641293': 37.30,
-        'MLB5405430032': 33.68,
-        'MLB5352339940': 11.50,
-        'MLB5865811728': 9.02,
-        'MLB4027060159': 3.13,
-      },
-      diasCobertos: 7  // quantos dias este relatório cobre
-    };
-
-    // Retorna investimento de publicidade extrapolado para o período selecionado.
-    // Usa o relatório mais próximo disponível e escala pelo custo diário médio.
-    function getAdsDataParaPeriodo(dias) {
-      // Coletar todos os relatórios disponíveis (importados + hardcoded)
-      const todos = [];
-      if (window.mlAdsReports && mlAdsReports.length > 0) {
-        mlAdsReports.forEach(r => todos.push(r));
-      }
-      if (ADS_DATA?.totalInvestimento > 0) {
-        todos.push(ADS_DATA);
-      }
-      if (!todos.length) return { totalInvestimento: 0, match: 'sem_dados', label: 'sem dados de publicidade', porMLB: {} };
-
-      // Pegar o relatório com mais dias cobertos (mais preciso para extrapolar)
-      const base = todos.reduce((best, r) => (r.diasCobertos || 7) > (best.diasCobertos || 7) ? r : best, todos[0]);
-
-      const diasBase = base.diasCobertos || 7;
-      const custoDiario = base.totalInvestimento / diasBase;
-      const totalExtrapolado = custoDiario * dias;
-
-      // Escalar porMLB proporcionalmente
-      const fator = dias / diasBase;
-      const porMLBEscalado = {};
-      const porMLBBase = base.porMLB || {};
-      Object.keys(porMLBBase).forEach(k => { porMLBEscalado[k] = porMLBBase[k] * fator; });
-
-      const match = Math.abs(diasBase - dias) <= 1 ? 'exato' : 'extrapolado';
-      const periodoLabel = base.periodo
-        ? `${base.periodo.de || base.de || ''}→${base.periodo.ate || base.ate || ''}`
-        : (base.de ? `${base.de}→${base.ate}` : '');
-
-      const label = match === 'exato'
-        ? `relatório ML ${periodoLabel}`
-        : `estimado (base: ${diasBase}d × R$ ${custoDiario.toFixed(2)}/dia)`;
-
-      return {
-        totalInvestimento: totalExtrapolado,
-        porMLB: porMLBEscalado,
-        match,
-        label,
-        custoDiario,
-        diasBase
-      };
-    }
-
     /**
      * Publicidade informada a mao. A chave e DA SELECAO (chaveLocal): o valor
      * digitado para a Overwine nunca aparece na Degustar. Na visao consolidada
      * o campo fica fechado — um valor unico nao tem dono entre duas empresas.
+     *
+     * FASE A4: o valor fica PRESO ao periodo global em que foi digitado e so
+     * vale para esse periodo exato. Salvo em localStorage, chave
+     * chaveLocal('kpi_pub_manual') (copia em 'mg_pub_manual'), como
+     * {"valor":N,"de":"AAAA-MM-DD","ate":"AAAA-MM-DD"}. O formato antigo — um
+     * numero solto, sem periodo — e ignorado: aplicado a qualquer janela, ele
+     * contaminava periodos que nao eram o dele.
      */
+    let pubManual = null; // { valor, de, ate } ou null; lido em pubManualCarregar()
+
     function pubManualPermitida() { return !selecaoConsolidada(); }
+    function pubManualLer(texto) {
+      let o = null;
+      try { o = JSON.parse(texto); } catch (e) { return null; }
+      if (!o || typeof o !== 'object') return null;
+      const v = Number(o.valor), ymd = /^\d{4}-\d{2}-\d{2}$/;
+      if (!Number.isFinite(v) || v <= 0 || !ymd.test(o.de) || !ymd.test(o.ate)) return null;
+      return { valor: v, de: o.de, ate: o.ate };
+    }
     function pubManualCarregar() {
-      let v = 0;
+      let m = null;
       if (pubManualPermitida()) {
-        try { v = parseFloat(localStorage.getItem(chaveLocal('kpi_pub_manual')) || '0') || 0; } catch (e) { v = 0; }
+        try { m = pubManualLer(localStorage.getItem(chaveLocal('kpi_pub_manual'))); } catch (e) { m = null; }
       }
-      kpiPubManual = v;
-      mgPubManual = v;
+      pubManual = m;
+    }
+    /** Valor manual valido para EXATAMENTE este periodo, ou null. */
+    function pubManualDoPeriodo(fromYmd, toYmd) {
+      return pubManual && pubManual.de === fromYmd && pubManual.ate === toYmd ? pubManual.valor : null;
+    }
+    function pubManualGravar(val) {
+      const g = gdrGet();
+      pubManual = (Number.isFinite(val) && val > 0) ? { valor: val, de: g.from, ate: g.toEfetivo } : null;
+      try {
+        if (pubManual) {
+          const txt = JSON.stringify(pubManual);
+          localStorage.setItem(chaveLocal('kpi_pub_manual'), txt);
+          localStorage.setItem(chaveLocal('mg_pub_manual'), txt);
+        } else {
+          localStorage.removeItem(chaveLocal('kpi_pub_manual'));
+          localStorage.removeItem(chaveLocal('mg_pub_manual'));
+        }
+      } catch (e) { }
     }
 
     function saveKpiPubManual() {
       if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('kpi-pub-input')?.value || '0') || 0;
-      kpiPubManual = val;
-      mgPubManual = val; // sincroniza com aba Margem
-      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
-      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
+      pubManualGravar(val);
       // atualizar input da aba Margem se visível
       const mgEl = document.getElementById('mg-pub-manual');
       if (mgEl) mgEl.value = val > 0 ? val.toFixed(2) : '';
@@ -6039,10 +5996,7 @@
     function saveMgPubManual() {
       if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('mg-pub-manual')?.value || '0') || 0;
-      mgPubManual = val;
-      kpiPubManual = val; // sincroniza com KPI do período
-      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
-      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
+      pubManualGravar(val);
       // atualizar input do KPI se visível
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = val > 0 ? val.toFixed(2) : '';
@@ -6050,21 +6004,21 @@
     }
 
     function clearMgPubManual() {
-      mgPubManual = 0;
-      kpiPubManual = 0;
+      pubManualGravar(0);
       const el = document.getElementById('mg-pub-manual');
       if (el) el.value = '';
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = '';
-      localStorage.removeItem(chaveLocal('mg_pub_manual'));
-      localStorage.removeItem(chaveLocal('kpi_pub_manual'));
       renderMargem();
       renderKPIsPeriodo();
     }
 
     function initMgPubManualInput() {
       const el = document.getElementById('mg-pub-manual');
-      if (el && mgPubManual > 0) el.value = mgPubManual.toFixed(2);
+      if (!el) return;
+      const g = gdrGet();
+      const v = pubManualDoPeriodo(g.from, g.toEfetivo);
+      el.value = v === null ? '' : v.toFixed(2);
     }
 
 
@@ -6475,8 +6429,6 @@
       try { _posSavedTerms = JSON.parse(localStorage.getItem(chaveLocal('pos_saved_terms')) || '[]'); } catch (e) { _posSavedTerms = []; }
       if (!Array.isArray(_posSavedTerms)) _posSavedTerms = [];
       if (selecaoLegada()) return;
-
-      ADS_DATA = { periodo: null, totalInvestimento: 0, porMLB: {}, diasCobertos: 0 };
 
       const lerNum = (chave) => { try { const v = parseFloat(localStorage.getItem(chaveLocal(chave)) || ''); return Number.isFinite(v) && v > 0 ? v : null; } catch (e) { return null; } };
       const meta = document.getElementById('pv-meta');
@@ -7832,49 +7784,60 @@
      * usar qualquer um deles inflaria a margem em silencio.
      *
      * Dois limites do ML respeitados aqui:
-     *  - janela maxima de 90 dias para tras (periodo maior e truncado);
+     *  - janela maxima de 90 dias para tras (num periodo maior a API so
+     *    responde os ultimos 90: nao e o custo do periodo, fica indisponivel);
      *  - a metrica do dia corrente so consolida as 10h (GMT-3) — hoje pode vir
      *    parcial.
      *
-     * `adCostByItem` fica vazio de proposito: a consulta por campanha nao quebra
-     * o custo por anuncio, e o agregado antigo que prometia isso nao existe mais.
+     * O valor fica gravado JUNTO com o periodo pedido (`adsApi`); quem decide
+     * se ele serve para a tela e publicidadeDoPeriodo(). Nao ha custo por
+     * anuncio: a consulta por campanha nao quebra o custo por anuncio.
      */
+    // Resultado da ULTIMA consulta de Product Ads, com o periodo pedido:
+    // { de, ate, ok, custo, exato, motivo } ou null (nunca consultado).
+    let adsApi = null;
+    let _adsSeq = 0;
+
     /**
-     * Soma o investimento de cada conta da selecao. `adCostDisponivel` vira
-     * false quando ALGUMA conta nao respondeu: ai o total nao e o da selecao
-     * e a tela mostra indisponivel, nao a parte que veio.
+     * Soma o investimento de cada conta da selecao. Se ALGUMA conta nao
+     * respondeu, o total nao e o da selecao: fica `ok: false` (indisponivel),
+     * nunca zero e nunca a parte que veio. Uma resposta que chega depois de o
+     * periodo ter sido trocado e descartada (`_adsSeq`).
      */
-    let adCostDisponivel = true;
     async function loadAdCost(fromYmd, toYmd) {
-      if (selecaoLegada()) {
-        // A falha da consulta nao e "sem investimento": sem isto a Overwine
-        // mostrava publicidade 0 e pedia importacao, escondendo o erro.
-        const r = await loadAdCostDaConta(fromYmd, toYmd, null);
-        adCostDisponivel = (r !== null);
-        return r;
+      const seq = ++_adsSeq;
+      const contas = contasParaProxy();
+      let r;
+      if (!contas.length) {
+        r = { ok: false, custo: null, exato: true, motivo: 'sem_conta_mercado_livre' };
+      } else {
+        let soma = 0, ok = true, exato = true;
+        for (const c of contas) {
+          const x = await loadAdCostDaConta(fromYmd, toYmd, c);
+          if (x === null) ok = false;
+          else { soma += x.custo; if (!x.exato) exato = false; }
+        }
+        r = { ok, custo: ok ? soma : null, exato, motivo: !ok ? 'consulta_falhou' : (!exato ? 'periodo_acima_90_dias' : null) };
       }
-      let soma = 0, ok = true;
-      for (const c of contasParaProxy()) {
-        const r = await loadAdCostDaConta(fromYmd, toYmd, c);
-        if (r === null) ok = false; else soma += r;
-      }
-      adCostDisponivel = ok;
-      adCostTotal = ok ? soma : 0;
-      adCostByItem = {};
+      if (seq !== _adsSeq) return null;
+      adsApi = { de: fromYmd, ate: toYmd, ...r };
+      return adsApi.custo;
     }
 
-    /** Investimento de UMA conta. Devolve o valor, ou `null` se a consulta falhou. */
+    /**
+     * Investimento de UMA conta: `{ custo, exato }`, ou `null` se a consulta
+     * falhou ou veio incompleta. `exato: false` = o periodo passou de 90 dias e
+     * a API so respondeu os ultimos 90 — nao e o custo do periodo pedido.
+     */
     async function loadAdCostDaConta(fromYmd, toYmd, c) {
       const _conta = _contaProxy(c);
-      let _falhou = false;
-      adCostTotal = 0;
-      adCostByItem = {};
 
       // A API de campanhas aceita ate 90 dias: num periodo maior, os ultimos 90.
-      let dateFrom = fromYmd, dateTo = toYmd;
+      let dateFrom = fromYmd, dateTo = toYmd, exato = true;
       if (gdrDiasEntre(dateFrom, dateTo) > 90) {
         const fim = brtStartOfDay(dateTo); fim.setDate(fim.getDate() - 89);
         dateFrom = ymdBRT(fim);
+        exato = false;
       }
 
       try {
@@ -7882,13 +7845,13 @@
         const lista = (anunciantes && anunciantes.advertisers) || [];
         const conta = lista.find(a => a.site_id === 'MLB') || lista[0];
         if (!conta || conta.advertiser_id == null) {
-          console.warn('[ads] Conta sem Product Ads habilitado — investimento fica em 0. Use o campo manual.');
-          return 0;
+          console.warn('[ads] Conta sem Product Ads habilitado — investimento 0.');
+          return { custo: 0, exato };
         }
 
-        let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null;
-        // Ate 4 paginas de 50. Sem o agregado, somar so a primeira pagina
-        // devolveria um investimento MENOR que o real, sem ninguem perceber.
+        let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null, completo = false;
+        // Ate 4 paginas de 50. Sem o agregado, uma soma que nao chegou ao fim
+        // da lista seria um investimento MENOR que o real: vira indisponivel.
         for (let pagina = 0; pagina < 4; pagina++) {
           const resp = await mlFetch(
             `/marketplace/advertising/MLB/advertisers/${conta.advertiser_id}/product_ads/campaigns/search` +
@@ -7904,35 +7867,35 @@
 
           // O agregado ja cobre o periodo inteiro: paginar de novo so gastaria
           // requisicao (e somar as duas fontes contaria duas vezes).
-          if (resumo !== null) break;
+          if (resumo !== null) { completo = true; break; }
 
           const totalPaging = resp && resp.paging ? resp.paging.total : 0;
           offset += 50;
-          if (results.length < 50 || offset >= (totalPaging || 0)) break;
+          if (results.length < 50 || offset >= (totalPaging || 0)) { completo = true; break; }
         }
 
-        adCostTotal = resumo !== null ? resumo : somaCampanhas;
+        if (!completo) {
+          console.warn('[ads] Sem metrics_summary e com mais de 200 campanhas: soma incompleta, publicidade indisponivel.');
+          return null;
+        }
+        const custo = resumo !== null ? resumo : somaCampanhas;
         const fonte = resumo !== null ? 'metrics_summary' : 'soma por campanha';
         console.log(`[ads] ${campanhas} campanha(s) em ${dateFrom}..${dateTo} → investimento ` +
-          `${adCostTotal.toFixed(2)} (fonte: ${fonte})`);
+          `${custo.toFixed(2)} (fonte: ${fonte})`);
 
         // Diagnostico so quando o resultado e suspeito: campanha existe e custo
         // zerado pode ser periodo sem veiculacao, mas tambem pode ser nome de
         // campo diferente na resposta. Os nomes dos campos dizem qual dos dois.
-        if (adCostTotal === 0 && amostra) {
+        if (custo === 0 && amostra) {
           console.warn('[ads] custo 0 com campanha na lista — campos da 1a campanha:',
             Object.keys(amostra).join(','),
             '| metrics:', Object.keys((amostra && amostra.metrics) || {}).join(',') || '(ausente)');
         }
+        return { custo, exato };
       } catch (e) {
         console.warn('[ads] Erro:', e.message);
-        _falhou = true;
+        return null;
       }
-
-      if (adCostTotal === 0) {
-        console.warn('[ads] Sem investimento apurado no periodo. Se houve, informe no campo manual.');
-      }
-      return _falhou ? null : adCostTotal;
     }
 
     /**
@@ -7953,13 +7916,110 @@
      */
     function valorDeCusto(m) {
       if (!m || typeof m !== 'object' || m.cost == null) return null;
-      const n = Math.abs(Number(m.cost));
-      return Number.isFinite(n) ? n : null;
+      const n = Number(m.cost);
+      return Number.isFinite(n) && n >= 0 ? n : null; // negativo nao e gasto
     }
 
     function valorDeCustoOuZero(m) {
       const v = valorDeCusto(m);
       return v === null ? 0 : v;
+    }
+
+    // ══════════════════════════════════════
+    // PUBLICIDADE DO PERIODO — fonte unica (FASE A4)
+    // ══════════════════════════════════════
+    /**
+     * Custo de publicidade de [fromYmd, toYmd] com a fonte dita. Home e Margem
+     * leem daqui. Precedencia — so fontes que existem no dashboard:
+     *  1. manual          — so se foi informado para ESTE periodo exato;
+     *  2. api_product_ads — metrics_summary.cost da consulta feita para ESTE
+     *     periodo, com todas as contas respondendo e sem o corte de 90 dias;
+     *  3. xlsx_ml_ads     — relatorio importado nesta sessao cujas linhas
+     *     cobrem exatamente este periodo (so com uma empresa na selecao);
+     *  4. indisponivel.
+     * Nunca: valor fixo, media diaria, extrapolacao, custo de outra janela.
+     * Zero e valor valido. `parcial`: o periodo inclui hoje — o dia nao fechou
+     * e o ML consolida a metrica do dia depois; o valor e o que veio, sem ajuste.
+     */
+    function publicidadeDoPeriodo(fromYmd, toYmd) {
+      const parcial = toYmd >= hojeBRT();
+      const achou = (custo, fonte) => ({ disponivel: true, custo, fonte, periodoExato: true, parcial, motivo: null });
+
+      const manual = pubManualDoPeriodo(fromYmd, toYmd);
+      if (manual !== null) return achou(manual, 'manual');
+
+      const a = adsApi;
+      const apiDoPeriodo = !!a && a.de === fromYmd && a.ate === toYmd;
+      if (apiDoPeriodo && a.ok === true && a.exato === true &&
+        typeof a.custo === 'number' && Number.isFinite(a.custo) && a.custo >= 0) {
+        return achou(a.custo, 'api_product_ads');
+      }
+
+      const x = xlsxDoPeriodo(fromYmd, toYmd);
+      if (x !== null) return achou(x, 'xlsx_ml_ads');
+
+      const motivo = apiDoPeriodo && a.motivo ? a.motivo
+        : _adsLoadState === 'loading' ? 'carregando'
+          : 'sem_fonte_confiavel';
+      return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial, motivo };
+    }
+
+    /** Rotulo curto da origem, para o subtitulo dos cards. */
+    function rotuloFontePublicidade(p) {
+      const base = p.fonte === 'manual' ? 'manual'
+        : p.fonte === 'xlsx_ml_ads' ? 'relatório ML Ads'
+          : 'Product Ads';
+      return p.parcial ? base + ' · parcial hoje' : base;
+    }
+
+    /** Por que nao ha custo de publicidade, em poucas palavras. */
+    function textoPublicidadeIndisponivel(motivo) {
+      if (motivo === 'carregando') return 'carregando...';
+      if (motivo === 'consulta_falhou') return 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)');
+      if (motivo === 'periodo_acima_90_dias') return 'publicidade ' + INDISPONIVEL + ' (período acima de 90 dias)';
+      if (motivo === 'sem_conta_mercado_livre') return 'sem Product Ads nesta seleção';
+      return 'publicidade ' + INDISPONIVEL + ' (sem dado do per\u00edodo)';
+    }
+
+    /**
+     * Data de uma celula Desde/Ate do relatorio ML Ads em AAAA-MM-DD, ou null.
+     * Aceita AAAA-MM-DD, DD/MM/AAAA e DD-mmm-AAAA (mes abreviado em portugues).
+     * Formato desconhecido = periodo nao validavel = relatorio nao entra.
+     */
+    function ymdDeDataXlsx(v) {
+      const t = String(v == null ? '' : v).trim().toLowerCase();
+      let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return m[1] + '-' + m[2] + '-' + m[3];
+      m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      m = t.match(/^(\d{1,2})[-\s]([a-zç]{3})\.?[-\s](\d{4})$/);
+      const mes = m ? ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'].indexOf(m[2]) + 1 : 0;
+      if (mes) return m[3] + '-' + String(mes).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      return null;
+    }
+
+    /**
+     * Investimento de um relatorio XLSX importado cujas linhas cobrem
+     * EXATAMENTE [fromYmd, toYmd]; null se nenhum servir. O relatorio e de UMA
+     * conta: na visao consolidada nao representa a selecao e nao entra.
+     */
+    function xlsxDoPeriodo(fromYmd, toYmd) {
+      if (!pubManualPermitida()) return null;
+      for (let i = mlAdsReports.length - 1; i >= 0; i--) {
+        const r = mlAdsReports[i];
+        if (!r || !Array.isArray(r.rows) || !r.rows.length) continue;
+        let de = null, ate = null, valido = true;
+        for (const row of r.rows) {
+          const a = ymdDeDataXlsx(row.desde), b = ymdDeDataXlsx(row.ate);
+          if (!a || !b) { valido = false; break; }
+          if (!de || a < de) de = a;
+          if (!ate || b > ate) ate = b;
+        }
+        if (!valido || de !== fromYmd || ate !== toYmd) continue;
+        const v = Number(r.totalInv);
+        if (Number.isFinite(v) && v >= 0) return v;
+      }
+      return null;
     }
 
     // ══════════════════════════════════════
@@ -9108,11 +9168,6 @@
     }
 
     function renderKPIsPeriodo() {
-      // Restaurar valor manual do localStorage no input se ainda vazio
-      const _kpiPubEl = document.getElementById('kpi-pub-input');
-      if (_kpiPubEl && kpiPubManual > 0 && !_kpiPubEl.value) {
-        _kpiPubEl.value = kpiPubManual.toFixed(2);
-      }
       // POR ANUNCIO (periodoData): alimenta visitas e conversao, cujo universo e o
       // dos anuncios ativos do ML (as visitas so existem para eles).
       const totalFaturamento = periodoData.reduce((s, d) => s + d.receita, 0);
@@ -9224,33 +9279,29 @@
         }
       }
 
-      // Publicidade — extrapolado para o período selecionado
-      const _adsResult = getAdsDataParaPeriodo(currentPeriodoDias);
-      const _adsMatch = _adsResult.match;
-      const pubVal = kpiPubManual > 0 ? kpiPubManual :
-        (_adsResult.totalInvestimento > 0 ? _adsResult.totalInvestimento : adCostTotal);
-      // Fora da Overwine nao ha relatorio embutido: o que vem da API e rotulado como tal.
-      const pubFonteLabel = kpiPubManual > 0 ? 'manual'
-        : (_adsResult.totalInvestimento > 0 || selecaoLegada()) ? _adsResult.label : 'via API';
+      // Publicidade (FASE A4): custo do MESMO periodo global, com a fonte dita
+      // (publicidadeDoPeriodo). Sem fonte confiavel o card mostra "—"; nunca
+      // valor fixo, media diaria ou extrapolado.
+      const _gPub = gdrGet();
+      const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);
       const pubEl = document.getElementById('kpi-pub-input');
-      if (pubEl && kpiPubManual === 0 && _adsResult.totalInvestimento > 0 && pubEl.value === '') {
-        pubEl.value = _adsResult.totalInvestimento.toFixed(2);
+      if (pubEl && document.activeElement !== pubEl) {
+        pubEl.value = _pub.disponivel ? _pub.custo.toFixed(2) : '';
+        if (!pubEl.disabled) pubEl.placeholder = '\u2014';
       }
       const _pubStatusEl = document.getElementById('kpi-pub-status');
       if (_pubStatusEl) {
-        if (pubVal > 0) {
-          const _pctStr = pct(pubVal, bruto || totalFaturamento) + ' do bruto';
-          _pubStatusEl.textContent = _pctStr + ' · ' + pubFonteLabel;
-          _pubStatusEl.style.color = _adsMatch === 'extrapolado' ? 'var(--amber)' : '';
-          _pubStatusEl.title = _adsMatch === 'extrapolado'
-            ? `Estimativa: R$ ${_adsResult.custoDiario?.toFixed(2)}/dia × ${currentPeriodoDias} dias. Importe relatório do período exato na aba ML Ads para valor preciso.`
+        if (_pub.disponivel) {
+          const _sobre = (typeof bruto === 'number' && bruto > 0) ? pct(_pub.custo, bruto) + ' do bruto \u00b7 ' : '';
+          _pubStatusEl.textContent = _sobre + rotuloFontePublicidade(_pub);
+          _pubStatusEl.style.color = '';
+          _pubStatusEl.title = _pub.parcial
+            ? 'O per\u00edodo inclui hoje: o Mercado Livre ainda n\u00e3o fechou o dia. Valor como veio, sem proje\u00e7\u00e3o.'
             : '';
         } else {
-          // Onda A: nao afirmar "importe relatorio" enquanto loadAdCost roda.
-          _pubStatusEl.textContent = (_adsLoadState === 'loading') ? 'carregando...'
-            : !adCostDisponivel ? 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)')
-              : 'importe relatório na aba ML Ads';
+          _pubStatusEl.textContent = textoPublicidadeIndisponivel(_pub.motivo);
           _pubStatusEl.style.color = 'var(--muted)';
+          _pubStatusEl.title = '';
         }
       }
 
@@ -15623,7 +15674,6 @@
 
       // Sem dependencia do historico bruto.
       if (tab === 'tipoanuncio') renderTipoAnuncio();
-      if (tab === 'mlads') renderMLAds();
       if (tab === 'cancelamentos') { renderCancelamentos(); garantirCancelados(); }
       if (tab === 'posicionamento') posInit();
       if (tab === 'radar') radarInit();
@@ -15692,13 +15742,15 @@
         if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido', nv)); liqEl.style.color = ''; }
         if (liqPct) liqPct.textContent = textoCobertura(k && k.liquido, 'l\u00edquido', nv);
       }
-      const totPub = mgPubManual > 0 ? mgPubManual : ((adCostDisponivel && adCostTotal > 0) ? adCostTotal : 0);
+      // Publicidade (FASE A4): a mesma fonte e o mesmo periodo da Home.
+      const _gPub = gdrGet();
+      const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);
       const pubEl = document.getElementById('mg-pub');
-      if (pubEl) pubEl.innerHTML = totPub > 0 ? fmt(totPub) : ind;
+      if (pubEl) pubEl.innerHTML = _pub.disponivel ? fmt(_pub.custo) : ind;
       const pubPct = document.getElementById('mg-pub-pct');
-      if (pubPct) pubPct.textContent = totPub > 0
-        ? (mgPubManual > 0 ? 'inserido manualmente' : 'via API')
-        : (selecaoConsolidada() ? 'informe por empresa' : 'nao informado');
+      if (pubPct) pubPct.textContent = _pub.disponivel
+        ? rotuloFontePublicidade(_pub)
+        : textoPublicidadeIndisponivel(_pub.motivo);
 
       const varias = selecaoConsolidada();
       const catalogo = {};
@@ -15792,10 +15844,10 @@
         const totLiq = T.receitaLiquida;
         const totCusto = T.custoTotal;
 
-        // Publicidade continua sendo assunto da tela.
-        const _mgAds = getAdsDataParaPeriodo(Math.max(1, gdrGet().dias));
-        const totPub = mgPubManual > 0 ? mgPubManual :
-          (_mgAds.totalInvestimento > 0 ? _mgAds.totalInvestimento : (adCostTotal || 0));
+        // Publicidade (FASE A4): a mesma fonte e o mesmo periodo da Home.
+        // Sem fonte confiavel nada e descontado (0) e o card diz por que.
+        const _pub = publicidadeDoPeriodo(from, to);
+        const totPub = _pub.disponivel ? _pub.custo : 0;
         const totMargem = T.margem - totPub;
 
         const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -15809,9 +15861,9 @@
         document.getElementById('mg-liq-pct').textContent = typeof T.receitaComCusto === 'number' && totBruto > 0
           ? 'produtos com custo: ' + pct(T.receitaComCusto, totBruto) + ' da receita'
           : 'produtos com custo cadastrado';
-        const pubFonte = mgPubManual > 0 ? 'inserido manualmente' : adCostTotal > 0 ? 'via API' : 'nao informado';
-        document.getElementById('mg-pub').textContent = totPub > 0 ? fmt(totPub) : 'N/D';
-        document.getElementById('mg-pub-pct').textContent = totPub > 0 ? pct(totPub, totBruto) + ' do bruto · ' + pubFonte : pubFonte;
+        const pubFonte = _pub.disponivel ? rotuloFontePublicidade(_pub) : textoPublicidadeIndisponivel(_pub.motivo);
+        document.getElementById('mg-pub').textContent = _pub.disponivel ? fmt(totPub) : 'N/D';
+        document.getElementById('mg-pub-pct').textContent = _pub.disponivel ? pct(totPub, totBruto) + ' do bruto · ' + pubFonte : pubFonte;
         document.getElementById('mg-custo').textContent = fmt(totCusto);
         document.getElementById('mg-margem').textContent = fmt(totMargem);
         document.getElementById('mg-margem-pct').textContent = pct(totMargem, totBruto) + ' do bruto';
@@ -16638,6 +16690,8 @@
         mladsRenderReport(data, file.name);
         mlAdsReports.push(data);
         mladsRenderHistory();
+        // So vira custo de publicidade se cobrir exatamente o periodo global.
+        renderKPIsPeriodo();
         showToast('Relatório carregado: ' + data.rows.length + ' anúncios', 'success');
       } catch (e) {
         showToast('Erro ao processar arquivo: ' + e.message, 'error');
@@ -16770,19 +16824,6 @@
       mladsRenderChartCampanhas(data);
       mladsRenderChartDias(data);
       mladsRenderTable(data);
-
-      // Atualizar ADS_DATA para uso na margem
-      if (data.totalInv > 0) {
-        ADS_DATA.totalInvestimento = data.totalInv;
-        ADS_DATA.periodo = { de: data.de, ate: data.ate };
-        ADS_DATA.porMLB = {};
-        data.rows.forEach(r => {
-          if (r.investimento > 0) {
-            ADS_DATA.porMLB[r.mlb] = (ADS_DATA.porMLB[r.mlb] || 0) + r.investimento;
-          }
-        });
-        showToast('Dados de publicidade atualizados na aba Margem Real', 'success');
-      }
     }
 
     function mladsRenderChartCampanhas(data) {
@@ -16929,26 +16970,6 @@
         <div style="font-family:var(--font-display);font-size:24px;color:var(--gold)">${fmt(mlAdsReports.reduce((s, d) => s + d.totalRec, 0))}</div>
       </div>
     </div>`;
-    }
-
-    function renderMLAds() {
-      // Se já tem relatório carregado (do ADS_DATA hardcoded), mostrar resumo automático
-      if (ADS_DATA?.totalInvestimento > 0 && !mlAdsReports.length) {
-        document.getElementById('mlads-periodo-label').textContent =
-          (ADS_DATA.periodo?.de || '06-mar-2026') + ' → ' + (ADS_DATA.periodo?.ate || '12-mar-2026');
-        const fmt = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-        document.getElementById('mlads-kpis').innerHTML = `
-      <div>
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Investido</div>
-        <div style="font-family:var(--font-display);font-size:32px;color:var(--red)">${fmt(ADS_DATA.totalInvestimento)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">dados do último relatório importado</div>
-      </div>
-      <div style="padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;color:var(--muted);line-height:1.7">
-          Carregue um novo relatório acima para atualizar os dados e ver o detalhamento por anúncio, campanha e dia.
-        </div>
-      </div>`;
-      }
     }
 
     // Fechar detail ao clicar fora

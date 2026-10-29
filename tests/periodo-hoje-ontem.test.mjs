@@ -44,7 +44,7 @@ function montar({ hoje, itens = [], pedidos = [] } = {}) {
   const sel = { options: opcoes, value: '', set innerHTML(h) { opcoes.length = 0; for (const m of h.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)) opcoes.push({ value: m[1], text: m[2] }); } };
   const doc = { getElementById: id => (id === 'gdr-preset' ? sel : null), querySelectorAll: () => [] };
   const fonte = [
-    'let currentPeriodoDias = 7; let _gdrAplicando = false;',
+    'let _gdrAplicando = false;',
     'function brtStartOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T00:00:00.000-03:00"); }',
     'function brtEndOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T23:59:59.999-03:00"); }',
     'function ymdBRT(date) { const d = (date instanceof Date) ? date : new Date(date); return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); }',

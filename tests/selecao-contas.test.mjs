@@ -320,10 +320,10 @@ describe('o que e da Overwine nao vaza para outra empresa', () => {
   test('a Overwine sozinha sai antes de qualquer limpeza', () => {
     const iRet = prep.indexOf('if (selecaoLegada()) return;');
     assert.notEqual(iRet, -1);
-    assert.ok(iRet < prep.indexOf('ADS_DATA ='), 'o relatorio embutido so e zerado fora da Overwine');
+    assert.ok(iRet < prep.indexOf("getElementById('pv-meta')"), 'a meta da Overwine so e esvaziada fora da Overwine');
   });
-  test('relatorio de publicidade embutido, meta mensal e cobertura alvo sao esvaziados', () => {
-    assert.match(prep, /ADS_DATA = \{ periodo: null, totalInvestimento: 0, porMLB: \{\}, diasCobertos: 0 \}/);
+  test('nenhum relatorio de publicidade embutido (FASE A4); meta mensal e cobertura alvo sao esvaziados', () => {
+    assert.doesNotMatch(html, /ADS_DATA/);
     assert.match(prep, /getElementById\('pv-meta'\)/);
     assert.match(prep, /getElementById\('gr-semanas'\)/);
   });

@@ -45,7 +45,6 @@ const HOJE = '2026-10-22';
 /** Sandbox: filtro global REAL + regras de status REAIS + buildConsolidado REAL. */
 function montar({ preset = 'mes_atual', de, ate, itens, pedidos }) {
   const fonte = [
-    'let currentPeriodoDias = 7;',
     'function brtStartOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T00:00:00.000-03:00"); }',
     'function brtEndOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T23:59:59.999-03:00"); }',
     'function ymdBRT(date) { const d = (date instanceof Date) ? date : new Date(date); return d.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); }',

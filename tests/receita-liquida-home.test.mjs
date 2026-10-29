@@ -104,8 +104,9 @@ function montar({ historico = false, porPeriodo = {}, metricsInicial = null, fin
     'async function loadAdCost() { return 0; }',
     'function showToast() {}',
     'function renderQualidade() {} function renderChartReceitaProduto() {} function renderCardReputacao() {} function renderVisaoGeral() {}',
-    'let kpiPubManual = 0, adCostTotal = 0, adCostDisponivel = true, _adsLoadState = "loaded", _periodoLoadState = "loaded", currentPeriodoDias = 31;',
-    'function getAdsDataParaPeriodo() { return { match: null, totalInvestimento: 0, label: "" }; }',
+    'let _adsLoadState = "loaded", _periodoLoadState = "loaded";',
+    'function publicidadeDoPeriodo() { return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial: false, motivo: "sem_fonte_confiavel" }; }',
+    'function rotuloFontePublicidade() { return ""; } function textoPublicidadeIndisponivel() { return "dados de Ads indisponiveis"; }',
     'const MOD_PLACEHOLDER = "\\u2014", INDISPONIVEL = "indisponivel";',
     'function htmlIndisponivel(m) { return "[indisponivel: " + m + "]"; } function htmlAvisoSelecao(x) { return x; } function escHtml(x) { return String(x); }',
     'function rotuloMetodo() { return ""; } function textoRessalvas() { return ""; } function textoCobertura() { return "cobertura"; } function textoFinanceiroAmazon() { return ""; }',
@@ -332,12 +333,12 @@ describe('Margem — outra grandeza, outro nome', () => {
     ]) assert.ok(r.includes(linha), linha);
   });
 
-  test('10. publicidade fora desta fase: mesma fonte e mesma precedencia na Home e na Margem', () => {
+  test('10. publicidade (FASE A4): Home e Margem leem a MESMA fonte, do periodo global', () => {
     const k = extrairFuncao('renderKPIsPeriodo');
-    assert.ok(k.includes('const _adsResult = getAdsDataParaPeriodo(currentPeriodoDias);'));
-    assert.ok(k.includes('const pubVal = kpiPubManual > 0 ? kpiPubManual :'));
+    assert.ok(k.includes('const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);'));
     const r = extrairFuncao('renderMargem');
-    assert.ok(r.includes('const totPub = mgPubManual > 0 ? mgPubManual :'));
-    assert.match(html, /let ADS_DATA = \{/);
+    assert.ok(r.includes('const _pub = publicidadeDoPeriodo(from, to);'));
+    assert.ok(r.includes('const totPub = _pub.disponivel ? _pub.custo : 0;'));
+    assert.doesNotMatch(html, /ADS_DATA|getAdsDataParaPeriodo/);
   });
 });
