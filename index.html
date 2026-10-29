@@ -3191,9 +3191,9 @@
         <div class="kpi-delta neutral">por item</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Estoque Total</div>
+        <div class="kpi-label">Estoque Físico</div>
         <div class="kpi-value" id="kpi-stock">-</div>
-        <div class="kpi-delta neutral">unidades</div>
+        <div class="kpi-delta neutral" id="kpi-stock-sub">próprio + Full + FBA</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Vendas Totais</div>
@@ -3542,7 +3542,10 @@
             <tr>
               <th style="width:35%">Produto / SKU</th>
               <th style="text-align:center">Cobertura</th>
-              <th style="text-align:center">Estoque</th>
+              <th style="text-align:center" title="Estoque próprio único (base da cobertura)">Próprio</th>
+              <th style="text-align:center">Full</th>
+              <th style="text-align:center">FBA</th>
+              <th style="text-align:center" title="Próprio + Full + FBA">Total físico</th>
               <th style="text-align:center">Vel. 30d</th>
               <th style="text-align:center">Previsao Ruptura</th>
               <th style="text-align:center">Preco</th>
@@ -3861,7 +3864,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-cat-est">-</div>
-            <div class="metric-lbl">Estoque catalogo</div>
+            <div class="metric-lbl">Unid. anunciadas (catálogo)</div>
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-fora-cnt">-</div>
@@ -3869,7 +3872,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-fora-est">-</div>
-            <div class="metric-lbl">Estoque proprio</div>
+            <div class="metric-lbl">Unid. anunciadas (fora)</div>
           </div>
         </div>
       </div>
@@ -5826,37 +5829,129 @@
     //   - proprio: soma por anuncio (cada anuncio nao-Full tem saldo independente)
     //   - full:    deduplicado por fullStockKey (inventory_id), separando classico/premium
     /**
-     * Estoque de um grupo de anuncios na aba Consolidado.
+     * FASE A6 — ESTOQUE FISICO de UM produto (anuncios de um mesmo itemSKU).
+     * Definicao unica: Home, Gestao de Estoque e Consolidado leem daqui.
      *
-     * Overwine: a regra de sempre (consolidarEstoqueGrupo), sem mudanca.
+     *   total fisico = proprio UNICO + Mercado Livre Full + Amazon FBA
      *
-     * Demais empresas: saldo so e deduplicado com VINCULO EXPLICITO do Mercado
-     * Livre — mesmo `inventory_id` (Full) ou mesmo `user_product_id` (produto do
-     * vendedor, estoque unico). Mesmo produto de catalogo e mesma quantidade NAO
-     * provam compartilhamento. Sem vinculo para todos os anuncios do grupo, nao
-     * ha total fisico: devolve `valor: null` e o saldo de cada anuncio.
+     * Fonte: o snapshot de catalogo (/api/items/catalog) — o MESMO que o
+     * /api/items/inventory le. Aquele endpoint nao serve de autoridade aqui:
+     * devolve contas separadas (Overwine ML e Alem Mar Amazon nunca se juntam)
+     * e nao conhece FBA (a linha `#fba` entraria como proprio).
+     *
+     *  - PROPRIO: os anuncios proprios do ML e a linha propria da Amazon
+     *    (`<sku>`) sao ESPELHOS do mesmo saldo e contam UMA vez. Overwine (ML)
+     *    e Alem Mar (Amazon) sao a mesma empresa: regra de espelho de
+     *    consolidarEstoqueGrupo (mesmo inventory_id = um saldo; sem
+     *    inventory_id = o maior). Outra empresa (Degustar): so com vinculo
+     *    explicito (inventory_id / user_product_id); sem ele, null
+     *    ("compartilhamento nao confirmado"). Quantidade nao informada (Amazon
+     *    `null`) nunca vira 0.
+     *  - ML FULL: consolidarEstoqueGrupo (dedup por inventory_id).
+     *  - AMAZON FBA: so a linha `<sku>#fba` DESTE produto informa o FBA (zero
+     *    inclusive). Sem a linha, com anuncio Amazon: null (nao informado) — o
+     *    catalogo nao distingue "FBA zero" de "FBA nao lido", e FBA de outro SKU
+     *    nao prova nada sobre este. Sem anuncio Amazon: 0 (nao se aplica).
+     *  - totalFisico so existe com os tres componentes conhecidos; senao,
+     *    `totalConhecido` + `pendencias` (total PARCIAL, identificado).
+     * Zero e valor valido em todos os componentes. Estoque fisico NAO depende do
+     * status comercial do anuncio: o grupo deve trazer ativos E pausados.
+     */
+    function _qtdInformada(i) {
+      const q = i ? i.available_quantity : null;
+      return typeof q === 'number' && Number.isFinite(q) ? q : null;
+    }
+    function estoqueFisicoDoGrupo(items) {
+      const lista = items || [];
+      const fbaL = lista.filter(isFbaItem);
+      const fullL = lista.filter(i => !isFbaItem(i) && isFullItem(i));
+      const propL = lista.filter(i => !isFbaItem(i) && !isFullItem(i));
+      const pendencias = [];
+      const fontes = { proprio: null, mlFull: null, amazonFba: null };
+
+      // PROPRIO — uma vez por produto fisico.
+      let proprio;
+      const propOk = propL.filter(i => _qtdInformada(i) !== null);
+      if (!propL.length) { proprio = 0; fontes.proprio = 'sem_anuncio_proprio'; }
+      else if (!propOk.length) { proprio = null; pendencias.push('proprio_nao_informado'); }
+      else if (propOk.length === 1 || lista.every(i => !i.conta || contaDaEmpresaOverwine(i.conta))) {
+        proprio = consolidarEstoqueGrupo(propOk).proprio;
+        fontes.proprio = 'catalogo_espelho_unico';
+      } else {
+        const chave = i => i.inventory_id || i.user_product_id || null;
+        if (propOk.every(chave)) {
+          const porVinculo = new Map();
+          propOk.forEach(i => { const k = chave(i); porVinculo.set(k, porVinculo.has(k) ? Math.max(porVinculo.get(k), _qtdInformada(i)) : _qtdInformada(i)); });
+          proprio = 0; porVinculo.forEach(q => { proprio += q; });
+          fontes.proprio = 'catalogo_vinculo_explicito';
+        } else { proprio = null; pendencias.push('compartilhamento_nao_confirmado'); }
+      }
+
+      // ML FULL — estoque fisico separado.
+      let mlFull;
+      if (!fullL.length) { mlFull = 0; fontes.mlFull = 'sem_full'; }
+      else if (fullL.some(i => _qtdInformada(i) === null)) { mlFull = null; pendencias.push('full_nao_informado'); }
+      else { mlFull = consolidarEstoqueGrupo(fullL).full; fontes.mlFull = 'catalogo_full'; }
+
+      // AMAZON FBA — estoque fisico separado.
+      let amazonFba;
+      if (fbaL.length) {
+        if (fbaL.some(i => _qtdInformada(i) === null)) { amazonFba = null; pendencias.push('fba_nao_informado'); }
+        else { amazonFba = fbaL.reduce((s, i) => s + _qtdInformada(i), 0); fontes.amazonFba = 'catalogo_fba'; }
+      } else {
+        const amz = lista.filter(i => pedidoAmazon(i) || i.canal === 'amazon');
+        if (!amz.length) { amazonFba = 0; fontes.amazonFba = 'nao_se_aplica'; }
+        else { amazonFba = null; pendencias.push('fba_nao_informado'); }
+      }
+
+      const partes = [proprio, mlFull, amazonFba];
+      const completo = partes.every(v => v !== null);
+      const totalConhecido = partes.reduce((s, v) => s + (v === null ? 0 : v), 0);
+      return {
+        completo, proprio, mlFull, amazonFba,
+        totalFisico: completo ? totalConhecido : null,
+        totalConhecido, fontes, pendencias,
+        porAnuncio: pendencias.includes('compartilhamento_nao_confirmado') ? propOk.map(_qtdInformada) : null,
+      };
+    }
+
+    /** FASE A6 — estoque fisico de uma lista de anuncios: soma por produto (itemSKU). */
+    function estoqueFisicoTotal(items) {
+      const grupos = new Map();
+      (items || []).forEach(i => { const k = itemSKU(i); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); });
+      const r = { produtos: grupos.size, proprio: 0, mlFull: 0, amazonFba: 0, totalConhecido: 0, incompletos: 0, pendencias: {} };
+      grupos.forEach(g => {
+        const f = estoqueFisicoDoGrupo(g);
+        if (f.proprio !== null) r.proprio += f.proprio;
+        if (f.mlFull !== null) r.mlFull += f.mlFull;
+        if (f.amazonFba !== null) r.amazonFba += f.amazonFba;
+        r.totalConhecido += f.totalConhecido;
+        if (!f.completo) { r.incompletos++; f.pendencias.forEach(p => { r.pendencias[p] = (r.pendencias[p] || 0) + 1; }); }
+      });
+      r.completo = r.incompletos === 0;
+      r.totalFisico = r.completo ? r.totalConhecido : null;
+      return r;
+    }
+
+    const ROTULO_PENDENCIA_ESTOQUE = {
+      proprio_nao_informado: 'próprio não informado',
+      compartilhamento_nao_confirmado: 'compartilhamento não confirmado',
+      full_nao_informado: 'Full não informado',
+      fba_nao_informado: 'FBA não informado',
+    };
+
+    /**
+     * Estoque de um grupo de anuncios na aba Consolidado, no formato de sempre
+     * ({ valor, confirmado, porAnuncio }), agora pela definicao unica
+     * estoqueFisicoDoGrupo. Compartilhamento nao confirmado: valor null e o
+     * saldo de cada anuncio. Componente nao informado: valor null, `parcial`
+     * com o que se sabe e as `pendencias`.
      */
     function estoqueDoGrupo(items) {
-      if (items.length && items.every(i => pedidoAmazon(i) || i.canal === 'amazon')) {
-        const c = consolidarEstoqueGrupo(items);
-        return { valor: c.proprio + c.fba, confirmado: true, porAnuncio: null };
-      }
-      // Overwine no Mercado Livre e Alem Mar na Amazon sao a MESMA empresa: o
-      // estoque proprio e um so (consolidarEstoqueGrupo deduplica, nunca soma
-      // duas vezes), o Full do ML e o FBA da Amazon entram separados.
-      const daOverwine = items.every(i => !i.conta || contaDaEmpresaOverwine(i.conta));
-      if (daOverwine || items.length <= 1) {
-        const c = consolidarEstoqueGrupo(items);
-        return { valor: c.proprio + c.full + c.fba, confirmado: true, porAnuncio: null };
-      }
-      const chave = i => i.inventory_id || i.user_product_id || null;
-      if (items.every(i => chave(i))) {
-        const porVinculo = new Map();
-        items.forEach(i => { const k = chave(i); porVinculo.set(k, Math.max(porVinculo.get(k) || 0, i.available_quantity || 0)); });
-        let total = 0; porVinculo.forEach(q => { total += q; });
-        return { valor: total, confirmado: true, porAnuncio: null };
-      }
-      return { valor: null, confirmado: false, porAnuncio: items.map(i => i.available_quantity || 0) };
+      const f = estoqueFisicoDoGrupo(items);
+      if (f.completo) return { valor: f.totalFisico, confirmado: true, porAnuncio: null };
+      if (f.pendencias.includes('compartilhamento_nao_confirmado')) return { valor: null, confirmado: false, porAnuncio: f.porAnuncio };
+      return { valor: null, confirmado: true, porAnuncio: null, parcial: f.totalConhecido, pendencias: f.pendencias };
     }
 
     /** Texto do estoque quando o compartilhamento nao foi confirmado: saldo por anuncio, sem somar nem deduplicar. */
@@ -9197,8 +9292,12 @@
     function renderKPIs() {
       const active = allItems.filter(i => i.status === 'active').length;
       const paused = allItems.filter(i => i.status === 'paused').length;
-      const nostock = allItems.filter(i => (i.available_quantity || 0) === 0 && i.status === 'active').length;
-      const totalStock = allItems.reduce((s, i) => s + (i.available_quantity || 0), 0);
+      // Anuncio ativo com saldo ZERO informado (disponibilidade do anuncio). Saldo
+      // nao informado (Amazon `null`) nao e "sem estoque".
+      const nostock = allItems.filter(i => i.available_quantity === 0 && i.status === 'active').length;
+      // FASE A6: estoque FISICO, nunca a soma crua dos anuncios (espelhos do
+      // mesmo saldo proprio em varios anuncios e na Amazon contavam N vezes).
+      const fis = estoqueFisicoTotal(allItems);
       const totalSold = allItems.reduce((s, i) => s + (i.sold_quantity || 0), 0);
       const avgPrice = allItems.filter(i => i.status === 'active').reduce((s, i) => s + (i.price || 0), 0) / (active || 1);
 
@@ -9206,7 +9305,15 @@
       document.getElementById('kpi-total').textContent = allItems.length;
       document.getElementById('kpi-paused').textContent = paused;
       document.getElementById('kpi-nostock').textContent = nostock;
-      document.getElementById('kpi-stock').textContent = totalStock.toLocaleString('pt-BR');
+      const _stockEl = document.getElementById('kpi-stock');
+      _stockEl.textContent = fis.totalConhecido.toLocaleString('pt-BR');
+      _stockEl.title = 'Pr\u00f3prio ' + fis.proprio.toLocaleString('pt-BR') + ' \u00b7 Full ' + fis.mlFull.toLocaleString('pt-BR') +
+        ' \u00b7 FBA ' + fis.amazonFba.toLocaleString('pt-BR') +
+        (fis.completo ? '' : ' \u00b7 ' + Object.keys(fis.pendencias).map(k => (ROTULO_PENDENCIA_ESTOQUE[k] || k) + ' em ' + fis.pendencias[k]).join(', '));
+      const _stockSub = document.getElementById('kpi-stock-sub');
+      if (_stockSub) _stockSub.textContent = fis.completo
+        ? 'pr\u00f3prio + Full + FBA'
+        : 'parcial \u00b7 ' + fis.incompletos + ' produto' + (fis.incompletos !== 1 ? 's' : '') + ' sem saldo informado';
       document.getElementById('kpi-sold').textContent = totalSold.toLocaleString('pt-BR');
       document.getElementById('kpi-avgprice').textContent = 'R$\u00a0' + avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
@@ -9719,6 +9826,11 @@
         _metrics.estoque30d.porItem.forEach(l => { vendas30[l.itemId] = l.unidades; });
       }
 
+      // FASE A6: populacao FISICA do SKU = todos os anuncios, ativos e pausados
+      // (a mesma da Home). As linhas e a cobertura seguem so os ativos (A7).
+      const fisicosPorSku = {};
+      allItems.forEach(i => { const k = itemSKU(i); (fisicosPorSku[k] = fisicosPorSku[k] || []).push(i); });
+
       const grupos = {};
       allItems.filter(i => i.status === 'active').forEach(i => {
         const sku = itemSKU(i);
@@ -9746,7 +9858,11 @@
         else if (dias < 90) tipo = 'alerta';
         else if (dias <= 365) tipo = 'ok';
         else tipo = 'excesso';
-        return { sku: g.sku, label: g.label, anuncios: g.anuncios, preco: g.preco, est, vel, dias, tipo };
+        // FASE A6: colunas de estoque pela definicao unica, sobre TODOS os
+        // anuncios do SKU (ativos e pausados). A cobertura (dias, tipo) continua
+        // sobre `est`, dos ativos — revisao na A7.
+        const fis = estoqueFisicoDoGrupo(fisicosPorSku[g.sku] || g.items);
+        return { sku: g.sku, label: g.label, anuncios: g.anuncios, preco: g.preco, est, vel, dias, tipo, fis };
       }).sort((a, b) => {
         const ord = { ruptura: 0, alerta: 1, ok: 2, excesso: 3, semvenda: 4 };
         return (ord[a.tipo] - ord[b.tipo]) || a.dias - b.dias;
@@ -9811,6 +9927,11 @@
         excesso: 'var(--muted)', semvenda: 'var(--surface3)'
       })[tipo] || 'var(--muted)';
 
+      // Componente de estoque: numero (zero inclusive) ou "—" com a pendencia.
+      const celEst = (v, estilo, fis) => v === null
+        ? `<td style="text-align:center;color:var(--muted)" title="${escHtml(fis.pendencias.map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', '))}">${MOD_PLACEHOLDER}</td>`
+        : `<td style="text-align:center;${estilo}">${v.toLocaleString('pt-BR')}</td>`;
+
       const tbody = document.getElementById('est-table');
       tbody.innerHTML = dados.length
         ? dados.map(g => {
@@ -9830,13 +9951,16 @@
               <div class="est-cobertura-fill" style="width:${barPct(g.dias)}%;background:${barCor(g.tipo)}"></div>
             </div>
           </td>
-          <td style="text-align:center;font-family:var(--font-display);font-size:16px;font-weight:600;color:${g.est === 0 ? 'var(--red)' : g.est <= 5 ? 'var(--amber)' : 'var(--cream)'}">${g.est.toLocaleString('pt-BR')}</td>
+          ${celEst(g.fis.proprio, 'font-family:var(--font-display);font-size:16px;font-weight:600;color:' + (g.fis.proprio === 0 ? 'var(--red)' : g.fis.proprio !== null && g.fis.proprio <= 5 ? 'var(--amber)' : 'var(--cream)'), g.fis)}
+          ${celEst(g.fis.mlFull, 'font-size:13px;color:var(--cream)', g.fis)}
+          ${celEst(g.fis.amazonFba, 'font-size:13px;color:var(--cream)', g.fis)}
+          ${celEst(g.fis.totalFisico, 'font-size:14px;font-weight:600;color:var(--gold-light)', g.fis)}
           <td style="text-align:center;font-size:13px;color:var(--muted)">${g.vel > 0 ? g.vel + ' un/dia' : '-'}</td>
           <td style="text-align:center;font-size:13px;color:${g.tipo === 'ruptura' ? 'var(--red)' : g.tipo === 'alerta' ? 'var(--amber)' : 'var(--muted)'}">${fmtData(g.dias)}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(g.preco)}</span></td>
         </tr>`;
         }).join('')
-        : `<tr><td colspan="6"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
+        : `<tr><td colspan="9"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
     }
 
 
@@ -10839,10 +10963,10 @@
       const vendas = consVendasDoPeriodo(allOrders, skuDoItem, _g.fromDate, _g.toDate);
 
       return Object.values(grupos).map(g => {
-        // Estoque total real = proprio (somado por anuncio) + Full (dedup por inventory_id).
-        // Evita duplicar quando 2 anuncios do mesmo produto compartilham saldo Full.
+        // Estoque fisico (FASE A6): proprio unico + Full + FBA (estoqueFisicoDoGrupo).
+        // null = nao afirmado (compartilhamento nao confirmado ou componente nao informado).
         const _est = estoqueDoGrupo(g.items);
-        const estTotal = _est.confirmado ? _est.valor : 0;
+        const estTotal = _est.valor;
         const v = vendas[g.sku];
         const vendasTotal = v ? v.unidades : 0;
         const pedidosCnt = v ? v.pedidos.size : 0;
@@ -10862,6 +10986,7 @@
           estTotal, vendasTotal, pedidosCnt, precoMedio,
           precoMedioVendido, qtdVendida,
           estConfirmado: _est.confirmado, estPorAnuncio: _est.porAnuncio,
+          estParcial: _est.valor === null && _est.confirmado ? _est.parcial : null, estPendencias: _est.pendencias || [],
         };
       }).sort((a, b) => b.pedidosCnt - a.pedidosCnt || b.vendasTotal - a.vendasTotal);
     }
@@ -10903,7 +11028,9 @@
           <td style="text-align:center">${d.anuncios}</td>
           ${d.estConfirmado === false
               ? `<td style="text-align:center;font-size:12px;color:var(--cream)" data-estoque="nao-confirmado" title="O Mercado Livre n\u00e3o informa v\u00ednculo de estoque entre estes an\u00fancios: os saldos n\u00e3o foram somados nem deduplicados.">${textoEstoqueNaoConfirmado(d.estPorAnuncio)}<div style="font-size:10px;color:var(--muted)">compartilhamento n\u00e3o confirmado</div></td>`
-              : `<td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal > 0 ? d.estTotal.toLocaleString('pt-BR') : '-'}</td>`}
+              : d.estTotal === null
+                ? `<td style="text-align:center;color:var(--cream)" data-estoque="parcial">${d.estParcial.toLocaleString('pt-BR')}<div style="font-size:10px;color:var(--muted)">parcial \u00b7 ${escHtml(d.estPendencias.map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', '))}</div></td>`
+                : `<td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal.toLocaleString('pt-BR')}</td>`}
           <td style="text-align:center">${historico ? d.vendasTotal.toLocaleString('pt-BR') : '<span style="color:var(--muted)">...</span>'}</td>
           <td style="text-align:center;color:${d.pedidosCnt > 0 ? 'var(--gold)' : 'var(--muted)'};font-weight:${d.pedidosCnt > 0 ? '600' : '400'}">${historico ? d.pedidosCnt.toLocaleString('pt-BR') : '...'}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(d.precoMedio)}</span></td>

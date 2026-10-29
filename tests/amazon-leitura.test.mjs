@@ -77,6 +77,7 @@ function montar(contas = []) {
     extrairFuncao('contaDaEmpresaOverwine'),
     extrairFuncao('contasPermitidas'),
     extrairFuncao('estoqueDoGrupo'),
+    extrairFuncao('_qtdInformada'), extrairFuncao('estoqueFisicoDoGrupo'),
     extrairFuncao('textoAtualizacaoAmazon'),
     extrairFuncao('textoFinanceiroAmazon'),
     'return { contaComoVenda, pedidoPago, pedidoForaDaVenda, pedidoCancelado, filtroStatusPedido, ordStatusBadge, odLogisticaInfo, contasParaProxy, selecaoTemMercadoLivre, selecaoTemAmazon, consolidarEstoqueGrupo, estoqueDoGrupo, contasPermitidas, textoAtualizacaoAmazon, textoFinanceiroAmazon, usar: s => { SELECAO = s; } };',

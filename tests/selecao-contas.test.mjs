@@ -591,6 +591,7 @@ describe('estoque no Consolidado por produto — so deduplica com vinculo explic
       extrairFuncao('isFbaItem'),
       extrairFuncao('consolidarEstoqueGrupo'),
       extrairFuncao('estoqueDoGrupo'),
+      extrairFuncao('_qtdInformada'), extrairFuncao('estoqueFisicoDoGrupo'),
       extrairFuncao('textoEstoqueNaoConfirmado'),
       'return { estoqueDoGrupo, textoEstoqueNaoConfirmado };',
     ].join('\n');
