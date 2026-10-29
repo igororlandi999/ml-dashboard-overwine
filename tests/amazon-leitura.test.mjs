@@ -161,7 +161,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
     ].join('\n');
     new Function(fonte)(DataFixa, documento, pedidos);
     const n = id => Number(String(els[id].textContent).replace(/[^0-9]/g, ''));
-    return { hoje: [n('ord-hoje-val'), n('ord-hoje-cnt')], sem: [n('ord-sem-val'), n('ord-sem-cnt')], mes: [n('ord-mes-val'), n('ord-mes-cnt')], ticket: n('ord-ticket'), cancel: n('ord-cancel') };
+    return { hoje: [n('ord-hoje-val'), n('ord-hoje-cnt')], sem: [n('ord-sem-val'), n('ord-sem-cnt')], mes: [n('ord-mes-val'), n('ord-mes-cnt')], ticket: n('ord-ticket'), cancel: els['ord-cancel'] };
   }
 
   test('hoje, últimos 7 dias, mês atual e ticket: pendente, enviado, a enviar e desconhecido entram; cancelado não', () => {
@@ -170,7 +170,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
     assert.deepEqual(k.sem, [390, 3]);         // + D pendente
     assert.deepEqual(k.mes, [435, 5]);         // + E a enviar + H status desconhecido
     assert.equal(k.ticket, 84);                // (100+250+40+30+15+70) / 6 = 84,17 (exibido sem centavos)
-    assert.equal(k.cancel, 1);
+    assert.equal(k.cancel, undefined);         // FASE A5: contador vem de cancelamentoOperacional
   });
 
   test('Mercado Livre: KPIs idênticos aos da regra antiga (só paid entra)', () => {
@@ -181,7 +181,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
       ml(3, '2026-10-21T13:00:00.000Z', 'cancelled', 0),
       ml(4, '2026-10-17T13:00:00.000Z', 'payment_required', 300),
     ]);
-    assert.deepEqual([k.hoje, k.sem, k.mes, k.ticket, k.cancel], [[100, 1], [100, 1], [100, 1], 100, 1]);
+    assert.deepEqual([k.hoje, k.sem, k.mes, k.ticket, k.cancel], [[100, 1], [100, 1], [100, 1], 100, undefined]);
   });
 
   test('o resumo de pedidos do chat usa as mesmas regras (sem comparar status cru)', () => {

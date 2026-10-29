@@ -148,7 +148,7 @@ describe('o mesmo pedido recebe a mesma decisao em todas as areas locais', () =>
     assert.equal(a.calcLiquidoPeriodo().bruto, ESPERADO.faturamento);
   });
 
-  test('Pedidos: hoje, 7 dias e mes contam as mesmas 4 vendas; cancelados sao 2 (ML + Amazon)', () => {
+  test('Pedidos: hoje, 7 dias e mes contam as mesmas 4 vendas (cancelados: definicao unica da FASE A5)', () => {
     a.renderPedidosKPIsLocal();
     const d = a.dom;
     assert.equal(numero(d['ord-hoje-cnt'].textContent), ESPERADO.pedidos);
@@ -157,7 +157,9 @@ describe('o mesmo pedido recebe a mesma decisao em todas as areas locais', () =>
     // fmt arredonda para inteiro: 310,51 -> 311
     assert.equal(numero(d['ord-hoje-val'].textContent), Math.round(ESPERADO.faturamento));
     assert.equal(numero(d['ord-ticket'].textContent), Math.round(ESPERADO.faturamento / ESPERADO.pedidos));
-    assert.equal(numero(d['ord-cancel'].textContent), 2);
+    // FASE A5: o contador de cancelados nao sai mais do calculo local (o snapshot
+    // nao garante os cancelados do ML); vem de cancelamentoOperacional.
+    assert.equal(d['ord-cancel'], undefined);
   });
 
   test('Previsao: o dia do periodo soma as mesmas vendas', () => {

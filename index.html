@@ -3717,7 +3717,7 @@
         <div class="kpi-card">
           <div class="kpi-label">Cancelamentos</div>
           <div class="kpi-value" id="ord-cancel" style="color:var(--red)">-</div>
-          <div class="kpi-delta neutral">total carregado</div>
+          <div class="kpi-delta neutral">no período</div>
         </div>
         <div class="kpi-card highlight" id="ord-filtro-card">
           <div class="kpi-label">Periodo Filtrado</div>
@@ -4310,7 +4310,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Taxa de Cancelamento</div>
         <div class="kpi-value" id="canc-taxa">-</div>
-        <div class="kpi-delta neutral">sobre total de pedidos</div>
+        <div class="kpi-delta neutral" id="canc-taxa-sub">sobre todos os pedidos do período</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Valor Perdido</div>
@@ -5537,6 +5537,7 @@
         else if (aba === 'previsao' && _pvInited) renderPrevisao();
         else if (aba === 'giro' && _grInited) renderGiro();
         else if (aba === 'consolidado') { consPage = 1; renderConsolidado(); }
+        else if (aba === 'cancelamentos') { cancPage = 1; renderCancelamentos(); }
       } catch (e) {
         console.warn('[gdr] re-render da aba', aba, 'falhou:', e && e.message);
       }
@@ -6993,6 +6994,7 @@
      */
     function abrirAbaPedidos() {
       renderPedidos();   // render imediato com o que ja houver (preview ou historico)
+      garantirCancelados(); // FASE A5: o card de cancelamentos nao depende de abrir outra aba
 
       if (!pedidosEmMemoria() && ordersPreviewState !== "loaded") {
         loadPrimeiraPaginaPedidos()
@@ -7142,17 +7144,18 @@
         .then(() => { renderKPIsPeriodo(); });
     }
 
-    // Cancelados sob demanda. loadCancelledOrders permanece INALTERADA; muda
-    // apenas QUANDO ela e chamada. Reabrir a aba reutiliza os dados ja em
-    // memoria; se a carga falhar (a funcao engole o erro e deixa a lista
-    // vazia), o estado volta a "idle" e a proxima abertura tenta de novo.
+    // Cancelados sob demanda. Reabrir a aba reutiliza os dados ja em memoria;
+    // se a carga falhar (a funcao engole o erro e marca _cancelCobertura.ok =
+    // false), o estado volta a "idle" e a proxima abertura tenta de novo.
+    // FASE A5: zero cancelados carregados com sucesso e "loaded" (zero valido),
+    // nao "idle".
     function garantirCancelados() {
       if (_cancelLoadState === "loaded") return Promise.resolve();
       if (_cancelLoadState === "loading") return _cancelPromise || Promise.resolve();
       _cancelLoadState = "loading";
       _cancelPromise = Promise.resolve(loadCancelledOrders())
         .then(
-          () => { _cancelLoadState = allCancelledOrders.length > 0 ? "loaded" : "idle"; },
+          () => { _cancelLoadState = (_cancelCobertura && _cancelCobertura.ok === true) ? "loaded" : "idle"; },
           () => { _cancelLoadState = "idle"; }
         )
         .then(() => { _cancelPromise = null; renderCancelamentos(); renderPedidosKPIs(); });
@@ -7309,6 +7312,10 @@
     let _repLoadState = "idle";
     let _cancelLoadState = "idle";
     let _cancelPromise = null;
+    // Cobertura da lista de cancelados do ML (FASE A5): null = nunca carregada;
+    // { ok: false } = falhou; { ok: true, limiteYmd } — limiteYmd null = todos os
+    // cancelados vieram; senao, so os de depois desse dia estao garantidos.
+    let _cancelCobertura = null;
 
     // ── Onda D: agregados do backend (GET /api/orders/metrics) ──
     // O boot NAO baixa mais os pedidos. Os KPIs iniciais vem prontos do
@@ -7668,38 +7675,68 @@
       return selecaoConsolidada() ? ((o && o.conta) || undefined) : undefined;
     }
 
-    /** Cancelados de UMA conta (ate 500, como sempre). */
+    /**
+     * Cancelados de UMA conta (ate 500, os mais recentes, como sempre):
+     * `{ lista, limiteYmd }`. limiteYmd = null quando vieram todos; senao, o
+     * dia do cancelado mais antigo trazido — so periodos que comecam DEPOIS
+     * dele estao completos. Pagina que falha derruba a conta inteira (antes
+     * virava lista menor, em silencio).
+     */
     async function canceladosDaConta(c) {
       const conta = _contaProxy(c);
       const first = await mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=0`, conta);
-      const total = first.paging?.total || 0;
+      // paging.total ausente/invalido = total desconhecido (null), nunca zero.
+      const _totalInformado = first.paging ? Number(first.paging.total) : NaN;
+      const total = Number.isFinite(_totalInformado) && _totalInformado >= 0 ? _totalInformado : null;
       const allRes = [...(first.results || [])];
       const offsets = [];
-      for (let o = 50; o < Math.min(total, 500); o += 50) offsets.push(o);
+      for (let o = 50; o < Math.min(total || 0, 500); o += 50) offsets.push(o);
+      let paginaFalhou = false;
       if (offsets.length > 0) {
         const batches = await Promise.all(
           offsets.map(o => mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=${o}`, conta)
-            .then(d => d.results || []).catch(() => []))
+            .then(d => d.results || []).catch(() => { paginaFalhou = true; return []; }))
         );
         batches.forEach(b => allRes.push(...b));
       }
+      if (paginaFalhou) throw new Error('pagina de cancelados falhou');
       const lista = allRes.filter(o => o.status === 'cancelled');
       // Marca a conta: e ela que abre o detalhe com o vendedor certo.
       if (c !== null) lista.forEach(o => { o.conta = c; });
-      return lista;
+      // Cobertura DESTA conta, antes de juntar com as outras. Truncada = o ML
+      // tem mais cancelados do que vieram; sem total, so a 1a pagina cheia ja
+      // impede afirmar que veio tudo.
+      const truncada = total === null ? allRes.length >= 50 : allRes.length < total;
+      let limiteYmd = null;
+      if (truncada) {
+        let maisAntigo = null;
+        allRes.forEach(o => { const t = Date.parse(o.date_created); if (Number.isFinite(t) && (maisAntigo === null || t < maisAntigo)) maisAntigo = t; });
+        limiteYmd = maisAntigo === null ? '9999-12-31' : ymdBRT(new Date(maisAntigo));
+      }
+      return { lista, limiteYmd };
     }
 
     async function loadCancelledOrders() {
       try {
         allCancelledOrders = [];
+        _cancelCobertura = null;
         const partes = [];
         // Uma conta por vez. Falhou uma, falhou a lista: cancelados de so uma
         // empresa nao se apresentam como os da selecao.
         for (const c of contasParaProxy()) partes.push(await canceladosDaConta(c));
-        const todos = [].concat(...partes);
+        const todos = [].concat(...partes.map(p => p.lista));
         if (partes.length > 1) todos.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
         allCancelledOrders = todos;
-      } catch (e) { console.warn('Cancelamentos nao carregados:', e.message); allCancelledOrders = []; }
+        // Cada conta trouxe o SEU limite. A selecao so cobre um periodo se TODAS
+        // cobrem: vale o limite mais recente entre as contas (max). Nunca o
+        // tamanho ou o item mais antigo da lista ja juntada.
+        const limites = partes.map(p => p.limiteYmd).filter(x => x !== null).sort();
+        _cancelCobertura = { ok: true, limiteYmd: limites.length ? limites[limites.length - 1] : null };
+      } catch (e) {
+        console.warn('Cancelamentos nao carregados:', e.message);
+        allCancelledOrders = [];
+        _cancelCobertura = { ok: false, limiteYmd: null };
+      }
     }
 
     /**
@@ -8971,7 +9008,14 @@
         '4_light_green': 'Verde Claro', '5_green': 'Verde'
       }[nivel] || nivel;
       const nivelColor = nivel === '5_green' ? 'var(--green)' : nivel?.includes('green') ? 'var(--amber)' : 'var(--red)';
+      // Indicadores de REPUTACAO do ML (janela, base e metodologia do ML). Nao sao
+      // a taxa operacional (aba Cancelamentos). Ausente = "—", nunca "0% perfeito".
       const metric = (label, rate) => {
+        if (typeof rate !== 'number' || !Number.isFinite(rate)) return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px;color:var(--muted)">${label}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--muted)">${MOD_PLACEHOLDER}</span>
+      </div>`;
         const pct = (rate * 100).toFixed(1);
         const ok = rate === 0;
         const color = ok ? 'var(--green)' : rate < 0.02 ? 'var(--amber)' : 'var(--red)';
@@ -9121,9 +9165,9 @@
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
     </div>
-    ${metric('Cancelamentos (60d)', mCancel || 0)}
-    ${metric('Atrasos (60d)', mDelay || 0)}
-    ${metric('Reclamacoes (60d)', mClaims || 0)}
+    ${metric('Cancelamentos (reputa\u00e7\u00e3o ML, 60d)', mCancel)}
+    ${metric('Atrasos (60d)', mDelay)}
+    ${metric('Reclamacoes (60d)', mClaims)}
     ${mSales !== undefined ? `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--muted)">Vendas concluidas (60d)</span>
@@ -9980,17 +10024,21 @@
      * Onda D: faixa de KPIs da aba Pedidos. Duas fontes possiveis, NUNCA as
      * duas: se o historico ja esta em memoria, calcula local (comportamento
      * original, intocado); senao usa os agregados do backend, que aplicam as
-     * mesmas regras. O contador de CANCELADOS nao vem do agregado — o snapshot
-     * de ativos nao garante cobertura de cancelados — e fica em "—" ate
-     * garantirCancelados() concluir.
+     * mesmas regras. O contador de CANCELADOS (FASE A5) e o do periodo global,
+     * pela definicao unica cancelamentoOperacional — o mesmo numero com ou sem
+     * historico de outra aba; "—" enquanto a populacao nao estiver disponivel.
      */
     function renderPedidosKPIs() {
       const fmtK = v => 'R$\u00a0' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-      const cancelTxt = (_cancelLoadState === "loaded")
-        ? String(allCancelledOrders.length)
-        : MOD_PLACEHOLDER;
+      const _gCanc = gdrGet();
+      const _canc = cancelamentoOperacional(_gCanc.from, _gCanc.toEfetivo);
+      const cancelTxt = _canc.disponivel ? _canc.cancelados.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      const _cancEl = document.getElementById('ord-cancel');
+      if (_cancEl) _cancEl.title = _canc.disponivel
+        ? _canc.cancelados + ' cancelados em ' + _canc.pedidos + ' pedidos do per\u00edodo'
+        : textoCancelamentoIndisponivel(_canc.motivo);
 
       if (!pedidosEmMemoria()) {
         const j = _metrics && _metrics.janelas;
@@ -10014,6 +10062,7 @@
       }
 
       renderPedidosKPIsLocal();
+      set('ord-cancel', cancelTxt);
     }
 
     function renderPedidos() {
@@ -10070,13 +10119,13 @@
       let hojVal = 0, hojCnt = 0;
       let mesVal = 0, mesCnt = 0;
       let semVal = 0, semCnt = 0;
-      let cancelCnt = 0, totalPago = 0, cntPago = 0;
+      let totalPago = 0, cntPago = 0;
 
       allOrders.forEach(o => {
         const dia = ymdBRT(o.date_created);  // dia do pedido em BRT
         const m = dia.slice(0, 7);
         const val = o.paid_amount || 0;
-        if (pedidoForaDaVenda(o)) { if (pedidoCancelado(o)) cancelCnt++; return; }
+        if (pedidoForaDaVenda(o)) return;
         if (pedidoPago(o)) {
           totalPago += val; cntPago++;
           if (dia === hoje) { hojVal += val; hojCnt++; }
@@ -10093,7 +10142,6 @@
       document.getElementById('ord-sem-val').textContent = fmt(semVal);
       document.getElementById('ord-sem-cnt').textContent = semCnt;
       document.getElementById('ord-ticket').textContent = fmt(cntPago > 0 ? totalPago / cntPago : 0);
-      document.getElementById('ord-cancel').textContent = cancelCnt;
     }
 
     // Onda F: markup de UMA linha da tabela de Pedidos. Extraido de
@@ -10953,9 +11001,93 @@
     const CANCEL_CODE_LABELS = { pack_splitted: 'Pack dividido pelo ML', pack_creation_error: 'Erro ao criar pack', shipment_not_delivered: 'Entrega nao realizada', shipment_operative_issue: 'Problema operacional de envio', buyer_cancel_express: 'Comprador cancelou (express)', feedback_out_of_stock: 'Sem estoque (vendedor)', mediations: 'Mediacao aberta' };
     const CANCEL_COLORS = { internal: '#C9A96E', shipment: '#E8A84A', buyer: '#9A8E94', seller: '#E05252', mediations: '#9B3A4A' };
 
-    function buildCancelMotivos() {
+    /**
+     * FASE A5 — por que a lista de cancelados do ML (sob demanda) ainda nao
+     * cobre o periodo que comeca em fromYmd; null quando cobre.
+     */
+    function motivoCoberturaCancelados(fromYmd) {
+      if (_cancelLoadState !== 'loading' && _cancelCobertura && _cancelCobertura.ok === false) return 'cancelados_indisponiveis';
+      if (_cancelLoadState !== 'loaded' || !_cancelCobertura || _cancelCobertura.ok !== true) return 'carregando_cancelados';
+      if (_cancelCobertura.limiteYmd !== null && !(_cancelCobertura.limiteYmd < fromYmd)) return 'cancelados_incompletos_no_periodo';
+      return null;
+    }
+
+    /**
+     * FASE A5 — taxa de cancelamento OPERACIONAL de [fromYmd, toYmd]. Uma
+     * definicao so, para a aba Cancelamentos e para a aba Pedidos.
+     *
+     *   populacao   = pedidos com data no periodo, cada id uma vez:
+     *                 - ML nao cancelado: historico (allOrders);
+     *                 - ML cancelado: lista dedicada do proxy (allCancelledOrders)
+     *                   — o snapshot de ativos NAO garante os cancelados; o
+     *                   mesmo id na lista prevalece como cancelado;
+     *                 - Amazon, qualquer status: historico (a leitura da Amazon
+     *                   traz todos, inclusive amazon:cancelled).
+     *   numerador   = pedidoCancelado (ML 'cancelled', Amazon 'amazon:cancelled');
+     *   denominador = TODOS os pedidos da populacao, cancelados inclusive —
+     *                 nao so as vendas.
+     *
+     * So e disponivel com historico completo em memoria, snapshot nao parcial
+     * e, havendo ML, lista de cancelados carregada sem falha e cobrindo o
+     * periodo (ate 500 por conta: se o 500o for do periodo, faltam cancelados).
+     * Zero cancelado = 0%. Periodo sem pedido nenhum: taxa null ("sem pedidos")
+     * — nao ha operacao para medir. Reputacao do ML NAO entra aqui.
+     * opcoes.canal === 'ml': so Mercado Livre (a aba Cancelamentos e so ML).
+     */
+    function cancelamentoOperacional(fromYmd, toYmd, opcoes) {
+      const soML = !!(opcoes && opcoes.canal === 'ml');
+      const indisponivel = motivo => ({ disponivel: false, cancelados: null, pedidos: null, taxa: null, fonte: null, periodoExato: false, motivo });
+      if (!pedidosEmMemoria()) return indisponivel('aguarda_historico');
+      if (_ultimoPartial) return indisponivel('historico_parcial');
+      const comML = soML || selecaoTemMercadoLivre();
+      if (comML) {
+        const m = motivoCoberturaCancelados(fromYmd);
+        if (m !== null) return indisponivel(m);
+      }
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      const populacao = new Map();
+      const incluir = o => {
+        if (!o || o.id == null || !dentroDoPeriodo(o.date_created, ini, fim)) return;
+        const amz = pedidoAmazon(o);
+        if (soML && amz) return;
+        populacao.set((amz ? 'amz:' : 'ml:') + o.id, o);
+      };
+      allOrders.forEach(incluir);
+      if (comML) allCancelledOrders.forEach(incluir);
+      let cancelados = 0;
+      populacao.forEach(o => { if (pedidoCancelado(o)) cancelados++; });
+      const pedidos = populacao.size;
+      return {
+        disponivel: true, cancelados, pedidos,
+        taxa: pedidos > 0 ? cancelados / pedidos : null,
+        fonte: comML ? 'historico+cancelados_ml' : 'historico',
+        periodoExato: true,
+        motivo: pedidos > 0 ? null : 'sem_pedidos',
+      };
+    }
+
+    /** Motivo de indisponibilidade em poucas palavras. */
+    function textoCancelamentoIndisponivel(motivo) {
+      return ({
+        aguarda_historico: 'aguardando histórico de pedidos',
+        historico_parcial: 'histórico de pedidos parcial (sincronizando)',
+        carregando_cancelados: 'carregando cancelados...',
+        cancelados_indisponiveis: 'cancelados ' + INDISPONIVEL + ' (a consulta falhou)',
+        cancelados_incompletos_no_periodo: 'período além dos 500 cancelados mais recentes',
+        sem_pedidos: 'sem pedidos no período',
+      })[motivo] || INDISPONIVEL;
+    }
+
+    /** Cancelados do ML (lista sob demanda) com data no periodo. */
+    function canceladosMLDoPeriodo(fromYmd, toYmd) {
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      return allCancelledOrders.filter(o => dentroDoPeriodo(o.date_created, ini, fim));
+    }
+    let _cancListaPeriodo = []; // diagnosticos da aba: cancelados ML do periodo
+
+    function buildCancelMotivos(lista) {
       const motivos = {};
-      allCancelledOrders.forEach(o => {
+      lista.forEach(o => {
         const group = o.cancel_detail?.group || 'desconhecido';
         const code = o.cancel_detail?.code || 'sem_detalhe';
         const desc = CANCEL_CODE_LABELS[code] || o.cancel_detail?.description || 'Sem descricao';
@@ -10968,30 +11100,42 @@
     }
 
     function renderCancelamentos() {
-      const total = allCancelledOrders.length;
+      const g = gdrGet();
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+      // Taxa operacional (FASE A5): uma definicao, mesma janela e populacao.
+      // Sem populacao disponivel: "—" e o motivo, nunca 100% nem 0%.
+      const op = cancelamentoOperacional(g.from, g.toEfetivo, { canal: 'ml' });
+      set('canc-total', op.disponivel ? op.cancelados.toLocaleString('pt-BR') : MOD_PLACEHOLDER);
+      set('canc-grand-total', op.disponivel ? op.pedidos.toLocaleString('pt-BR') : MOD_PLACEHOLDER);
+      set('canc-taxa', op.disponivel && op.taxa !== null ? (op.taxa * 100).toFixed(1) + '%' : MOD_PLACEHOLDER);
+      set('canc-taxa-sub', op.disponivel && op.taxa !== null ? 'sobre todos os pedidos do período' : textoCancelamentoIndisponivel(op.motivo));
+
+      // Diagnosticos (valor, responsabilidade, motivos, lista): os cancelados do
+      // ML do MESMO periodo, so quando a lista cobre o periodo.
+      const motivoLista = motivoCoberturaCancelados(g.from);
+      _cancListaPeriodo = motivoLista === null ? canceladosMLDoPeriodo(g.from, g.toEfetivo) : [];
+      const total = _cancListaPeriodo.length;
       if (!total) {
-        ['canc-total', 'canc-taxa', 'canc-valor', 'canc-seller', 'canc-externo'].forEach(id => document.getElementById(id).textContent = '0');
-        document.getElementById('canc-grand-total').textContent = allOrders.length || '-';
-        document.getElementById('canc-donut-wrap').innerHTML = '<div class="empty-state"><p>Sem cancelamentos</p></div>';
-        document.getElementById('canc-insights').innerHTML = '<div class="insight-box ok"><div class="insight-title">Sem cancelamentos no periodo</div><div class="insight-text">Nenhum pedido cancelado encontrado.</div></div>';
+        ['canc-valor', 'canc-seller', 'canc-externo'].forEach(id => set(id, motivoLista === null ? '0' : MOD_PLACEHOLDER));
+        const msg = motivoLista === null ? 'Sem cancelamentos no periodo' : textoCancelamentoIndisponivel(motivoLista);
+        document.getElementById('canc-donut-wrap').innerHTML = '<div class="empty-state"><p>' + escHtml(msg) + '</p></div>';
+        document.getElementById('canc-insights').innerHTML = motivoLista === null
+          ? '<div class="insight-box ok"><div class="insight-title">Sem cancelamentos no periodo</div><div class="insight-text">Nenhum pedido cancelado encontrado.</div></div>'
+          : '';
         document.getElementById('canc-motivos-table').innerHTML = '';
-        document.getElementById('canc-orders-table').innerHTML = '';
+        renderCancOrdersTable();
         return;
       }
-      const grandTotal = total + allOrders.filter(o => pedidoPago(o)).length;
-      const taxa = total / (grandTotal || 1) * 100;
-      const valorTotal = allCancelledOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
-      const sellerCount = allCancelledOrders.filter(o => o.cancel_detail?.group === 'seller').length;
+      const valorTotal = _cancListaPeriodo.reduce((s, o) => s + (o.total_amount || 0), 0);
+      const sellerCount = _cancListaPeriodo.filter(o => o.cancel_detail?.group === 'seller').length;
       const externoCount = total - sellerCount;
-      document.getElementById('canc-total').textContent = total;
-      document.getElementById('canc-grand-total').textContent = grandTotal.toLocaleString('pt-BR');
-      document.getElementById('canc-taxa').textContent = taxa.toFixed(1) + '%';
-      document.getElementById('canc-valor').textContent = 'R$\u00a0' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      document.getElementById('canc-valor').textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       document.getElementById('canc-seller').textContent = sellerCount;
       document.getElementById('canc-externo').textContent = externoCount;
-      const motivos = buildCancelMotivos();
+      const motivos = buildCancelMotivos(_cancListaPeriodo);
       renderCancelDonut(motivos, total);
-      renderCancelInsights(motivos, total, taxa);
+      renderCancelInsights(motivos, total, op.disponivel ? op.taxa : null);
       document.getElementById('canc-motivos-meta').textContent = `${motivos.length} motivos distintos`;
       document.getElementById('canc-motivos-table').innerHTML = motivos.map(m => {
         const pct = Math.round(m.count / total * 100);
@@ -11041,13 +11185,13 @@
       const sellerCount = motivos.filter(m => m.group === 'seller').reduce((s, m) => s + m.count, 0);
       const externoCount = total - sellerCount;
       if (externoCount > sellerCount) insights.push({ type: 'ok', title: `${Math.round(externoCount / total * 100)}% dos cancelamentos estao fora do seu controle`, text: 'A maioria dos cancelos foi gerada pelo proprio ML ou por problemas de envio. Isso nao afeta diretamente sua reputacao como vendedor. Foque nos cancelamentos do grupo Vendedor.' });
-      if (!insights.length) insights.push({ type: 'ok', title: 'Volume de cancelamentos dentro do esperado', text: `Taxa de ${taxa.toFixed(1)}% esta dentro de parametros normais para o ML.` });
+      if (!insights.length) insights.push({ type: 'ok', title: 'Volume de cancelamentos dentro do esperado', text: taxa === null ? 'Taxa do periodo indisponivel: so os motivos foram avaliados.' : `Taxa de ${(taxa * 100).toFixed(1)}% esta dentro de parametros normais para o ML.` });
       el.innerHTML = insights.map(ins => `<div class="insight-box ${ins.type}"><div class="insight-title">${ins.title}</div><div class="insight-text">${ins.text}</div></div>`).join('');
     }
 
     function getFilteredCancOrders() {
-      if (cancFilter === 'all') return allCancelledOrders;
-      return allCancelledOrders.filter(o => (o.cancel_detail?.group || 'desconhecido') === cancFilter);
+      if (cancFilter === 'all') return _cancListaPeriodo;
+      return _cancListaPeriodo.filter(o => (o.cancel_detail?.group || 'desconhecido') === cancFilter);
     }
 
     function setCancFilter(f, btn) {
@@ -15674,7 +15818,7 @@
 
       // Sem dependencia do historico bruto.
       if (tab === 'tipoanuncio') renderTipoAnuncio();
-      if (tab === 'cancelamentos') { renderCancelamentos(); garantirCancelados(); }
+      if (tab === 'cancelamentos') { comHistorico('Cancelamentos', renderCancelamentos); garantirCancelados(); }
       if (tab === 'posicionamento') posInit();
       if (tab === 'radar') radarInit();
       if (tab === 'relampago') rlUpdateRanges();
