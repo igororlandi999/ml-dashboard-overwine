@@ -43,7 +43,6 @@ function extrairConstante(nome) {
 /** Sandbox com as funcoes puras do filtro global e os helpers de data. */
 function montarGdr({ hoje = '2026-09-28', preset = 'mes_atual', customDe, customAte, allOrders = [] } = {}) {
   const fonte = [
-    'let currentPeriodoDias = 7;',
     'let allOrders = _allOrders;',
     'function brtStartOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T00:00:00.000-03:00"); }',
     'function brtEndOfDay(ymd) { if (!ymd) return null; return new Date(ymd + "T23:59:59.999-03:00"); }',
@@ -70,7 +69,7 @@ function montarGdr({ hoje = '2026-09-28', preset = 'mes_atual', customDe, custom
     extrairFuncao('pvGroupByDay'),
     extrairFuncao('pvCalc'),
     'gdrDefinir(_preset, _de, _ate);',
-    'return { gdrGet, gdrCalcularRange, gdrRotulo, gdrMesesNoIntervalo, gdrDefinir, pvCalc, estado: () => globalDateRange, dias: () => currentPeriodoDias };',
+    'return { gdrGet, gdrCalcularRange, gdrRotulo, gdrMesesNoIntervalo, gdrDefinir, pvCalc, estado: () => globalDateRange, dias: () => gdrGet().dias };',
   ].join('\n');
   const doc = { getElementById: () => null, querySelectorAll: () => [] };
   return new Function('_hoje', '_preset', '_de', '_ate', '_allOrders', 'document', fonte)(hoje, preset, customDe, customAte, allOrders, doc);
@@ -175,7 +174,7 @@ describe('presets — a conta de cada periodo', () => {
     assert.equal(ruim.estado().preset, 'mes_atual', 'intervalo invertido cai no padrao');
   });
 
-  test('currentPeriodoDias acompanha o periodo (dias decorridos)', () => {
+  test('gdrGet().dias acompanha o periodo (dias decorridos)', () => {
     const a = montarGdr({ hoje: '2026-09-28', preset: 'mes_atual' });
     assert.equal(a.dias(), 28);
     a.gdrDefinir('ultimos:3');

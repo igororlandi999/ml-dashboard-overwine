@@ -77,6 +77,7 @@ function montar(contas = []) {
     extrairFuncao('contaDaEmpresaOverwine'),
     extrairFuncao('contasPermitidas'),
     extrairFuncao('estoqueDoGrupo'),
+    extrairFuncao('_qtdInformada'), extrairFuncao('estoqueFisicoDoGrupo'),
     extrairFuncao('textoAtualizacaoAmazon'),
     extrairFuncao('textoFinanceiroAmazon'),
     'return { contaComoVenda, pedidoPago, pedidoForaDaVenda, pedidoCancelado, filtroStatusPedido, ordStatusBadge, odLogisticaInfo, contasParaProxy, selecaoTemMercadoLivre, selecaoTemAmazon, consolidarEstoqueGrupo, estoqueDoGrupo, contasPermitidas, textoAtualizacaoAmazon, textoFinanceiroAmazon, usar: s => { SELECAO = s; } };',
@@ -90,16 +91,19 @@ const CONTAS = [
 ];
 
 describe('status por canal', () => {
-  test('Mercado Livre: exatamente a comparação antiga, para todo status', () => {
+  test('Mercado Livre: regra unica de venda (FASE A1) — paid e partially_refunded contam; o resto nao', () => {
     const m = montar(CONTAS);
+    const VENDA = new Set(['paid', 'partially_refunded']);
     for (const status of ['paid', 'cancelled', 'partially_refunded', 'pending', 'payment_required', 'xpto', null]) {
       const o = { status, canal: 'ml' };
-      assert.equal(m.pedidoPago(o), status === 'paid', 'pago ' + status);
-      assert.equal(m.pedidoForaDaVenda(o), status === 'cancelled', 'fora ' + status);
+      assert.equal(m.pedidoPago(o), VENDA.has(status), 'pago ' + status);
+      assert.equal(m.pedidoForaDaVenda(o), !VENDA.has(status), 'fora ' + status);
       assert.equal(m.pedidoCancelado(o), status === 'cancelled');
+      // Filtro "Pagos" da tabela e EXIBICAO: segue a igualdade estrita.
       assert.equal(m.filtroStatusPedido(o, 'paid'), status === 'paid');
-      // Pedido ML sem campo `canal` (Overwine sozinha) também segue a regra antiga.
-      assert.equal(m.pedidoPago({ status }), status === 'paid');
+      // Pedido ML sem campo `canal` (Overwine sozinha) segue a mesma regra.
+      assert.equal(m.pedidoPago({ status }), VENDA.has(status));
+      assert.equal(m.pedidoPago(o), m.contaComoVenda(status), 'pedidoPago == contaComoVenda ' + status);
     }
     assert.equal(m.contaComoVenda('partially_refunded'), true);
   });
@@ -158,7 +162,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
     ].join('\n');
     new Function(fonte)(DataFixa, documento, pedidos);
     const n = id => Number(String(els[id].textContent).replace(/[^0-9]/g, ''));
-    return { hoje: [n('ord-hoje-val'), n('ord-hoje-cnt')], sem: [n('ord-sem-val'), n('ord-sem-cnt')], mes: [n('ord-mes-val'), n('ord-mes-cnt')], ticket: n('ord-ticket'), cancel: n('ord-cancel') };
+    return { hoje: [n('ord-hoje-val'), n('ord-hoje-cnt')], sem: [n('ord-sem-val'), n('ord-sem-cnt')], mes: [n('ord-mes-val'), n('ord-mes-cnt')], ticket: n('ord-ticket'), cancel: els['ord-cancel'] };
   }
 
   test('hoje, últimos 7 dias, mês atual e ticket: pendente, enviado, a enviar e desconhecido entram; cancelado não', () => {
@@ -167,7 +171,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
     assert.deepEqual(k.sem, [390, 3]);         // + D pendente
     assert.deepEqual(k.mes, [435, 5]);         // + E a enviar + H status desconhecido
     assert.equal(k.ticket, 84);                // (100+250+40+30+15+70) / 6 = 84,17 (exibido sem centavos)
-    assert.equal(k.cancel, 1);
+    assert.equal(k.cancel, undefined);         // FASE A5: contador vem de cancelamentoOperacional
   });
 
   test('Mercado Livre: KPIs idênticos aos da regra antiga (só paid entra)', () => {
@@ -178,7 +182,7 @@ describe('KPIs de pedidos com a Amazon: pendente entra, só cancelado fica fora'
       ml(3, '2026-10-21T13:00:00.000Z', 'cancelled', 0),
       ml(4, '2026-10-17T13:00:00.000Z', 'payment_required', 300),
     ]);
-    assert.deepEqual([k.hoje, k.sem, k.mes, k.ticket, k.cancel], [[100, 1], [100, 1], [100, 1], 100, 1]);
+    assert.deepEqual([k.hoje, k.sem, k.mes, k.ticket, k.cancel], [[100, 1], [100, 1], [100, 1], 100, undefined]);
   });
 
   test('o resumo de pedidos do chat usa as mesmas regras (sem comparar status cru)', () => {
@@ -287,14 +291,14 @@ describe('regras de negócio da Amazon (revisão 10/2026)', () => {
   test('visitas e conversão: a Amazon não informa visitas, nada vira zero', () => {
     const i = html.indexOf("const _amzVis = selecaoTemAmazon();");
     assert.notEqual(i, -1);
-    const bloco = html.slice(i, i + 1600);
+    const bloco = html.slice(i, i + 3200);
     assert.match(bloco, /kpi-visitas'\)\.innerHTML = htmlIndisponivel/);
     assert.match(bloco, /kpi-conversao'\)\.innerHTML = htmlIndisponivel/);
   });
-  test('Gestão de Estoque: SKU da Amazon sem estoque próprio informado fica fora (nunca 0 = ruptura falsa)', () => {
+  test('Gestão de Estoque: estoque da Amazon não informado nunca vira 0 = ruptura falsa (FASE A7: linha "parcial", sem classificação)', () => {
     const f = extrairFuncao('estGetSKUData');
-    assert.match(f, /estoqueInformado === false/);
-    assert.match(f, /filter\(g => !_semEstoqueInformado\(g\)\)/);
+    assert.match(f, /const est = fis\.completo \? fis\.totalFisico : null;/);
+    assert.match(f, /if \(est === null\) \{ dias = null; tipo = 'parcial'; \}/);
   });
 
   test('seletor: com Degustar escolhida, Amazon fica desabilitada e o marketplace cai no ML', () => {
@@ -397,15 +401,24 @@ describe('rótulos por canal: nome de tela separado da chave de agrupamento', ()
 
   test('KPIs: "ML" só com Mercado Livre, "Amazon" só com Amazon, sem sufixo na mistura', () => {
     const els = {};
-    const documento = { getElementById: id => (els[id] = els[id] || { textContent: id === 'kpi-liq-pct' ? 'apos tarifas ML + envio' : '' }) };
-    const rodar = (ml, amz) => {
+    const documento = { getElementById: id => (els[id] = els[id] || { textContent: id === 'kpi-liq-pct' ? 'estimado \u00b7 tarifas m\u00e9dias' : '' }) };
+    const rodar = (ml, amz, financeiro = false) => {
       Object.keys(els).forEach(k => delete els[k]);
-      new Function('document', 'selecaoTemMercadoLivre', 'selecaoTemAmazon', extrairFuncao('aplicarRotulosPorCanal') + '; aplicarRotulosPorCanal();')(documento, () => ml, () => amz);
+      new Function('document', 'selecaoTemMercadoLivre', 'selecaoTemAmazon', 'selecaoTemFinanceiro', extrairFuncao('aplicarRotulosPorCanal') + '; aplicarRotulosPorCanal();')(documento, () => ml, () => amz, () => financeiro);
       return [els['kpi-liq-rotulo'].textContent, els['kpi-tarifa-ml-rotulo'].textContent, els['mg-th-liq'].textContent, els['kpi-liq-pct'].textContent];
     };
-    assert.deepEqual(rodar(true, false), ['Receita Liquida ML', 'Tarifas ML', 'Liq. ML', 'apos tarifas ML + envio']);
+    // Sem perfil proprio: liquido apurado (real), rotulo por canal, sem "Estimada".
+    assert.deepEqual(rodar(true, false), ['Receita Liquida ML', 'Tarifas ML', 'Liq. ML', 'apos tarifas + envio']);
     assert.deepEqual(rodar(false, true), ['Receita Liquida Amazon', 'Tarifas Amazon', 'Liq. Amazon', 'apos tarifas + envio']);
     assert.deepEqual(rodar(true, true), ['Receita Liquida', 'Tarifas', 'Liq.', 'apos tarifas + envio']);
+    // FASE A3 — Overwine (perfil proprio): a Home diz que e estimativa; o subtitulo fica o do HTML.
+    assert.deepEqual(rodar(true, false, true), ['Receita L\u00edquida Estimada', 'Tarifas ML', 'Liq. ML', 'estimado \u00b7 tarifas m\u00e9dias']);
+    // A Margem nunca recebe o rotulo da Home: e outra grandeza (/margin).
+    for (const [ml, amz, fin] of [[true, false, true], [true, false, false], [false, true, false], [true, true, false]]) {
+      rodar(ml, amz, fin);
+      assert.equal(els['mg-liq-rotulo'].textContent, 'Receita ap\u00f3s Tarifas e Frete');
+      assert.notEqual(els['mg-liq-rotulo'].textContent, els['kpi-liq-rotulo'].textContent);
+    }
     assert.match(extrairFuncao('aplicarAbasPorCanal'), /aplicarRotulosPorCanal\(\)/);
   });
 });

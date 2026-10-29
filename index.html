@@ -3191,9 +3191,9 @@
         <div class="kpi-delta neutral">por item</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Estoque Total</div>
+        <div class="kpi-label">Estoque Físico</div>
         <div class="kpi-value" id="kpi-stock">-</div>
-        <div class="kpi-delta neutral">unidades</div>
+        <div class="kpi-delta neutral" id="kpi-stock-sub">próprio + Full + FBA</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Vendas Totais</div>
@@ -3214,9 +3214,9 @@
         <div class="kpi-delta neutral">vendas brutas</div>
       </div>
       <div class="kpi-card highlight" style="--highlight-color:var(--green)">
-        <div class="kpi-label" id="kpi-liq-rotulo">Receita Liquida ML</div>
+        <div class="kpi-label" id="kpi-liq-rotulo">Receita Líquida Estimada</div>
         <div class="kpi-value" id="kpi-liq" style="color:var(--green)">-</div>
-        <div class="kpi-delta neutral" id="kpi-liq-pct">apos tarifas ML + envio</div>
+        <div class="kpi-delta neutral" id="kpi-liq-pct">estimado · tarifas médias</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label" id="kpi-tarifa-ml-rotulo">Tarifas ML</div>
@@ -3235,7 +3235,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Visitas Unicas</div>
         <div class="kpi-value" id="kpi-visitas">-</div>
-        <div class="kpi-delta neutral">no periodo</div>
+        <div class="kpi-delta neutral" id="kpi-visitas-sub">no periodo</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Transacoes</div>
@@ -3261,11 +3261,11 @@
         <div class="kpi-label">Custo Publicidade</div>
         <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
           <span style="font-family:var(--font-display);font-size:14px;color:var(--amber)">R$</span>
-          <input type="number" id="kpi-pub-input" min="0" step="0.01" placeholder="0"
+          <input type="number" id="kpi-pub-input" min="0" step="0.01" placeholder="—"
             style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-strong);color:var(--amber);font-family:var(--font-display);font-size:26px;font-weight:600;outline:none;padding:0 0 2px 2px;line-height:1"
             oninput="saveKpiPubManual(); renderKPIsPeriodo()" onkeydown="if(event.key==='Enter') this.blur()">
         </div>
-        <div class="kpi-delta neutral" id="kpi-pub-status">digite o valor do painel ML</div>
+        <div class="kpi-delta neutral" id="kpi-pub-status">carregando...</div>
       </div>
     </div>
 
@@ -3439,7 +3439,7 @@
           <div class="card">
             <div class="card-header">
               <div class="card-title">Mais Vendidos</div>
-              <div class="card-meta">por qtd vendida</div>
+              <div class="card-meta">qtd vendida (histórico do anúncio)</div>
             </div>
             <div class="card-body" id="top-vendas-list">
               <div class="empty-state">
@@ -3542,7 +3542,10 @@
             <tr>
               <th style="width:35%">Produto / SKU</th>
               <th style="text-align:center">Cobertura</th>
-              <th style="text-align:center">Estoque</th>
+              <th style="text-align:center" title="Estoque próprio único (base da cobertura)">Próprio</th>
+              <th style="text-align:center">Full</th>
+              <th style="text-align:center">FBA</th>
+              <th style="text-align:center" title="Próprio + Full + FBA">Total físico</th>
               <th style="text-align:center">Vel. 30d</th>
               <th style="text-align:center">Previsao Ruptura</th>
               <th style="text-align:center">Preco</th>
@@ -3712,17 +3715,17 @@
         <div class="kpi-card">
           <div class="kpi-label">Ticket Medio</div>
           <div class="kpi-value" id="ord-ticket">-</div>
-          <div class="kpi-delta neutral">todos os pedidos</div>
+          <div class="kpi-delta neutral">vendas do histórico</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Cancelamentos</div>
           <div class="kpi-value" id="ord-cancel" style="color:var(--red)">-</div>
-          <div class="kpi-delta neutral">total carregado</div>
+          <div class="kpi-delta neutral">no período</div>
         </div>
         <div class="kpi-card highlight" id="ord-filtro-card">
           <div class="kpi-label">Periodo Filtrado</div>
           <div class="kpi-value gold" id="ord-filtro-val">-</div>
-          <div class="kpi-delta neutral"><span id="ord-filtro-cnt">-</span> pedidos pagos</div>
+          <div class="kpi-delta neutral"><span id="ord-filtro-cnt">-</span> pedidos considerados venda</div>
         </div>
       </div>
 
@@ -3861,7 +3864,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-cat-est">-</div>
-            <div class="metric-lbl">Estoque catalogo</div>
+            <div class="metric-lbl">Unid. anunciadas (catálogo)</div>
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-fora-cnt">-</div>
@@ -3869,7 +3872,7 @@
           </div>
           <div class="metric-box">
             <div class="metric-val" id="ta-fora-est">-</div>
-            <div class="metric-lbl">Estoque proprio</div>
+            <div class="metric-lbl">Unid. anunciadas (fora)</div>
           </div>
         </div>
       </div>
@@ -4004,14 +4007,14 @@
     <!-- KPIs de margem -->
     <div class="kpi-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
       <div class="kpi-card highlight">
-        <div class="kpi-label">Receita Bruta</div>
+        <div class="kpi-label">Receita Bruta de Produtos</div>
         <div class="kpi-value gold" id="mg-bruto">-</div>
-        <div class="kpi-delta neutral">no periodo</div>
+        <div class="kpi-delta neutral">preço × qtd, sem frete</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label" id="mg-liq-rotulo">Receita Liquida ML</div>
+        <div class="kpi-label" id="mg-liq-rotulo">Receita após Tarifas e Frete</div>
         <div class="kpi-value" id="mg-liq" style="color:var(--green)">-</div>
-        <div class="kpi-delta neutral" id="mg-liq-pct">apos tarifas</div>
+        <div class="kpi-delta neutral" id="mg-liq-pct">produtos com custo cadastrado</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Custo Publicidade</div>
@@ -4310,7 +4313,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Taxa de Cancelamento</div>
         <div class="kpi-value" id="canc-taxa">-</div>
-        <div class="kpi-delta neutral">sobre total de pedidos</div>
+        <div class="kpi-delta neutral" id="canc-taxa-sub">sobre todos os pedidos do período</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Valor Perdido</div>
@@ -5172,7 +5175,12 @@
     const CANC_PAGE_SIZE = 20;
     let shipmentsCache = {}; // { [shipmentId]: { status, substatus, logistic_type } }
     let shipmentsLoading = false;
-    let periodoData = []; // dados de visitas/vendas da API por periodo
+    let periodoData = []; // dados de visitas/vendas POR ANUNCIO do periodo (graficos/tabelas por produto)
+    // FASE A2 — TOTAIS do periodo (pedidos e unidades) com uma populacao so:
+    // todos os pedidos validos, cada um uma vez, todos os order_items, sem
+    // olhar o status atual do anuncio. Preenchido por loadPeriodoData via
+    // totaisDoPeriodo; null = ainda nao calculado para o periodo corrente.
+    let periodoTotais = null;
 
     // ══════════════════════════════════════════════════════════
     // METAS DE REPUTACAO — MercadoLider Gold / Platinum
@@ -5197,10 +5205,6 @@
         revenue: 296000,
       },
     };
-
-    // ── CUSTO DE PUBLICIDADE ──────────────────────────────────
-    let adCostTotal = 0;   // gasto total com publicidade no periodo (via API)
-    let adCostByItem = {}; // { 'MLB123': custo } por item
 
     // ── CUSTOS: fonte unica no backend ────────────────────────
     // Aqui existia CUSTO_PRODUTO, uma SEGUNDA tabela de custos, com
@@ -5233,10 +5237,10 @@
 
     let reputacaoData = null;
     let visitasPorDia = [];
+    // FASE A9: a consulta de visitas do PERIODO respondeu? null = ainda nao
+    // tentou; false = falhou (visitas e conversao indisponiveis, nunca 0).
+    let _visitasPeriodoOk = null;
 
-    // Dias DECORRIDOS do periodo global (derivado de gdrGet(); nunca editado a
-    // mao). Continua existindo porque a extrapolacao de publicidade e por dia.
-    let currentPeriodoDias = 7;
     // Range de datas do periodo selecionado na Visao Geral (objetos Date, em horario do Brasil)
     let periodoDateInicio = null; // Date — inicio do dia (00:00:00.000 BRT)
     let periodoDateFim = null; // Date — fim do dia (23:59:59.999 BRT)
@@ -5387,7 +5391,7 @@
         fromDate: brtStartOfDay(from),
         toDate: brtEndOfDay(to),
         toDateEfetivo: brtEndOfDay(toEfetivo),
-        // dias DECORRIDOS do periodo (ate hoje) — base de extrapolacoes por dia
+        // dias DECORRIDOS do periodo (ate hoje)
         dias: from > hoje ? 0 : gdrDiasEntre(from, toEfetivo),
         diasCalendario: gdrDiasEntre(from, to),
         label: gdrRotulo(globalDateRange.preset, from, to),
@@ -5445,7 +5449,6 @@
       globalDateRange.from = r.from;
       globalDateRange.to = r.to;
       globalDateRange.calculadoEm = hoje;
-      currentPeriodoDias = Math.max(1, gdrGet().dias);
       const sel = document.getElementById('gdr-preset');
       if (sel && sel.value !== globalDateRange.preset) sel.value = globalDateRange.preset;
       const custom = document.getElementById('gdr-custom');
@@ -5540,6 +5543,7 @@
         else if (aba === 'previsao' && _pvInited) renderPrevisao();
         else if (aba === 'giro' && _grInited) renderGiro();
         else if (aba === 'consolidado') { consPage = 1; renderConsolidado(); }
+        else if (aba === 'cancelamentos') { cancPage = 1; renderCancelamentos(); }
       } catch (e) {
         console.warn('[gdr] re-render da aba', aba, 'falhou:', e && e.message);
       }
@@ -5578,12 +5582,22 @@
       'amazon:unfulfillable': 'N\u00e3o atend\u00edvel', 'amazon:desconhecido': 'Status n\u00e3o informado',
     };
     function pedidoAmazon(o) { return !!o && (o.canal === 'amazon' || String(o.status || '').indexOf('amazon:') === 0); }
-    // As telas comparavam `status` direto com 'paid' e 'cancelled'. Para pedido
-    // do Mercado Livre os auxiliares devolvem EXATAMENTE a comparacao antiga
-    // (nenhum numero da Overwine ou da Degustar muda); para pedido da Amazon,
-    // usam a lista acima.
-    function pedidoPago(o) { return pedidoAmazon(o) ? contaComoVenda(o.status) : o.status === 'paid'; }
-    function pedidoForaDaVenda(o) { return pedidoAmazon(o) ? !contaComoVenda(o.status) : o.status === 'cancelled'; }
+    // FASE A1 — regra UNICA de venda. Os dois auxiliares abaixo sao a mesma
+    // pergunta ("este pedido conta como venda?") e delegam a contaComoVenda,
+    // em todos os canais. Antes, para o Mercado Livre, pedidoPago era
+    // `=== 'paid'` e pedidoForaDaVenda era `=== 'cancelled'`: tres populacoes
+    // sob o nome "venda" (partially_refunded entrava numa e nao na outra;
+    // pendente idem), e o mesmo card mudava de valor conforme o calculo fosse
+    // local ou do agregado do backend. O nome `pedidoPago` fica por
+    // compatibilidade dos call sites; o significado e "conta como venda".
+    // Cancelamento e exibicao de status NAO passam por aqui: ver
+    // pedidoCancelado, filtroStatusPedido e os badges.
+    // ALIAS LEGADO: apesar do nome, pedidoPago NAO significa `status === 'paid'`.
+    // Semantica: "conta como venda" (inclui partially_refunded no ML e todo
+    // pedido Amazon nao cancelado, inclusive amazon:pending). Para "so paid"
+    // use comparacao explicita, como filtroStatusPedido faz.
+    function pedidoPago(o) { return !!o && contaComoVenda(o.status); }
+    function pedidoForaDaVenda(o) { return !pedidoPago(o); }
     /** Filtro "Pagos"/"Cancelados" das tabelas: para a Amazon, pelos auxiliares; para o ML, igualdade como antes. */
     function filtroStatusPedido(o, f) {
       if (!pedidoAmazon(o)) return o.status === f;
@@ -5818,37 +5832,129 @@
     //   - proprio: soma por anuncio (cada anuncio nao-Full tem saldo independente)
     //   - full:    deduplicado por fullStockKey (inventory_id), separando classico/premium
     /**
-     * Estoque de um grupo de anuncios na aba Consolidado.
+     * FASE A6 — ESTOQUE FISICO de UM produto (anuncios de um mesmo itemSKU).
+     * Definicao unica: Home, Gestao de Estoque e Consolidado leem daqui.
      *
-     * Overwine: a regra de sempre (consolidarEstoqueGrupo), sem mudanca.
+     *   total fisico = proprio UNICO + Mercado Livre Full + Amazon FBA
      *
-     * Demais empresas: saldo so e deduplicado com VINCULO EXPLICITO do Mercado
-     * Livre — mesmo `inventory_id` (Full) ou mesmo `user_product_id` (produto do
-     * vendedor, estoque unico). Mesmo produto de catalogo e mesma quantidade NAO
-     * provam compartilhamento. Sem vinculo para todos os anuncios do grupo, nao
-     * ha total fisico: devolve `valor: null` e o saldo de cada anuncio.
+     * Fonte: o snapshot de catalogo (/api/items/catalog) — o MESMO que o
+     * /api/items/inventory le. Aquele endpoint nao serve de autoridade aqui:
+     * devolve contas separadas (Overwine ML e Alem Mar Amazon nunca se juntam)
+     * e nao conhece FBA (a linha `#fba` entraria como proprio).
+     *
+     *  - PROPRIO: os anuncios proprios do ML e a linha propria da Amazon
+     *    (`<sku>`) sao ESPELHOS do mesmo saldo e contam UMA vez. Overwine (ML)
+     *    e Alem Mar (Amazon) sao a mesma empresa: regra de espelho de
+     *    consolidarEstoqueGrupo (mesmo inventory_id = um saldo; sem
+     *    inventory_id = o maior). Outra empresa (Degustar): so com vinculo
+     *    explicito (inventory_id / user_product_id); sem ele, null
+     *    ("compartilhamento nao confirmado"). Quantidade nao informada (Amazon
+     *    `null`) nunca vira 0.
+     *  - ML FULL: consolidarEstoqueGrupo (dedup por inventory_id).
+     *  - AMAZON FBA: so a linha `<sku>#fba` DESTE produto informa o FBA (zero
+     *    inclusive). Sem a linha, com anuncio Amazon: null (nao informado) — o
+     *    catalogo nao distingue "FBA zero" de "FBA nao lido", e FBA de outro SKU
+     *    nao prova nada sobre este. Sem anuncio Amazon: 0 (nao se aplica).
+     *  - totalFisico so existe com os tres componentes conhecidos; senao,
+     *    `totalConhecido` + `pendencias` (total PARCIAL, identificado).
+     * Zero e valor valido em todos os componentes. Estoque fisico NAO depende do
+     * status comercial do anuncio: o grupo deve trazer ativos E pausados.
+     */
+    function _qtdInformada(i) {
+      const q = i ? i.available_quantity : null;
+      return typeof q === 'number' && Number.isFinite(q) ? q : null;
+    }
+    function estoqueFisicoDoGrupo(items) {
+      const lista = items || [];
+      const fbaL = lista.filter(isFbaItem);
+      const fullL = lista.filter(i => !isFbaItem(i) && isFullItem(i));
+      const propL = lista.filter(i => !isFbaItem(i) && !isFullItem(i));
+      const pendencias = [];
+      const fontes = { proprio: null, mlFull: null, amazonFba: null };
+
+      // PROPRIO — uma vez por produto fisico.
+      let proprio;
+      const propOk = propL.filter(i => _qtdInformada(i) !== null);
+      if (!propL.length) { proprio = 0; fontes.proprio = 'sem_anuncio_proprio'; }
+      else if (!propOk.length) { proprio = null; pendencias.push('proprio_nao_informado'); }
+      else if (propOk.length === 1 || lista.every(i => !i.conta || contaDaEmpresaOverwine(i.conta))) {
+        proprio = consolidarEstoqueGrupo(propOk).proprio;
+        fontes.proprio = 'catalogo_espelho_unico';
+      } else {
+        const chave = i => i.inventory_id || i.user_product_id || null;
+        if (propOk.every(chave)) {
+          const porVinculo = new Map();
+          propOk.forEach(i => { const k = chave(i); porVinculo.set(k, porVinculo.has(k) ? Math.max(porVinculo.get(k), _qtdInformada(i)) : _qtdInformada(i)); });
+          proprio = 0; porVinculo.forEach(q => { proprio += q; });
+          fontes.proprio = 'catalogo_vinculo_explicito';
+        } else { proprio = null; pendencias.push('compartilhamento_nao_confirmado'); }
+      }
+
+      // ML FULL — estoque fisico separado.
+      let mlFull;
+      if (!fullL.length) { mlFull = 0; fontes.mlFull = 'sem_full'; }
+      else if (fullL.some(i => _qtdInformada(i) === null)) { mlFull = null; pendencias.push('full_nao_informado'); }
+      else { mlFull = consolidarEstoqueGrupo(fullL).full; fontes.mlFull = 'catalogo_full'; }
+
+      // AMAZON FBA — estoque fisico separado.
+      let amazonFba;
+      if (fbaL.length) {
+        if (fbaL.some(i => _qtdInformada(i) === null)) { amazonFba = null; pendencias.push('fba_nao_informado'); }
+        else { amazonFba = fbaL.reduce((s, i) => s + _qtdInformada(i), 0); fontes.amazonFba = 'catalogo_fba'; }
+      } else {
+        const amz = lista.filter(i => pedidoAmazon(i) || i.canal === 'amazon');
+        if (!amz.length) { amazonFba = 0; fontes.amazonFba = 'nao_se_aplica'; }
+        else { amazonFba = null; pendencias.push('fba_nao_informado'); }
+      }
+
+      const partes = [proprio, mlFull, amazonFba];
+      const completo = partes.every(v => v !== null);
+      const totalConhecido = partes.reduce((s, v) => s + (v === null ? 0 : v), 0);
+      return {
+        completo, proprio, mlFull, amazonFba,
+        totalFisico: completo ? totalConhecido : null,
+        totalConhecido, fontes, pendencias,
+        porAnuncio: pendencias.includes('compartilhamento_nao_confirmado') ? propOk.map(_qtdInformada) : null,
+      };
+    }
+
+    /** FASE A6 — estoque fisico de uma lista de anuncios: soma por produto (itemSKU). */
+    function estoqueFisicoTotal(items) {
+      const grupos = new Map();
+      (items || []).forEach(i => { const k = itemSKU(i); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); });
+      const r = { produtos: grupos.size, proprio: 0, mlFull: 0, amazonFba: 0, totalConhecido: 0, incompletos: 0, pendencias: {} };
+      grupos.forEach(g => {
+        const f = estoqueFisicoDoGrupo(g);
+        if (f.proprio !== null) r.proprio += f.proprio;
+        if (f.mlFull !== null) r.mlFull += f.mlFull;
+        if (f.amazonFba !== null) r.amazonFba += f.amazonFba;
+        r.totalConhecido += f.totalConhecido;
+        if (!f.completo) { r.incompletos++; f.pendencias.forEach(p => { r.pendencias[p] = (r.pendencias[p] || 0) + 1; }); }
+      });
+      r.completo = r.incompletos === 0;
+      r.totalFisico = r.completo ? r.totalConhecido : null;
+      return r;
+    }
+
+    const ROTULO_PENDENCIA_ESTOQUE = {
+      proprio_nao_informado: 'próprio não informado',
+      compartilhamento_nao_confirmado: 'compartilhamento não confirmado',
+      full_nao_informado: 'Full não informado',
+      fba_nao_informado: 'FBA não informado',
+    };
+
+    /**
+     * Estoque de um grupo de anuncios na aba Consolidado, no formato de sempre
+     * ({ valor, confirmado, porAnuncio }), agora pela definicao unica
+     * estoqueFisicoDoGrupo. Compartilhamento nao confirmado: valor null e o
+     * saldo de cada anuncio. Componente nao informado: valor null, `parcial`
+     * com o que se sabe e as `pendencias`.
      */
     function estoqueDoGrupo(items) {
-      if (items.length && items.every(i => pedidoAmazon(i) || i.canal === 'amazon')) {
-        const c = consolidarEstoqueGrupo(items);
-        return { valor: c.proprio + c.fba, confirmado: true, porAnuncio: null };
-      }
-      // Overwine no Mercado Livre e Alem Mar na Amazon sao a MESMA empresa: o
-      // estoque proprio e um so (consolidarEstoqueGrupo deduplica, nunca soma
-      // duas vezes), o Full do ML e o FBA da Amazon entram separados.
-      const daOverwine = items.every(i => !i.conta || contaDaEmpresaOverwine(i.conta));
-      if (daOverwine || items.length <= 1) {
-        const c = consolidarEstoqueGrupo(items);
-        return { valor: c.proprio + c.full + c.fba, confirmado: true, porAnuncio: null };
-      }
-      const chave = i => i.inventory_id || i.user_product_id || null;
-      if (items.every(i => chave(i))) {
-        const porVinculo = new Map();
-        items.forEach(i => { const k = chave(i); porVinculo.set(k, Math.max(porVinculo.get(k) || 0, i.available_quantity || 0)); });
-        let total = 0; porVinculo.forEach(q => { total += q; });
-        return { valor: total, confirmado: true, porAnuncio: null };
-      }
-      return { valor: null, confirmado: false, porAnuncio: items.map(i => i.available_quantity || 0) };
+      const f = estoqueFisicoDoGrupo(items);
+      if (f.completo) return { valor: f.totalFisico, confirmado: true, porAnuncio: null };
+      if (f.pendencias.includes('compartilhamento_nao_confirmado')) return { valor: null, confirmado: false, porAnuncio: f.porAnuncio };
+      return { valor: null, confirmado: true, porAnuncio: null, parcial: f.totalConhecido, pendencias: f.pendencias };
     }
 
     /** Texto do estoque quando o compartilhamento nao foi confirmado: saldo por anuncio, sem somar nem deduplicar. */
@@ -5928,94 +6034,59 @@
       };
     }
 
-    // Lidos em pubManualCarregar(), DEPOIS de a selecao de contas ser conhecida:
-    // a publicidade informada a mao e de uma empresa, e a chave leva a selecao.
-    let mgPubManual = 0;
-    let kpiPubManual = 0;
-
-    // ── Repositório de relatórios ML Ads carregados ──
-    // Cada entrada = um relatório importado, com seu período real
-    let ADS_DATA = {
-      periodo: { de: '2026-03-06', ate: '2026-03-12' },
-      totalInvestimento: 147.91,
-      porMLB: {
-        'MLB4027199755': 53.28,
-        'MLB4473641293': 37.30,
-        'MLB5405430032': 33.68,
-        'MLB5352339940': 11.50,
-        'MLB5865811728': 9.02,
-        'MLB4027060159': 3.13,
-      },
-      diasCobertos: 7  // quantos dias este relatório cobre
-    };
-
-    // Retorna investimento de publicidade extrapolado para o período selecionado.
-    // Usa o relatório mais próximo disponível e escala pelo custo diário médio.
-    function getAdsDataParaPeriodo(dias) {
-      // Coletar todos os relatórios disponíveis (importados + hardcoded)
-      const todos = [];
-      if (window.mlAdsReports && mlAdsReports.length > 0) {
-        mlAdsReports.forEach(r => todos.push(r));
-      }
-      if (ADS_DATA?.totalInvestimento > 0) {
-        todos.push(ADS_DATA);
-      }
-      if (!todos.length) return { totalInvestimento: 0, match: 'sem_dados', label: 'sem dados de publicidade', porMLB: {} };
-
-      // Pegar o relatório com mais dias cobertos (mais preciso para extrapolar)
-      const base = todos.reduce((best, r) => (r.diasCobertos || 7) > (best.diasCobertos || 7) ? r : best, todos[0]);
-
-      const diasBase = base.diasCobertos || 7;
-      const custoDiario = base.totalInvestimento / diasBase;
-      const totalExtrapolado = custoDiario * dias;
-
-      // Escalar porMLB proporcionalmente
-      const fator = dias / diasBase;
-      const porMLBEscalado = {};
-      const porMLBBase = base.porMLB || {};
-      Object.keys(porMLBBase).forEach(k => { porMLBEscalado[k] = porMLBBase[k] * fator; });
-
-      const match = Math.abs(diasBase - dias) <= 1 ? 'exato' : 'extrapolado';
-      const periodoLabel = base.periodo
-        ? `${base.periodo.de || base.de || ''}→${base.periodo.ate || base.ate || ''}`
-        : (base.de ? `${base.de}→${base.ate}` : '');
-
-      const label = match === 'exato'
-        ? `relatório ML ${periodoLabel}`
-        : `estimado (base: ${diasBase}d × R$ ${custoDiario.toFixed(2)}/dia)`;
-
-      return {
-        totalInvestimento: totalExtrapolado,
-        porMLB: porMLBEscalado,
-        match,
-        label,
-        custoDiario,
-        diasBase
-      };
-    }
-
     /**
      * Publicidade informada a mao. A chave e DA SELECAO (chaveLocal): o valor
      * digitado para a Overwine nunca aparece na Degustar. Na visao consolidada
      * o campo fica fechado — um valor unico nao tem dono entre duas empresas.
+     *
+     * FASE A4: o valor fica PRESO ao periodo global em que foi digitado e so
+     * vale para esse periodo exato. Salvo em localStorage, chave
+     * chaveLocal('kpi_pub_manual') (copia em 'mg_pub_manual'), como
+     * {"valor":N,"de":"AAAA-MM-DD","ate":"AAAA-MM-DD"}. O formato antigo — um
+     * numero solto, sem periodo — e ignorado: aplicado a qualquer janela, ele
+     * contaminava periodos que nao eram o dele.
      */
+    let pubManual = null; // { valor, de, ate } ou null; lido em pubManualCarregar()
+
     function pubManualPermitida() { return !selecaoConsolidada(); }
+    function pubManualLer(texto) {
+      let o = null;
+      try { o = JSON.parse(texto); } catch (e) { return null; }
+      if (!o || typeof o !== 'object') return null;
+      const v = Number(o.valor), ymd = /^\d{4}-\d{2}-\d{2}$/;
+      if (!Number.isFinite(v) || v <= 0 || !ymd.test(o.de) || !ymd.test(o.ate)) return null;
+      return { valor: v, de: o.de, ate: o.ate };
+    }
     function pubManualCarregar() {
-      let v = 0;
+      let m = null;
       if (pubManualPermitida()) {
-        try { v = parseFloat(localStorage.getItem(chaveLocal('kpi_pub_manual')) || '0') || 0; } catch (e) { v = 0; }
+        try { m = pubManualLer(localStorage.getItem(chaveLocal('kpi_pub_manual'))); } catch (e) { m = null; }
       }
-      kpiPubManual = v;
-      mgPubManual = v;
+      pubManual = m;
+    }
+    /** Valor manual valido para EXATAMENTE este periodo, ou null. */
+    function pubManualDoPeriodo(fromYmd, toYmd) {
+      return pubManual && pubManual.de === fromYmd && pubManual.ate === toYmd ? pubManual.valor : null;
+    }
+    function pubManualGravar(val) {
+      const g = gdrGet();
+      pubManual = (Number.isFinite(val) && val > 0) ? { valor: val, de: g.from, ate: g.toEfetivo } : null;
+      try {
+        if (pubManual) {
+          const txt = JSON.stringify(pubManual);
+          localStorage.setItem(chaveLocal('kpi_pub_manual'), txt);
+          localStorage.setItem(chaveLocal('mg_pub_manual'), txt);
+        } else {
+          localStorage.removeItem(chaveLocal('kpi_pub_manual'));
+          localStorage.removeItem(chaveLocal('mg_pub_manual'));
+        }
+      } catch (e) { }
     }
 
     function saveKpiPubManual() {
       if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('kpi-pub-input')?.value || '0') || 0;
-      kpiPubManual = val;
-      mgPubManual = val; // sincroniza com aba Margem
-      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
-      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
+      pubManualGravar(val);
       // atualizar input da aba Margem se visível
       const mgEl = document.getElementById('mg-pub-manual');
       if (mgEl) mgEl.value = val > 0 ? val.toFixed(2) : '';
@@ -6024,10 +6095,7 @@
     function saveMgPubManual() {
       if (!pubManualPermitida()) return;
       const val = parseFloat(document.getElementById('mg-pub-manual')?.value || '0') || 0;
-      mgPubManual = val;
-      kpiPubManual = val; // sincroniza com KPI do período
-      localStorage.setItem(chaveLocal('mg_pub_manual'), String(val));
-      localStorage.setItem(chaveLocal('kpi_pub_manual'), String(val));
+      pubManualGravar(val);
       // atualizar input do KPI se visível
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = val > 0 ? val.toFixed(2) : '';
@@ -6035,21 +6103,21 @@
     }
 
     function clearMgPubManual() {
-      mgPubManual = 0;
-      kpiPubManual = 0;
+      pubManualGravar(0);
       const el = document.getElementById('mg-pub-manual');
       if (el) el.value = '';
       const kpiEl = document.getElementById('kpi-pub-input');
       if (kpiEl) kpiEl.value = '';
-      localStorage.removeItem(chaveLocal('mg_pub_manual'));
-      localStorage.removeItem(chaveLocal('kpi_pub_manual'));
       renderMargem();
       renderKPIsPeriodo();
     }
 
     function initMgPubManualInput() {
       const el = document.getElementById('mg-pub-manual');
-      if (el && mgPubManual > 0) el.value = mgPubManual.toFixed(2);
+      if (!el) return;
+      const g = gdrGet();
+      const v = pubManualDoPeriodo(g.from, g.toEfetivo);
+      el.value = v === null ? '' : v.toFixed(2);
     }
 
 
@@ -6415,15 +6483,27 @@
      * Rotulos de receita liquida e tarifa pelo canal da selecao: "ML" so
      * quando so ha Mercado Livre; "Amazon" so com Amazon; sem sufixo quando
      * mistura. Muda so o texto; os valores continuam vindo de onde vinham.
+     *
+     * FASE A3: a Home e a Margem NAO compartilham rotulo. Home com perfil
+     * proprio (Overwine) = "Receita Liquida Estimada" (tarifas medias do
+     * /metrics); sem perfil = "Receita Liquida"+canal (tarifa e frete reais).
+     * Margem = "Receita apos Tarifas e Frete" (/margin: receita dos produtos
+     * com custo cadastrado menos tarifa e frete) — outra grandeza.
      */
     function aplicarRotulosPorCanal() {
       if (typeof document === 'undefined') return;
       const temML = selecaoTemMercadoLivre(), temAmz = selecaoTemAmazon();
       const suf = temML && !temAmz ? ' ML' : temAmz && !temML ? ' Amazon' : '';
-      const por = { 'kpi-liq-rotulo': 'Receita Liquida' + suf, 'kpi-tarifa-ml-rotulo': 'Tarifas' + suf, 'mg-liq-rotulo': 'Receita Liquida' + suf, 'mg-th-tarifa': 'Tarifa' + suf, 'mg-th-liq': 'Liq.' + suf };
+      const estimada = selecaoTemFinanceiro();
+      const por = {
+        'kpi-liq-rotulo': estimada ? 'Receita L\u00edquida Estimada' : 'Receita Liquida' + suf,
+        'kpi-tarifa-ml-rotulo': 'Tarifas' + suf,
+        'mg-liq-rotulo': 'Receita ap\u00f3s Tarifas e Frete',
+        'mg-th-tarifa': 'Tarifa' + suf, 'mg-th-liq': 'Liq.' + suf,
+      };
       Object.keys(por).forEach(id => { const el = document.getElementById(id); if (el) el.textContent = por[id]; });
       const sub = document.getElementById('kpi-liq-pct');
-      if (sub && /tarifas ML \+ envio/.test(sub.textContent) && !(temML && !temAmz)) sub.textContent = 'apos tarifas + envio';
+      if (sub && !estimada && /^estimado/.test(sub.textContent)) sub.textContent = 'apos tarifas + envio';
     }
 
     function aplicarAbasPorCanal() {
@@ -6448,8 +6528,6 @@
       try { _posSavedTerms = JSON.parse(localStorage.getItem(chaveLocal('pos_saved_terms')) || '[]'); } catch (e) { _posSavedTerms = []; }
       if (!Array.isArray(_posSavedTerms)) _posSavedTerms = [];
       if (selecaoLegada()) return;
-
-      ADS_DATA = { periodo: null, totalInvestimento: 0, porMLB: {}, diasCobertos: 0 };
 
       const lerNum = (chave) => { try { const v = parseFloat(localStorage.getItem(chaveLocal(chave)) || ''); return Number.isFinite(v) && v > 0 ? v : null; } catch (e) { return null; } };
       const meta = document.getElementById('pv-meta');
@@ -7014,6 +7092,7 @@
      */
     function abrirAbaPedidos() {
       renderPedidos();   // render imediato com o que ja houver (preview ou historico)
+      garantirCancelados(); // FASE A5: o card de cancelamentos nao depende de abrir outra aba
 
       if (!pedidosEmMemoria() && ordersPreviewState !== "loaded") {
         loadPrimeiraPaginaPedidos()
@@ -7163,17 +7242,18 @@
         .then(() => { renderKPIsPeriodo(); });
     }
 
-    // Cancelados sob demanda. loadCancelledOrders permanece INALTERADA; muda
-    // apenas QUANDO ela e chamada. Reabrir a aba reutiliza os dados ja em
-    // memoria; se a carga falhar (a funcao engole o erro e deixa a lista
-    // vazia), o estado volta a "idle" e a proxima abertura tenta de novo.
+    // Cancelados sob demanda. Reabrir a aba reutiliza os dados ja em memoria;
+    // se a carga falhar (a funcao engole o erro e marca _cancelCobertura.ok =
+    // false), o estado volta a "idle" e a proxima abertura tenta de novo.
+    // FASE A5: zero cancelados carregados com sucesso e "loaded" (zero valido),
+    // nao "idle".
     function garantirCancelados() {
       if (_cancelLoadState === "loaded") return Promise.resolve();
       if (_cancelLoadState === "loading") return _cancelPromise || Promise.resolve();
       _cancelLoadState = "loading";
       _cancelPromise = Promise.resolve(loadCancelledOrders())
         .then(
-          () => { _cancelLoadState = allCancelledOrders.length > 0 ? "loaded" : "idle"; },
+          () => { _cancelLoadState = (_cancelCobertura && _cancelCobertura.ok === true) ? "loaded" : "idle"; },
           () => { _cancelLoadState = "idle"; }
         )
         .then(() => { _cancelPromise = null; renderCancelamentos(); renderPedidosKPIs(); });
@@ -7330,6 +7410,10 @@
     let _repLoadState = "idle";
     let _cancelLoadState = "idle";
     let _cancelPromise = null;
+    // Cobertura da lista de cancelados do ML (FASE A5): null = nunca carregada;
+    // { ok: false } = falhou; { ok: true, limiteYmd } — limiteYmd null = todos os
+    // cancelados vieram; senao, so os de depois desse dia estao garantidos.
+    let _cancelCobertura = null;
 
     // ── Onda D: agregados do backend (GET /api/orders/metrics) ──
     // O boot NAO baixa mais os pedidos. Os KPIs iniciais vem prontos do
@@ -7689,38 +7773,68 @@
       return selecaoConsolidada() ? ((o && o.conta) || undefined) : undefined;
     }
 
-    /** Cancelados de UMA conta (ate 500, como sempre). */
+    /**
+     * Cancelados de UMA conta (ate 500, os mais recentes, como sempre):
+     * `{ lista, limiteYmd }`. limiteYmd = null quando vieram todos; senao, o
+     * dia do cancelado mais antigo trazido — so periodos que comecam DEPOIS
+     * dele estao completos. Pagina que falha derruba a conta inteira (antes
+     * virava lista menor, em silencio).
+     */
     async function canceladosDaConta(c) {
       const conta = _contaProxy(c);
       const first = await mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=0`, conta);
-      const total = first.paging?.total || 0;
+      // paging.total ausente/invalido = total desconhecido (null), nunca zero.
+      const _totalInformado = first.paging ? Number(first.paging.total) : NaN;
+      const total = Number.isFinite(_totalInformado) && _totalInformado >= 0 ? _totalInformado : null;
       const allRes = [...(first.results || [])];
       const offsets = [];
-      for (let o = 50; o < Math.min(total, 500); o += 50) offsets.push(o);
+      for (let o = 50; o < Math.min(total || 0, 500); o += 50) offsets.push(o);
+      let paginaFalhou = false;
       if (offsets.length > 0) {
         const batches = await Promise.all(
           offsets.map(o => mlFetch(`/orders/search?seller=${USER_ID}&status=cancelled&sort=date_desc&limit=50&offset=${o}`, conta)
-            .then(d => d.results || []).catch(() => []))
+            .then(d => d.results || []).catch(() => { paginaFalhou = true; return []; }))
         );
         batches.forEach(b => allRes.push(...b));
       }
+      if (paginaFalhou) throw new Error('pagina de cancelados falhou');
       const lista = allRes.filter(o => o.status === 'cancelled');
       // Marca a conta: e ela que abre o detalhe com o vendedor certo.
       if (c !== null) lista.forEach(o => { o.conta = c; });
-      return lista;
+      // Cobertura DESTA conta, antes de juntar com as outras. Truncada = o ML
+      // tem mais cancelados do que vieram; sem total, so a 1a pagina cheia ja
+      // impede afirmar que veio tudo.
+      const truncada = total === null ? allRes.length >= 50 : allRes.length < total;
+      let limiteYmd = null;
+      if (truncada) {
+        let maisAntigo = null;
+        allRes.forEach(o => { const t = Date.parse(o.date_created); if (Number.isFinite(t) && (maisAntigo === null || t < maisAntigo)) maisAntigo = t; });
+        limiteYmd = maisAntigo === null ? '9999-12-31' : ymdBRT(new Date(maisAntigo));
+      }
+      return { lista, limiteYmd };
     }
 
     async function loadCancelledOrders() {
       try {
         allCancelledOrders = [];
+        _cancelCobertura = null;
         const partes = [];
         // Uma conta por vez. Falhou uma, falhou a lista: cancelados de so uma
         // empresa nao se apresentam como os da selecao.
         for (const c of contasParaProxy()) partes.push(await canceladosDaConta(c));
-        const todos = [].concat(...partes);
+        const todos = [].concat(...partes.map(p => p.lista));
         if (partes.length > 1) todos.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
         allCancelledOrders = todos;
-      } catch (e) { console.warn('Cancelamentos nao carregados:', e.message); allCancelledOrders = []; }
+        // Cada conta trouxe o SEU limite. A selecao so cobre um periodo se TODAS
+        // cobrem: vale o limite mais recente entre as contas (max). Nunca o
+        // tamanho ou o item mais antigo da lista ja juntada.
+        const limites = partes.map(p => p.limiteYmd).filter(x => x !== null).sort();
+        _cancelCobertura = { ok: true, limiteYmd: limites.length ? limites[limites.length - 1] : null };
+      } catch (e) {
+        console.warn('Cancelamentos nao carregados:', e.message);
+        allCancelledOrders = [];
+        _cancelCobertura = { ok: false, limiteYmd: null };
+      }
     }
 
     /**
@@ -7805,49 +7919,60 @@
      * usar qualquer um deles inflaria a margem em silencio.
      *
      * Dois limites do ML respeitados aqui:
-     *  - janela maxima de 90 dias para tras (periodo maior e truncado);
+     *  - janela maxima de 90 dias para tras (num periodo maior a API so
+     *    responde os ultimos 90: nao e o custo do periodo, fica indisponivel);
      *  - a metrica do dia corrente so consolida as 10h (GMT-3) — hoje pode vir
      *    parcial.
      *
-     * `adCostByItem` fica vazio de proposito: a consulta por campanha nao quebra
-     * o custo por anuncio, e o agregado antigo que prometia isso nao existe mais.
+     * O valor fica gravado JUNTO com o periodo pedido (`adsApi`); quem decide
+     * se ele serve para a tela e publicidadeDoPeriodo(). Nao ha custo por
+     * anuncio: a consulta por campanha nao quebra o custo por anuncio.
      */
+    // Resultado da ULTIMA consulta de Product Ads, com o periodo pedido:
+    // { de, ate, ok, custo, exato, motivo } ou null (nunca consultado).
+    let adsApi = null;
+    let _adsSeq = 0;
+
     /**
-     * Soma o investimento de cada conta da selecao. `adCostDisponivel` vira
-     * false quando ALGUMA conta nao respondeu: ai o total nao e o da selecao
-     * e a tela mostra indisponivel, nao a parte que veio.
+     * Soma o investimento de cada conta da selecao. Se ALGUMA conta nao
+     * respondeu, o total nao e o da selecao: fica `ok: false` (indisponivel),
+     * nunca zero e nunca a parte que veio. Uma resposta que chega depois de o
+     * periodo ter sido trocado e descartada (`_adsSeq`).
      */
-    let adCostDisponivel = true;
     async function loadAdCost(fromYmd, toYmd) {
-      if (selecaoLegada()) {
-        // A falha da consulta nao e "sem investimento": sem isto a Overwine
-        // mostrava publicidade 0 e pedia importacao, escondendo o erro.
-        const r = await loadAdCostDaConta(fromYmd, toYmd, null);
-        adCostDisponivel = (r !== null);
-        return r;
+      const seq = ++_adsSeq;
+      const contas = contasParaProxy();
+      let r;
+      if (!contas.length) {
+        r = { ok: false, custo: null, exato: true, motivo: 'sem_conta_mercado_livre' };
+      } else {
+        let soma = 0, ok = true, exato = true;
+        for (const c of contas) {
+          const x = await loadAdCostDaConta(fromYmd, toYmd, c);
+          if (x === null) ok = false;
+          else { soma += x.custo; if (!x.exato) exato = false; }
+        }
+        r = { ok, custo: ok ? soma : null, exato, motivo: !ok ? 'consulta_falhou' : (!exato ? 'periodo_acima_90_dias' : null) };
       }
-      let soma = 0, ok = true;
-      for (const c of contasParaProxy()) {
-        const r = await loadAdCostDaConta(fromYmd, toYmd, c);
-        if (r === null) ok = false; else soma += r;
-      }
-      adCostDisponivel = ok;
-      adCostTotal = ok ? soma : 0;
-      adCostByItem = {};
+      if (seq !== _adsSeq) return null;
+      adsApi = { de: fromYmd, ate: toYmd, ...r };
+      return adsApi.custo;
     }
 
-    /** Investimento de UMA conta. Devolve o valor, ou `null` se a consulta falhou. */
+    /**
+     * Investimento de UMA conta: `{ custo, exato }`, ou `null` se a consulta
+     * falhou ou veio incompleta. `exato: false` = o periodo passou de 90 dias e
+     * a API so respondeu os ultimos 90 — nao e o custo do periodo pedido.
+     */
     async function loadAdCostDaConta(fromYmd, toYmd, c) {
       const _conta = _contaProxy(c);
-      let _falhou = false;
-      adCostTotal = 0;
-      adCostByItem = {};
 
       // A API de campanhas aceita ate 90 dias: num periodo maior, os ultimos 90.
-      let dateFrom = fromYmd, dateTo = toYmd;
+      let dateFrom = fromYmd, dateTo = toYmd, exato = true;
       if (gdrDiasEntre(dateFrom, dateTo) > 90) {
         const fim = brtStartOfDay(dateTo); fim.setDate(fim.getDate() - 89);
         dateFrom = ymdBRT(fim);
+        exato = false;
       }
 
       try {
@@ -7855,13 +7980,13 @@
         const lista = (anunciantes && anunciantes.advertisers) || [];
         const conta = lista.find(a => a.site_id === 'MLB') || lista[0];
         if (!conta || conta.advertiser_id == null) {
-          console.warn('[ads] Conta sem Product Ads habilitado — investimento fica em 0. Use o campo manual.');
-          return 0;
+          console.warn('[ads] Conta sem Product Ads habilitado — investimento 0.');
+          return { custo: 0, exato };
         }
 
-        let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null;
-        // Ate 4 paginas de 50. Sem o agregado, somar so a primeira pagina
-        // devolveria um investimento MENOR que o real, sem ninguem perceber.
+        let offset = 0, somaCampanhas = 0, campanhas = 0, resumo = null, amostra = null, completo = false;
+        // Ate 4 paginas de 50. Sem o agregado, uma soma que nao chegou ao fim
+        // da lista seria um investimento MENOR que o real: vira indisponivel.
         for (let pagina = 0; pagina < 4; pagina++) {
           const resp = await mlFetch(
             `/marketplace/advertising/MLB/advertisers/${conta.advertiser_id}/product_ads/campaigns/search` +
@@ -7877,35 +8002,35 @@
 
           // O agregado ja cobre o periodo inteiro: paginar de novo so gastaria
           // requisicao (e somar as duas fontes contaria duas vezes).
-          if (resumo !== null) break;
+          if (resumo !== null) { completo = true; break; }
 
           const totalPaging = resp && resp.paging ? resp.paging.total : 0;
           offset += 50;
-          if (results.length < 50 || offset >= (totalPaging || 0)) break;
+          if (results.length < 50 || offset >= (totalPaging || 0)) { completo = true; break; }
         }
 
-        adCostTotal = resumo !== null ? resumo : somaCampanhas;
+        if (!completo) {
+          console.warn('[ads] Sem metrics_summary e com mais de 200 campanhas: soma incompleta, publicidade indisponivel.');
+          return null;
+        }
+        const custo = resumo !== null ? resumo : somaCampanhas;
         const fonte = resumo !== null ? 'metrics_summary' : 'soma por campanha';
         console.log(`[ads] ${campanhas} campanha(s) em ${dateFrom}..${dateTo} → investimento ` +
-          `${adCostTotal.toFixed(2)} (fonte: ${fonte})`);
+          `${custo.toFixed(2)} (fonte: ${fonte})`);
 
         // Diagnostico so quando o resultado e suspeito: campanha existe e custo
         // zerado pode ser periodo sem veiculacao, mas tambem pode ser nome de
         // campo diferente na resposta. Os nomes dos campos dizem qual dos dois.
-        if (adCostTotal === 0 && amostra) {
+        if (custo === 0 && amostra) {
           console.warn('[ads] custo 0 com campanha na lista — campos da 1a campanha:',
             Object.keys(amostra).join(','),
             '| metrics:', Object.keys((amostra && amostra.metrics) || {}).join(',') || '(ausente)');
         }
+        return { custo, exato };
       } catch (e) {
         console.warn('[ads] Erro:', e.message);
-        _falhou = true;
+        return null;
       }
-
-      if (adCostTotal === 0) {
-        console.warn('[ads] Sem investimento apurado no periodo. Se houve, informe no campo manual.');
-      }
-      return _falhou ? null : adCostTotal;
     }
 
     /**
@@ -7926,8 +8051,8 @@
      */
     function valorDeCusto(m) {
       if (!m || typeof m !== 'object' || m.cost == null) return null;
-      const n = Math.abs(Number(m.cost));
-      return Number.isFinite(n) ? n : null;
+      const n = Number(m.cost);
+      return Number.isFinite(n) && n >= 0 ? n : null; // negativo nao e gasto
     }
 
     function valorDeCustoOuZero(m) {
@@ -7936,14 +8061,119 @@
     }
 
     // ══════════════════════════════════════
+    // PUBLICIDADE DO PERIODO — fonte unica (FASE A4)
+    // ══════════════════════════════════════
+    /**
+     * Custo de publicidade de [fromYmd, toYmd] com a fonte dita. Home e Margem
+     * leem daqui. Precedencia — so fontes que existem no dashboard:
+     *  1. manual          — so se foi informado para ESTE periodo exato;
+     *  2. api_product_ads — metrics_summary.cost da consulta feita para ESTE
+     *     periodo, com todas as contas respondendo e sem o corte de 90 dias;
+     *  3. xlsx_ml_ads     — relatorio importado nesta sessao cujas linhas
+     *     cobrem exatamente este periodo (so com uma empresa na selecao);
+     *  4. indisponivel.
+     * Nunca: valor fixo, media diaria, extrapolacao, custo de outra janela.
+     * Zero e valor valido. `parcial`: o periodo inclui hoje — o dia nao fechou
+     * e o ML consolida a metrica do dia depois; o valor e o que veio, sem ajuste.
+     */
+    function publicidadeDoPeriodo(fromYmd, toYmd) {
+      const parcial = toYmd >= hojeBRT();
+      const achou = (custo, fonte) => ({ disponivel: true, custo, fonte, periodoExato: true, parcial, motivo: null });
+
+      const manual = pubManualDoPeriodo(fromYmd, toYmd);
+      if (manual !== null) return achou(manual, 'manual');
+
+      const a = adsApi;
+      const apiDoPeriodo = !!a && a.de === fromYmd && a.ate === toYmd;
+      if (apiDoPeriodo && a.ok === true && a.exato === true &&
+        typeof a.custo === 'number' && Number.isFinite(a.custo) && a.custo >= 0) {
+        return achou(a.custo, 'api_product_ads');
+      }
+
+      const x = xlsxDoPeriodo(fromYmd, toYmd);
+      if (x !== null) return achou(x, 'xlsx_ml_ads');
+
+      const motivo = apiDoPeriodo && a.motivo ? a.motivo
+        : _adsLoadState === 'loading' ? 'carregando'
+          : 'sem_fonte_confiavel';
+      return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial, motivo };
+    }
+
+    /** Rotulo curto da origem, para o subtitulo dos cards. */
+    function rotuloFontePublicidade(p) {
+      const base = p.fonte === 'manual' ? 'manual'
+        : p.fonte === 'xlsx_ml_ads' ? 'relatório ML Ads'
+          : 'Product Ads';
+      return p.parcial ? base + ' · parcial hoje' : base;
+    }
+
+    /** Por que nao ha custo de publicidade, em poucas palavras. */
+    function textoPublicidadeIndisponivel(motivo) {
+      if (motivo === 'carregando') return 'carregando...';
+      if (motivo === 'consulta_falhou') return 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)');
+      if (motivo === 'periodo_acima_90_dias') return 'publicidade ' + INDISPONIVEL + ' (período acima de 90 dias)';
+      if (motivo === 'sem_conta_mercado_livre') return 'sem Product Ads nesta seleção';
+      return 'publicidade ' + INDISPONIVEL + ' (sem dado do per\u00edodo)';
+    }
+
+    /**
+     * Data de uma celula Desde/Ate do relatorio ML Ads em AAAA-MM-DD, ou null.
+     * Aceita AAAA-MM-DD, DD/MM/AAAA e DD-mmm-AAAA (mes abreviado em portugues).
+     * Formato desconhecido = periodo nao validavel = relatorio nao entra.
+     */
+    function ymdDeDataXlsx(v) {
+      const t = String(v == null ? '' : v).trim().toLowerCase();
+      let m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) return m[1] + '-' + m[2] + '-' + m[3];
+      m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      m = t.match(/^(\d{1,2})[-\s]([a-zç]{3})\.?[-\s](\d{4})$/);
+      const mes = m ? ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'].indexOf(m[2]) + 1 : 0;
+      if (mes) return m[3] + '-' + String(mes).padStart(2, '0') + '-' + m[1].padStart(2, '0');
+      return null;
+    }
+
+    /**
+     * Investimento de um relatorio XLSX importado cujas linhas cobrem
+     * EXATAMENTE [fromYmd, toYmd]; null se nenhum servir. O relatorio e de UMA
+     * conta: na visao consolidada nao representa a selecao e nao entra.
+     */
+    function xlsxDoPeriodo(fromYmd, toYmd) {
+      if (!pubManualPermitida()) return null;
+      for (let i = mlAdsReports.length - 1; i >= 0; i--) {
+        const r = mlAdsReports[i];
+        if (!r || !Array.isArray(r.rows) || !r.rows.length) continue;
+        let de = null, ate = null, valido = true;
+        for (const row of r.rows) {
+          const a = ymdDeDataXlsx(row.desde), b = ymdDeDataXlsx(row.ate);
+          if (!a || !b) { valido = false; break; }
+          if (!de || a < de) de = a;
+          if (!ate || b > ate) ate = b;
+        }
+        if (!valido || de !== fromYmd || ate !== toYmd) continue;
+        const v = Number(r.totalInv);
+        if (Number.isFinite(v) && v >= 0) return v;
+      }
+      return null;
+    }
+
+    // ══════════════════════════════════════
     // METRICAS DO PERIODO VIA API
     // ══════════════════════════════════════
     /**
-     * Onda D — opcao B. Agregado por item do periodo, com fonte UNICA por
+     * Onda D — opcao B. Agregado POR ANUNCIO do periodo, com fonte UNICA por
      * interacao: historico em memoria => calculo local (zero requisicao);
      * caso contrario => agregado ja recebido do backend. As duas fontes aplicam
-     * a MESMA regra (vendasPorItem): exclui 'cancelled' (pendentes contam),
-     * indexa somente order_items[0] e usa paid_amount do pedido inteiro.
+     * a MESMA regra (vendasPorItem do backend): venda = contaComoVenda,
+     * indexa somente order_items[0] e atribui o paid_amount do pedido INTEIRO
+     * a esse primeiro item.
+     *
+     * FASE A2: isto alimenta SO as visoes por produto (Receita por Produto,
+     * Qualidade, conversao por anuncio). Os TOTAIS do periodo nao saem daqui —
+     * ver totaisDoPeriodo. O quirk do 1o item e uma regra financeira por
+     * produto preservada de proposito nesta fase (um pedido multi-item concentra
+     * toda a receita no 1o anuncio); mudar isso e decisao de produto registrada
+     * para etapa futura, nao um ajuste silencioso.
      */
     function fontePorItemPeriodo(fromYmd, toYmd) {
       const out = {};
@@ -7969,8 +8199,95 @@
       return out;
     }
 
+    /**
+     * Agregado de /api/orders/metrics SO quando e do periodo EXATO; senao null.
+     * Ponto unico de decisao usado por totaisDoPeriodo e calcLiquidoPeriodo,
+     * para os dois nunca escolherem fontes diferentes para o mesmo bloco.
+     */
+    function metricsDoPeriodo(fromYmd, toYmd) {
+      const mp = _metrics && _metrics.periodo;
+      return mp && mp.fromYmd === fromYmd && mp.toYmd === toYmd ? mp : null;
+    }
+
+    /**
+     * true quando o agregado traz o contrato COMPLETO do bloco Performance do
+     * Periodo (backend A2b): faturamento.bruto numero finito >= 0, e
+     * pedidos/unidades inteiros >= 0. Zero e valido em todos. Teste de
+     * validade, nunca de truthiness.
+     */
+    function agregadoCompleto(mp) {
+      const contagem = v => Number.isInteger(v) && v >= 0;
+      const f = mp && mp.faturamento;
+      return !!(f && typeof f.bruto === 'number' && Number.isFinite(f.bruto) && f.bruto >= 0
+        && contagem(mp.pedidos) && contagem(mp.unidades));
+    }
+
+    /**
+     * FASE A2 — TOTAIS do periodo para os KPIs da Home (Transacoes, Unidades e,
+     * por divisao, Ticket). Contrato aprovado:
+     *   - venda valida = contaComoVenda (via pedidoForaDaVenda);
+     *   - 1 transacao = 1 pedido (o.id), contado uma unica vez;
+     *   - unidades = soma de `quantity` de TODOS os order_items (`?? 1` como o
+     *     sales-metrics do backend: ausente vira 1, zero continua zero);
+     *   - o status ATUAL do anuncio nao apaga uma venda historica: nenhum filtro
+     *     por allItems/active aqui.
+     *
+     * FONTE UNICA DO BLOCO (Faturamento, Transacoes, Unidades, Ticket), nesta
+     * ordem — calcLiquidoPeriodo escolhe o BRUTO pela MESMA regra:
+     *   1. agregado do periodo EXATO com contrato completo (agregadoCompleto):
+     *      bruto, pedidos e unidades saem TODOS dele, mesmo com allOrders em
+     *      memoria. O historico local pode estar mais velho que o snapshot do
+     *      backend; misturar os dois poria duas populacoes no mesmo bloco;
+     *   2. historico em memoria: bruto, pedidos e unidades TODOS locais
+     *      (backend antigo, sem periodo.pedidos/unidades);
+     *   3. senao: indisponivel — os tres KPIs ficam em placeholder.
+     *
+     * `periodo.porItem` NUNCA entra aqui: indexa so order_items[0], perde
+     * pedido sem item.id e ignora itens 2+. O historico inteiro tambem NAO e
+     * carregado no boot so para isto (decisao de arquitetura separada).
+     */
+    function totaisDoPeriodo(fromYmd, toYmd) {
+      const mp = metricsDoPeriodo(fromYmd, toYmd);
+      if (agregadoCompleto(mp)) {
+        return { disponivel: true, fonte: 'agregado', pedidos: mp.pedidos, unidades: mp.unidades, motivo: null };
+      }
+      if (!pedidosEmMemoria()) {
+        return { disponivel: false, fonte: null, pedidos: null, unidades: null, motivo: 'aguarda_historico' };
+      }
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      let pedidos = 0, unidades = 0;
+      allOrders.forEach(o => {
+        if (pedidoForaDaVenda(o)) return;
+        if (!dentroDoPeriodo(o.date_created, ini, fim)) return;
+        pedidos++;
+        (o.order_items || []).forEach(oi => { unidades += (oi && oi.quantity != null) ? Number(oi.quantity) : 1; });
+      });
+      return { disponivel: true, fonte: 'local', pedidos, unidades, motivo: null };
+    }
+
+    /** Ticket medio EXIBIDO = faturamento exibido / pedidos exibidos. Zero pedidos => 0 (a tela trata o placeholder). */
+    function ticketMedioExibido(faturamento, pedidos) {
+      return pedidos > 0 ? faturamento / pedidos : 0;
+    }
+
+    /**
+     * FASE A8 — janela de VISITAS do periodo. A API so devolve os ultimos 150
+     * dias ate hoje (`last <= 150`). 'completa': o periodo cabe na janela;
+     * 'truncada': o inicio do periodo ficou fora e as visitas sao so dos dias
+     * cobertos; 'fora': nenhum dia do periodo esta na janela (visitas e
+     * conversao nao existem — nunca 0).
+     */
+    const VISITAS_JANELA_API_DIAS = 150;
+    function janelaVisitas(fromYmd, toYmd) {
+      if (!fromYmd || !toYmd) return 'completa';
+      const hoje = hojeBRT();
+      if (gdrDiasEntre(fromYmd, hoje) <= VISITAS_JANELA_API_DIAS) return 'completa';
+      return gdrDiasEntre(toYmd, hoje) > VISITAS_JANELA_API_DIAS ? 'fora' : 'truncada';
+    }
+
     async function loadPeriodoData(fromYmd, toYmd) {
       periodoData = [];
+      periodoTotais = null;
 
       // Range do periodo global como objetos Date (BRT) em globais, para que
       // renderKPIsPeriodo / calcLiquidoPeriodo usem exatamente o mesmo intervalo.
@@ -7980,15 +8297,18 @@
       // Visitas: a API so aceita "ultimos N dias ate hoje" (N <= 150). Pedimos
       // do inicio do periodo ate hoje e somamos SO os dias dentro do periodo —
       // exato para qualquer intervalo dos ultimos 150 dias; alem disso, o
-      // inicio e truncado e a conversao fica subestimada (declarado no rotulo).
+      // inicio e truncado: menos visitas para as vendas do periodo inteiro, a
+      // conversao fica SUPERestimada. O rotulo declara (janelaVisitas, em
+      // renderKPIsPeriodo).
       const visitasMap = {};
       let totalVisitasAPI = 0;
       try {
-        const last = Math.min(150, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
+        const last = Math.min(VISITAS_JANELA_API_DIAS, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
         const vData = selecaoLegada()
           ? await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`)
           : await visitasDaSelecao(last);
         const porDia = (vData.results || []).filter(d => d && d.date);
+        _visitasPeriodoOk = true;
         totalVisitasAPI = porDia.length
           ? porDia.filter(d => { const y = String(d.date).slice(0, 10); return y >= fromYmd && y <= toYmd; })
             .reduce((s, d) => s + (d.total || 0), 0)
@@ -8010,6 +8330,7 @@
         });
       } catch (e) {
         console.warn('Visitas API falhou:', e.message);
+        _visitasPeriodoOk = false;
       }
 
       // Montar periodoData cruzando com pedidos e allItems
@@ -8028,6 +8349,8 @@
       // Onda D: agregado por item do periodo — local quando o historico esta em
       // memoria, senao do backend. Nunca as duas coisas na mesma interacao.
       const ordsByItemPeriod = fontePorItemPeriodo(fromYmd, toYmd);
+      // FASE A2: totais do periodo com populacao unica (ver totaisDoPeriodo).
+      periodoTotais = totaisDoPeriodo(fromYmd, toYmd);
 
       periodoData = allItems
         .filter(i => i.status === 'active')
@@ -8080,20 +8403,21 @@
 
     /**
      * Recarrega a base da Visao Geral para o periodo global: agregado de
-     * metricas (quando o historico nao esta em memoria), visitas e
-     * publicidade. Chamada por gdrAplicar() ao trocar o periodo.
+     * metricas, visitas e publicidade. Chamada por gdrAplicar() ao trocar o
+     * periodo.
      *
-     * Onda D — opcao B: com o historico em memoria, recalcula LOCAL (nenhuma
-     * requisicao de metricas). Sem historico, busca o agregado do novo
-     * periodo. Nunca as duas coisas para a mesma interacao.
+     * FASE A3: o agregado do NOVO periodo e pedido SEMPRE, com ou sem historico
+     * em memoria — e a fonte oficial de bruto, tarifas e liquido estimado da
+     * Home (calcLiquidoPeriodo). Antes, com historico na Overwine, nao era
+     * pedido, e o liquido caia num recalculo local com outras regras.
+     * loadMetrics ja reaproveita a resposta quando o periodo nao mudou.
      */
     async function aplicarPeriodoGlobal() {
       const g = gdrGet();
       try {
-        // Fora da Overwine sozinha o agregado e pedido mesmo com o historico em
-        // memoria: tarifa e frete reais dependem do mapa de envios, que so o
-        // backend tem.
-        if (!pedidosEmMemoria() || !selecaoLegada()) await loadMetrics(null, g.from, g.toEfetivo);
+        // Sempre: bruto/tarifas/liquido da Home sao do agregado do periodo
+        // (estimativa na Overwine; tarifa e frete reais nas demais selecoes).
+        await loadMetrics(null, g.from, g.toEfetivo);
         _periodoLoadState = "loading";
         await loadPeriodoData(g.from, g.toEfetivo);
         _periodoLoadState = "loaded";
@@ -8801,7 +9125,14 @@
         '4_light_green': 'Verde Claro', '5_green': 'Verde'
       }[nivel] || nivel;
       const nivelColor = nivel === '5_green' ? 'var(--green)' : nivel?.includes('green') ? 'var(--amber)' : 'var(--red)';
+      // Indicadores de REPUTACAO do ML (janela, base e metodologia do ML). Nao sao
+      // a taxa operacional (aba Cancelamentos). Ausente = "—", nunca "0% perfeito".
       const metric = (label, rate) => {
+        if (typeof rate !== 'number' || !Number.isFinite(rate)) return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px;color:var(--muted)">${label}</span>
+        <span style="font-size:13px;font-weight:600;color:var(--muted)">${MOD_PLACEHOLDER}</span>
+      </div>`;
         const pct = (rate * 100).toFixed(1);
         const ok = rate === 0;
         const color = ok ? 'var(--green)' : rate < 0.02 ? 'var(--amber)' : 'var(--red)';
@@ -8811,7 +9142,8 @@
         <span style="font-size:13px;font-weight:600;color:${color}">${ok ? '0% perfeito' : pct + '%'}</span>
       </div>`;
       };
-      const totalVendas = rep.transactions?.total || 0;
+      // FASE A9: ausente = "—", nunca 0.
+      const totalVendas = (typeof rep.transactions?.total === 'number') ? rep.transactions.total : null;
 
       // ── Caminho MercadoLider (Gold / Platinum) ────────────────
       // A API expoe power_seller_status: null | 'silver' | 'gold' | 'platinum'.
@@ -8861,18 +9193,17 @@
 
       // ── Base de periodo (ultimos N dias) para vendas E faturamento ──
       // Vendas: usa metrics.sales.completed (numero oficial do ML para a janela
-      // de 60 dias). Faturamento: soma os pedidos pagos dos MESMOS 60 dias.
+      // de 60 dias). Faturamento: soma as vendas (contaComoVenda) dos MESMOS 60 dias.
       // Assim vendas e faturamento ficam na mesma base — nunca historico.
       const PERIODO_DIAS = ML_REPUTATION_TARGETS.periodoDias || 60;
-      const vendasPeriodo = (mSales !== undefined && mSales !== null)
-        ? mSales
-        : 0; // fallback defensivo
+      const vendasPeriodo = (typeof mSales === 'number' && Number.isFinite(mSales)) ? mSales : null; // ausente: sem progresso
 
-      // Faturamento dos ultimos PERIODO_DIAS (pedidos pagos, sem cancelados)
+      // Faturamento dos ultimos PERIODO_DIAS (vendas: paid e partially_refunded; sem cancelados)
       // Onda D: mesma regra (paid; paid_amount || total_amount) local ou do
       // agregado — nunca as duas para a mesma renderizacao.
-      let faturamentoPeriodo = 0;
+      let faturamentoPeriodo = null; // sem historico nem agregado: indisponivel, nunca R$ 0
       if (pedidosEmMemoria()) {
+        faturamentoPeriodo = 0;
         const _limiteRep = new Date(); _limiteRep.setDate(_limiteRep.getDate() - PERIODO_DIAS);
         (allOrders || []).forEach(o => {
           if (!pedidoPago(o)) return;
@@ -8881,7 +9212,8 @@
           faturamentoPeriodo += o.paid_amount || o.total_amount || 0;
         });
       } else if (_metrics && _metrics.reputacao60d) {
-        faturamentoPeriodo = _metrics.reputacao60d.bruto || 0;
+        const _b = _metrics.reputacao60d.bruto;
+        faturamentoPeriodo = (typeof _b === 'number' && Number.isFinite(_b)) ? _b : null;
       }
 
       const fmtBRL = v => 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
@@ -8898,14 +9230,21 @@
           </div>
         </div>`;
         }
-        const faltamVendas = Math.max(0, metaVendas - vendasPeriodo);
-        const faltamFat = Math.max(0, metaFat - faturamentoPeriodo);
-        const progVendas = metaVendas > 0 ? Math.min(100, vendasPeriodo / metaVendas * 100) : 0;
-        const progFat = metaFat > 0 ? Math.min(100, faturamentoPeriodo / metaFat * 100) : 0;
+        const faltamVendas = vendasPeriodo === null ? null : Math.max(0, metaVendas - vendasPeriodo);
+        const faltamFat = faturamentoPeriodo === null ? null : Math.max(0, metaFat - faturamentoPeriodo);
+        const progVendas = (vendasPeriodo !== null && metaVendas > 0) ? Math.min(100, vendasPeriodo / metaVendas * 100) : 0;
+        const progFat = (faturamentoPeriodo !== null && metaFat > 0) ? Math.min(100, faturamentoPeriodo / metaFat * 100) : 0;
         const okVendas = faltamVendas === 0;
         const okFat = faltamFat === 0;
 
-        const linha = (label, atualStr, metaStr, faltamStr, prog, ok) => `
+        const linha = (label, atualStr, metaStr, faltamStr, prog, ok) => faltamStr === null ? `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">${label}</span>
+          <span style="font-size:12px;color:var(--muted)">${MOD_PLACEHOLDER} <span>/ ${metaStr}</span></span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${INDISPONIVEL}</div>
+      </div>` : `
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">${label}</span>
@@ -8922,8 +9261,8 @@
         return `
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:11px;color:var(--gold);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">${titulo}</div>
-        ${linha('Vendas', fmtNum(vendasPeriodo), fmtNum(metaVendas), faltamVendas + ' vendas', progVendas, okVendas)}
-        ${linha('Faturamento', fmtBRL(faturamentoPeriodo), fmtBRL(metaFat), fmtBRL(faltamFat), progFat, okFat)}
+        ${linha('Vendas', vendasPeriodo === null ? null : fmtNum(vendasPeriodo), fmtNum(metaVendas), faltamVendas === null ? null : faltamVendas + ' vendas', progVendas, okVendas)}
+        ${linha('Faturamento', faturamentoPeriodo === null ? null : fmtBRL(faturamentoPeriodo), fmtBRL(metaFat), faltamFat === null ? null : fmtBRL(faltamFat), progFat, okFat)}
       </div>`;
       };
 
@@ -8949,11 +9288,11 @@
       <div style="display:inline-block;margin-top:10px;padding:4px 14px;border:1px solid ${atual.cor};border-radius:3px">
         <span style="font-size:13px;font-weight:600;color:${atual.cor}">${atual.label}</span>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas === null ? MOD_PLACEHOLDER : totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
     </div>
-    ${metric('Cancelamentos (60d)', mCancel || 0)}
-    ${metric('Atrasos (60d)', mDelay || 0)}
-    ${metric('Reclamacoes (60d)', mClaims || 0)}
+    ${metric('Cancelamentos (reputa\u00e7\u00e3o ML, 60d)', mCancel)}
+    ${metric('Atrasos (reputa\u00e7\u00e3o ML, 60d)', mDelay)}
+    ${metric('Reclama\u00e7\u00f5es (reputa\u00e7\u00e3o ML, 60d)', mClaims)}
     ${mSales !== undefined ? `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--muted)">Vendas concluidas (60d)</span>
@@ -8983,36 +9322,68 @@
     function renderKPIs() {
       const active = allItems.filter(i => i.status === 'active').length;
       const paused = allItems.filter(i => i.status === 'paused').length;
-      const nostock = allItems.filter(i => (i.available_quantity || 0) === 0 && i.status === 'active').length;
-      const totalStock = allItems.reduce((s, i) => s + (i.available_quantity || 0), 0);
-      const totalSold = allItems.reduce((s, i) => s + (i.sold_quantity || 0), 0);
-      const avgPrice = allItems.filter(i => i.status === 'active').reduce((s, i) => s + (i.price || 0), 0) / (active || 1);
+      // Anuncio ativo com saldo ZERO informado (disponibilidade do anuncio). Saldo
+      // nao informado (Amazon `null`) nao e "sem estoque".
+      const nostock = allItems.filter(i => i.available_quantity === 0 && i.status === 'active').length;
+      // FASE A6: estoque FISICO, nunca a soma crua dos anuncios (espelhos do
+      // mesmo saldo proprio em varios anuncios e na Amazon contavam N vezes).
+      const fis = estoqueFisicoTotal(allItems);
+      // FASE A9: a Amazon nao informa sold_quantity. Sem nenhum anuncio que
+      // informe, "Vendas Totais" e indisponivel; com parte, soma o que existe e
+      // o title diz quantos ficaram de fora. Nunca 0 por ausencia.
+      const comVendido = allItems.filter(i => typeof i.sold_quantity === 'number' && Number.isFinite(i.sold_quantity));
+      const totalSold = comVendido.length ? comVendido.reduce((s, i) => s + i.sold_quantity, 0) : null;
+      const semVendido = allItems.length - comVendido.length;
+      // Sem anuncio ativo nao ha preco medio (antes: R$ 0).
+      const avgPrice = active > 0 ? allItems.filter(i => i.status === 'active').reduce((s, i) => s + (i.price || 0), 0) / active : null;
 
       document.getElementById('kpi-active').textContent = active;
       document.getElementById('kpi-total').textContent = allItems.length;
       document.getElementById('kpi-paused').textContent = paused;
       document.getElementById('kpi-nostock').textContent = nostock;
-      document.getElementById('kpi-stock').textContent = totalStock.toLocaleString('pt-BR');
-      document.getElementById('kpi-sold').textContent = totalSold.toLocaleString('pt-BR');
-      document.getElementById('kpi-avgprice').textContent = 'R$\u00a0' + avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      const _stockEl = document.getElementById('kpi-stock');
+      _stockEl.textContent = fis.totalConhecido.toLocaleString('pt-BR');
+      _stockEl.title = 'Pr\u00f3prio ' + fis.proprio.toLocaleString('pt-BR') + ' \u00b7 Full ' + fis.mlFull.toLocaleString('pt-BR') +
+        ' \u00b7 FBA ' + fis.amazonFba.toLocaleString('pt-BR') +
+        (fis.completo ? '' : ' \u00b7 ' + Object.keys(fis.pendencias).map(k => (ROTULO_PENDENCIA_ESTOQUE[k] || k) + ' em ' + fis.pendencias[k]).join(', '));
+      const _stockSub = document.getElementById('kpi-stock-sub');
+      if (_stockSub) _stockSub.textContent = fis.completo
+        ? 'pr\u00f3prio + Full + FBA'
+        : 'parcial \u00b7 ' + fis.incompletos + ' produto' + (fis.incompletos !== 1 ? 's' : '') + ' sem saldo informado';
+      const _soldEl = document.getElementById('kpi-sold');
+      _soldEl.textContent = totalSold === null ? MOD_PLACEHOLDER : totalSold.toLocaleString('pt-BR');
+      _soldEl.title = (totalSold !== null && semVendido > 0) ? semVendido + ' an\u00fancio' + (semVendido !== 1 ? 's' : '') + ' sem vendas informadas (Amazon) fora da soma' : '';
+      document.getElementById('kpi-avgprice').textContent = avgPrice === null ? MOD_PLACEHOLDER
+        : 'R$\u00a0' + avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
 
     function renderKPIsPeriodo() {
-      // Restaurar valor manual do localStorage no input se ainda vazio
-      const _kpiPubEl = document.getElementById('kpi-pub-input');
-      if (_kpiPubEl && kpiPubManual > 0 && !_kpiPubEl.value) {
-        _kpiPubEl.value = kpiPubManual.toFixed(2);
-      }
+      // POR ANUNCIO (periodoData): alimenta visitas e conversao, cujo universo e o
+      // dos anuncios ativos do ML (as visitas so existem para eles).
       const totalFaturamento = periodoData.reduce((s, d) => s + d.receita, 0);
       const totalVisitas = periodoData.reduce((s, d) => s + d.visitas, 0);
-      const totalTransacoes = periodoData.reduce((s, d) => s + d.vendas, 0);
-      const totalUnidades = periodoData.reduce((s, d) => s + d.unidades, 0);
-      const conversaoGeral = totalVisitas > 0 ? (totalTransacoes / totalVisitas * 100) : 0;
-      const ticketMedio = totalTransacoes > 0 ? (totalFaturamento / totalTransacoes) : 0;
+      const vendasAnunciosAtivos = periodoData.reduce((s, d) => s + d.vendas, 0);
+      // Conversao: numerador e denominador do MESMO universo (anuncios ativos do
+      // ML, 1o item do pedido, visitas rateadas por sold_quantity). Nao usa os
+      // totais abaixo de proposito: eles incluem pausados e Amazon, que nao tem
+      // visitas, e a taxa ficaria falsa. Limitacao conhecida, declarada aqui.
+      const conversaoGeral = totalVisitas > 0 ? (vendasAnunciosAtivos / totalVisitas * 100) : 0;
+
+      // TOTAIS do periodo (FASE A2): uma populacao so — todos os pedidos
+      // validos, cada um uma vez, todos os order_items, sem filtro de anuncio.
+      const _tot = periodoTotais || { disponivel: false, pedidos: null, unidades: null, motivo: null };
+      const totalTransacoes = _tot.disponivel ? _tot.pedidos : null;
+      const totalUnidades = _tot.disponivel ? _tot.unidades : null;
 
       // Calcular receita líquida com base nos pedidos do período
       const _liq = calcLiquidoPeriodo();
       const { bruto, tarifaML, tarifaEnv, liquido } = _liq;
+      // Ticket = EXATAMENTE o faturamento exibido no card ao lado / transacoes
+      // exibidas. `fatExibido` e o mesmo valor escrito em kpi-faturamento e vem
+      // da MESMA fonte de pedidos/unidades (ver totaisDoPeriodo). Zero e valor
+      // oficial: nenhum fallback por truthiness para outra fonte.
+      const fatExibido = bruto;
+      const ticketMedio = ticketMedioExibido(fatExibido, totalTransacoes || 0);
 
       const fmt = v => 'R$\u00a0' + v.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const pct = (v, base) => base > 0 ? (Math.abs(v) / base * 100).toFixed(1) + '%' : '-';
@@ -9030,11 +9401,11 @@
         // Selecao sem tarifas medias proprias. Cada card mostra o TOTAL real
         // quando a cobertura e completa; senao, indisponivel, com o subtotal
         // conhecido ao lado — rotulado como subtotal, nunca no lugar do total.
-        document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
+        document.getElementById('kpi-faturamento').textContent = fmt(fatExibido);
         const _ap = _liq.apurado;
         const _k = _ap && _ap.conhecido;
         const _met = rotuloMetodo(_ap && _ap.metodo);
-        const _base = bruto || totalFaturamento;
+        const _base = bruto;
         const _semProva = !!(_k && _k.tarifaValidada === false);
         const cardApurado = (idVal, idSub, total, sub, oQue, dependeDaTarifa) => {
           const v = document.getElementById(idVal), t = document.getElementById(idSub);
@@ -9067,63 +9438,103 @@
           _avisoFin.innerHTML = partes.length ? htmlAvisoSelecao(partes.join('<br>')) : '';
         }
       } else {
-        document.getElementById('kpi-faturamento').textContent = fmt(bruto || totalFaturamento);
-        document.getElementById('kpi-liq').textContent = fmt(liquido);
-        document.getElementById('kpi-liq-pct').textContent = pct(liquido, bruto || totalFaturamento) + ' do bruto';
-        document.getElementById('kpi-tarifa-ml').textContent = fmt(Math.abs(tarifaML));
-        document.getElementById('kpi-tarifa-ml-pct').textContent = pct(tarifaML, bruto || totalFaturamento) + ' do bruto';
-        document.getElementById('kpi-tarifa-env').textContent = fmt(Math.abs(tarifaEnv));
-        document.getElementById('kpi-tarifa-env-pct').textContent = pct(tarifaEnv, bruto || totalFaturamento) + ' do bruto';
+        // FASE A3 — selecao com perfil proprio (Overwine): liquido e tarifas sao
+        // a ESTIMATIVA do backend por tarifas medias. Rotulo diz isso; o
+        // percentual sai do proprio agregado, nao de constante no frontend.
+        document.getElementById('kpi-faturamento').textContent = fmt(fatExibido);
+        const _rot = document.getElementById('kpi-liq-rotulo');
+        if (_rot) _rot.textContent = 'Receita L\u00edquida Estimada';
+        const _liqEl = document.getElementById('kpi-liq');
+        if (_liq.liquidoIndisponivel) {
+          // Sem agregado do periodo: nada de estimativa refeita aqui.
+          const _mot = 'estimativa indispon\u00edvel para este per\u00edodo';
+          _liqEl.textContent = MOD_PLACEHOLDER; _liqEl.title = _mot;
+          document.getElementById('kpi-liq-pct').textContent = _mot;
+          ['kpi-tarifa-ml', 'kpi-tarifa-env'].forEach(id => { const el = document.getElementById(id); el.textContent = MOD_PLACEHOLDER; el.title = _mot; });
+          ['kpi-tarifa-ml-pct', 'kpi-tarifa-env-pct'].forEach(id => { document.getElementById(id).textContent = '\u2014'; });
+        } else {
+          // Percentuais da estimativa sobre o bruto DO PROPRIO agregado: nunca
+          // dividem valores de snapshots diferentes.
+          const _base = _liq.brutoAgregado;
+          const _pctBr = v => _base > 0 ? (Math.abs(v) / _base * 100).toFixed(1).replace('.', ',') + '%' : null;
+          const _taxa = _pctBr(tarifaML + tarifaEnv);
+          _liqEl.textContent = fmt(liquido); _liqEl.title = '';
+          document.getElementById('kpi-liq-pct').textContent = _taxa ? 'estimado \u00b7 tarifas m\u00e9dias de ' + _taxa : 'estimado por tarifas m\u00e9dias';
+          document.getElementById('kpi-tarifa-ml').textContent = fmt(Math.abs(tarifaML));
+          document.getElementById('kpi-tarifa-ml').title = '';
+          document.getElementById('kpi-tarifa-ml-pct').textContent = pct(tarifaML, _base) + ' do bruto \u00b7 estimado';
+          document.getElementById('kpi-tarifa-env').textContent = fmt(Math.abs(tarifaEnv));
+          document.getElementById('kpi-tarifa-env').title = '';
+          document.getElementById('kpi-tarifa-env-pct').textContent = pct(tarifaEnv, _base) + ' do bruto \u00b7 estimado';
+        }
       }
 
-      // Publicidade — extrapolado para o período selecionado
-      const _adsResult = getAdsDataParaPeriodo(currentPeriodoDias);
-      const _adsMatch = _adsResult.match;
-      const pubVal = kpiPubManual > 0 ? kpiPubManual :
-        (_adsResult.totalInvestimento > 0 ? _adsResult.totalInvestimento : adCostTotal);
-      // Fora da Overwine nao ha relatorio embutido: o que vem da API e rotulado como tal.
-      const pubFonteLabel = kpiPubManual > 0 ? 'manual'
-        : (_adsResult.totalInvestimento > 0 || selecaoLegada()) ? _adsResult.label : 'via API';
+      // Publicidade (FASE A4): custo do MESMO periodo global, com a fonte dita
+      // (publicidadeDoPeriodo). Sem fonte confiavel o card mostra "—"; nunca
+      // valor fixo, media diaria ou extrapolado.
+      const _gPub = gdrGet();
+      const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);
       const pubEl = document.getElementById('kpi-pub-input');
-      if (pubEl && kpiPubManual === 0 && _adsResult.totalInvestimento > 0 && pubEl.value === '') {
-        pubEl.value = _adsResult.totalInvestimento.toFixed(2);
+      if (pubEl && document.activeElement !== pubEl) {
+        pubEl.value = _pub.disponivel ? _pub.custo.toFixed(2) : '';
+        if (!pubEl.disabled) pubEl.placeholder = '\u2014';
       }
       const _pubStatusEl = document.getElementById('kpi-pub-status');
       if (_pubStatusEl) {
-        if (pubVal > 0) {
-          const _pctStr = pct(pubVal, bruto || totalFaturamento) + ' do bruto';
-          _pubStatusEl.textContent = _pctStr + ' · ' + pubFonteLabel;
-          _pubStatusEl.style.color = _adsMatch === 'extrapolado' ? 'var(--amber)' : '';
-          _pubStatusEl.title = _adsMatch === 'extrapolado'
-            ? `Estimativa: R$ ${_adsResult.custoDiario?.toFixed(2)}/dia × ${currentPeriodoDias} dias. Importe relatório do período exato na aba ML Ads para valor preciso.`
+        if (_pub.disponivel) {
+          const _sobre = (typeof bruto === 'number' && bruto > 0) ? pct(_pub.custo, bruto) + ' do bruto \u00b7 ' : '';
+          _pubStatusEl.textContent = _sobre + rotuloFontePublicidade(_pub);
+          _pubStatusEl.style.color = '';
+          _pubStatusEl.title = _pub.parcial
+            ? 'O per\u00edodo inclui hoje: o Mercado Livre ainda n\u00e3o fechou o dia. Valor como veio, sem proje\u00e7\u00e3o.'
             : '';
         } else {
-          // Onda A: nao afirmar "importe relatorio" enquanto loadAdCost roda.
-          _pubStatusEl.textContent = (_adsLoadState === 'loading') ? 'carregando...'
-            : !adCostDisponivel ? 'publicidade ' + INDISPONIVEL + (selecaoConsolidada() ? ' (a consulta de uma das empresas falhou)' : ' (a consulta falhou)')
-              : 'importe relatório na aba ML Ads';
+          _pubStatusEl.textContent = textoPublicidadeIndisponivel(_pub.motivo);
           _pubStatusEl.style.color = 'var(--muted)';
+          _pubStatusEl.title = '';
         }
       }
 
       // Onda A: estes cinco derivam de periodoData, que agora carrega em segundo
       // plano. Enquanto nao concluir, mostram placeholder — NUNCA zero, que
       // seria um numero errado. Faturamento/liquido/tarifas acima vem de
-      // calcLiquidoPeriodo sobre allOrders, que ja esta completo neste ponto.
+      // calcLiquidoPeriodo (agregado /metrics do periodo; ver FASE A3).
       const _perOk = (_periodoLoadState === 'loaded');
       // A Amazon nao informa visitas: sem conta ML na selecao, visitas e
       // conversao sao indisponiveis; com ML junto, as visitas sao so do ML e a
       // conversao (vendas de todos / visitas do ML) seria falsa.
       const _amzVis = selecaoTemAmazon();
       const _motVis = 'A Amazon n\u00e3o informa visitas';
+      // FASE A8: a API de visitas so cobre 150 dias ate hoje.
+      const _gVis = gdrGet();
+      const _janVis = janelaVisitas(_gVis.from, _gVis.toEfetivo);
+      const _visSub = document.getElementById('kpi-visitas-sub');
+      if (_visSub) _visSub.textContent = _janVis === 'truncada' ? '\u00faltimos 150 dias do per\u00edodo (limite da API)'
+        : _janVis === 'fora' ? 'fora dos 150 dias da API' : 'no per\u00edodo';
+      const _motJanela = 'Per\u00edodo fora dos \u00faltimos 150 dias cobertos pela API de visitas';
+      const _motFalhaVis = 'A consulta de visitas falhou';
       if (_perOk && _amzVis && !selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motVis);
+      else if (_perOk && _janVis === 'fora') document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motJanela);
+      else if (_perOk && _visitasPeriodoOk === false) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motFalhaVis);
       else document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       if (_perOk && _amzVis && selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').title = 'S\u00f3 Mercado Livre: ' + _motVis.toLowerCase();
-      document.getElementById('kpi-transacoes').textContent = _perOk ? totalTransacoes.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
-      document.getElementById('kpi-unidades').textContent = _perOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      // FASE A2: sem totais confiaveis (sem historico em memoria), Transacoes,
+      // Unidades e Ticket mostram placeholder — nunca zero, nunca a soma
+      // parcial de porItem. O title diz por que. Ver totaisDoPeriodo.
+      const _totOk = _perOk && _tot.disponivel && !_liq.indisponivel;
+      const _totTitle = (!_totOk && _perOk && _tot.motivo === 'aguarda_historico')
+        ? 'Total aguarda dados completos do per\u00edodo.'
+        : '';
+      document.getElementById('kpi-transacoes').textContent = _totOk ? totalTransacoes.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      document.getElementById('kpi-unidades').textContent = _totOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].forEach(id => { document.getElementById(id).title = _totTitle; });
       if (_perOk && _amzVis) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
+      else if (_perOk && _janVis === 'fora') document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motJanela + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
+      else if (_perOk && _visitasPeriodoOk === false) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motFalhaVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
       else document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
-      document.getElementById('kpi-ticket').textContent = _perOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
+      document.getElementById('kpi-conversao').title = _janVis === 'truncada'
+        ? 'Visitas s\u00f3 dos \u00faltimos 150 dias do per\u00edodo (limite da API); vendas do per\u00edodo inteiro: convers\u00e3o superestimada.' : '';
+      document.getElementById('kpi-ticket').textContent = _totOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
     }
 
     /**
@@ -9214,9 +9625,27 @@
         'O l\u00edquido real ' + (n === 1 ? 'desse pedido' : 'desses pedidos') + ' pode ser menor, inclusive negativo; a diferen\u00e7a n\u00e3o \u00e9 conhecida.';
     }
 
-    // Calcula receita bruta e líquida do período usando allOrders.
-    // Usa EXATAMENTE o mesmo range (periodoDateInicio/Fim) do resto da Visao Geral,
-    // garantindo que o Faturamento Bruto bata com os pedidos pagos do periodo.
+    /**
+     * Bruto, tarifas e liquido do PERIODO para a Home — FASE A3.
+     *
+     * LIQUIDO e TARIFAS: sempre de `/api/orders/metrics -> periodo.faturamento`
+     * do periodo EXATO (Overwine: estimativa por tarifas medias do backend;
+     * sem perfil: liquidoApurado). Nunca recalculados aqui. Sem agregado do
+     * periodo exato: indisponiveis.
+     *
+     * BRUTO: mesma fonte que totaisDoPeriodo usa para pedidos e unidades, para
+     * o bloco Faturamento/Transacoes/Unidades/Ticket nunca misturar populacoes:
+     *   1. agregado completo (agregadoCompleto) -> f.bruto, mesmo com allOrders
+     *      em memoria; zero e valor oficial;
+     *   2. historico em memoria -> bruto local (mesma regra do backend:
+     *      contaComoVenda, paid_amount || total_amount, janela BRT);
+     *   3. agregado exato sem contrato completo e sem historico -> f.bruto
+     *      (transacoes/unidades/ticket ficam em placeholder; nada a misturar);
+     *   4. nada -> indisponivel.
+     * `brutoAgregado` acompanha o retorno quando o liquido existe: e a base dos
+     * percentuais da estimativa, para que eles nunca dividam valores de
+     * snapshots diferentes.
+     */
     function calcLiquidoPeriodo() {
       // Fallback: se ainda nao houver range carregado, usa o periodo global
       let inicio = periodoDateInicio;
@@ -9227,61 +9656,31 @@
         fim = g.toDateEfetivo;
       }
 
-      // Onda D: sem historico em memoria, o faturamento do periodo vem pronto
-      // do backend (faturamentoPeriodo, mesmas taxas de config/taxas.json).
-      // So e aceito quando o agregado corresponde EXATAMENTE ao periodo pedido.
-      if (!pedidosEmMemoria()) {
-        const mp = _metrics && _metrics.periodo;
-        const fYmd = ymdBRT(inicio), tYmd = ymdBRT(fim);
-        if (mp && mp.fromYmd === fYmd && mp.toYmd === tYmd && mp.faturamento) {
-          const f = mp.faturamento;
-          if (!selecaoTemFinanceiro()) return liquidoApurado(f.bruto);
-          return { bruto: f.bruto, tarifaML: f.tarifaML, tarifaEnv: f.tarifaEnv, liquido: f.liquido };
-        }
-        return { bruto: 0, tarifaML: 0, tarifaEnv: 0, liquido: 0, indisponivel: true };
-      }
+      const mp = metricsDoPeriodo(ymdBRT(inicio), ymdBRT(fim));
+      const f = mp && mp.faturamento;
+      const brutoAgregadoValido = !!(f && typeof f.bruto === 'number' && Number.isFinite(f.bruto) && f.bruto >= 0);
 
-      // Selecao sem tarifas proprias: o bruto sai dos pedidos em memoria; tarifa
-      // e frete, do que o backend APUROU nos pedidos e envios. As medias abaixo
-      // (14,8% e 14,4%) sairam da planilha da Overwine e nao entram aqui.
-      if (!selecaoTemFinanceiro()) {
-        let b = 0;
+      let bruto, fonteBruto;
+      if (agregadoCompleto(mp)) { bruto = f.bruto; fonteBruto = 'agregado'; }
+      else if (pedidosEmMemoria()) {
+        bruto = 0; fonteBruto = 'local';
         allOrders.forEach(o => {
-          if (!pedidoPago(o)) return;
+          if (!pedidoPago(o)) return; // somente vendas (contaComoVenda: nao cancelados, nao pendentes)
           if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
-          b += o.paid_amount || o.total_amount || 0;
+          bruto += o.paid_amount || o.total_amount || 0;
         });
-        const r = liquidoApurado(b);
-        // O apurado so vale para o periodo EXATO em que foi calculado.
-        const mp2 = _metrics && _metrics.periodo;
-        if (!(mp2 && mp2.fromYmd === ymdBRT(inicio) && mp2.toYmd === ymdBRT(fim))) {
-          return { bruto: b, tarifaML: null, tarifaEnv: null, liquido: null, semFinanceiro: true, apurado: null };
-        }
-        return r;
       }
+      else if (brutoAgregadoValido) { bruto = f.bruto; fonteBruto = 'agregado'; }
+      else return { bruto: 0, tarifaML: 0, tarifaEnv: 0, liquido: 0, indisponivel: true };
 
-      let bruto = 0, tarifaML = 0, tarifaEnv = 0;
-
-      allOrders.forEach(o => {
-        if (!pedidoPago(o)) return; // somente pagos (nao cancelados, nao pendentes)
-        if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
-
-        // Receita bruta = paid_amount (o que o comprador pagou pelo produto)
-        const receitaBruta = o.paid_amount || o.total_amount || 0;
-        bruto += receitaBruta;
-
-        // Tarifas: a API de pedidos retorna alguns dados de fees
-        // mas não todos. Usamos as médias reais da planilha:
-        // - Tarifa ML: ~14.8% do bruto (comissão + impostos)
-        // - Tarifa envio: ~14.4% do bruto (custo logístico)
-        const TAXA_ML = 0.1480;
-        const TAXA_ENV = 0.1440;
-        tarifaML -= receitaBruta * TAXA_ML;
-        tarifaEnv -= receitaBruta * TAXA_ENV;
-      });
-
-      const liquido = bruto + tarifaML + tarifaEnv; // tarifas já são negativas
-      return { bruto, tarifaML, tarifaEnv, liquido };
+      if (!selecaoTemFinanceiro()) {
+        if (!brutoAgregadoValido) return { bruto, fonteBruto, tarifaML: null, tarifaEnv: null, liquido: null, semFinanceiro: true, apurado: null };
+        return Object.assign(liquidoApurado(bruto), { fonteBruto });
+      }
+      if (!brutoAgregadoValido) {
+        return { bruto, fonteBruto, tarifaML: null, tarifaEnv: null, liquido: null, liquidoIndisponivel: true };
+      }
+      return { bruto, fonteBruto, brutoAgregado: f.bruto, tarifaML: f.tarifaML, tarifaEnv: f.tarifaEnv, liquido: f.liquido, estimado: f.estimado === true };
     }
 
     function renderQualidade() {
@@ -9302,12 +9701,20 @@
       document.getElementById('q-expboa').textContent = expBoa;
       document.getElementById('q-exptotal').textContent = allItems.length;
 
+      // FASE A9: o que depende de visitas so classifica com a consulta de visitas
+      // RESPONDIDA. Falhou (false) ou ainda nao respondeu (null): as visitas por
+      // anuncio sao 0 artificiais — nada de ranking "menos visitas" nem lista
+      // "sem visitas" com elas. Resposta valida (true) com zero = zero real.
+      const _semVis = _visitasPeriodoOk === false ? 'Visitas indispon\u00edveis (a consulta falhou)'
+        : _visitasPeriodoOk === null ? 'Carregando visitas...' : null;
+      const _linhaSemVis = cols => '<tr><td colspan="' + cols + '"><div class="empty-state"><p>' + _semVis + '</p></div></td></tr>';
+
       // Tabela: anuncios com menos visitas — oportunidade de melhoria
       const paraMelhorar = [...periodoData]
         .sort((a, b) => a.visitas - b.visitas)
         .slice(0, 15);
 
-      document.getElementById('qualidade-table').innerHTML = paraMelhorar.length
+      document.getElementById('qualidade-table').innerHTML = _semVis ? _linhaSemVis(5) : paraMelhorar.length
         ? paraMelhorar.map(d => {
           const item = allItems.find(i => i.id === d.id) || {};
           const tipo = item.listing_type_id || '-';
@@ -9332,7 +9739,7 @@
         .filter(i => i.status === 'active')
         .filter(i => !periodoData.find(d => d.id === i.id));
 
-      document.getElementById('semvisitas-table').innerHTML = semVisitas.length
+      document.getElementById('semvisitas-table').innerHTML = _semVis ? _linhaSemVis(4) : semVisitas.length
         ? semVisitas.map(item => `
         <tr onclick="openDetail('${item.id}')"${attrConta(item)}>
           <td><span class="item-title">${escHtml(item.title)}</span>${tagConta(item)}<div class="item-sku">${item.id}</div></td>
@@ -9352,13 +9759,13 @@
           return `
           <tr onclick="openDetail('${d.id}')">
             <td><span class="item-title">${escHtml(d.titulo)}</span><div class="item-sku">${d.id}</div></td>
-            <td>${d.visitas}</td>
+            <td${_semVis ? ' title="' + _semVis + '"' : ''}>${_semVis ? MOD_PLACEHOLDER : d.visitas}</td>
             <td>${d.vendas}</td>
             <td style="color:${d.receita > 0 ? 'var(--gold-light)' : 'var(--muted)'}">
               ${d.receita > 0 ? 'R$\u00a0' + d.receita.toLocaleString('pt-BR', { minimumFractionDigits: 0 }) : '-'}
             </td>
-            <td style="color:${convColor};font-weight:500">
-              ${d.conversao > 0 ? d.conversao.toFixed(1) + '%' : '0%'}
+            <td style="color:${_semVis ? 'var(--muted)' : convColor};font-weight:500">
+              ${_semVis ? MOD_PLACEHOLDER : (d.conversao > 0 ? d.conversao.toFixed(1) + '%' : '0%')}
             </td>
             <td>
               <span class="badge paused" style="font-size:10px">
@@ -9432,7 +9839,7 @@
       <div class="top-info">
         <div class="top-name">${escHtml(item.title)}</div>
         <div class="top-bar-wrap"><div class="top-bar-fill" style="width:${((item.sold_quantity || 0) / max * 100)}%"></div></div>
-        <div class="top-meta">${item.sold_quantity || 0} vendas · estoque: ${item.available_quantity || 0}</div>
+        <div class="top-meta">${item.sold_quantity ?? MOD_PLACEHOLDER} vendas · estoque: ${item.available_quantity ?? MOD_PLACEHOLDER}</div>
       </div>
       <div class="top-price">R$\u00a0${fmtPrice(item.price)}</div>
     </div>`).join('');
@@ -9480,6 +9887,12 @@
         _metrics.estoque30d.porItem.forEach(l => { vendas30[l.itemId] = l.unidades; });
       }
 
+      // FASE A6/A7: populacao FISICA do SKU = todos os anuncios, ativos e
+      // pausados (a mesma da Home). As LINHAS continuam sendo os SKUs com
+      // anuncio ativo; vendas30 continua dos anuncios ativos (formula intacta).
+      const fisicosPorSku = {};
+      allItems.forEach(i => { const k = itemSKU(i); (fisicosPorSku[k] = fisicosPorSku[k] || []).push(i); });
+
       const grupos = {};
       allItems.filter(i => i.status === 'active').forEach(i => {
         const sku = itemSKU(i);
@@ -9491,26 +9904,31 @@
         if (i.title.length < grupos[sku].label.length) grupos[sku].label = i.title;
       });
 
-      // Amazon sem estoque proprio informado (e sem anuncio do ML no grupo):
-      // o saldo e DESCONHECIDO. Fora da lista, contado a parte — nunca como 0,
-      // que viraria "ruptura" falsa.
-      const _semEstoqueInformado = g => g.items.every(i => isFbaItem(i) || (i.canal === 'amazon' && i.amazon && i.amazon.estoqueInformado === false));
-      _estSemInfo = Object.values(grupos).filter(_semEstoqueInformado).length;
-      return Object.values(grupos).filter(g => !_semEstoqueInformado(g)).map(g => {
-        // Gestao de Estoque usa SOMENTE estoque proprio (exclui Full e FBA), sem duplicar
-        const est = consolidarEstoqueGrupo(g.items).proprio;
+      // FASE A7: cobertura e ruptura sobre o ESTOQUE FISICO (estoqueFisicoDoGrupo:
+      // proprio unico + Full + FBA). Total incompleto (Amazon `null`, FBA nao
+      // informado, compartilhamento nao confirmado): `est` null, sem dias e sem
+      // classificacao ('parcial') — nunca 0, que viraria ruptura falsa, nem o
+      // total conhecido como se fosse o fisico. Velocidade e faixas: as de sempre.
+      const linhas = Object.values(grupos).map(g => {
+        const fis = estoqueFisicoDoGrupo(fisicosPorSku[g.sku] || g.items);
+        const est = fis.completo ? fis.totalFisico : null;
         const vel = +(g.vendas30 / 30).toFixed(2);
-        const dias = vel > 0 ? Math.round(est / vel) : 9999;
-        let tipo;
-        if (vel === 0) tipo = 'semvenda';
-        else if (dias < 30) tipo = 'ruptura';
-        else if (dias < 90) tipo = 'alerta';
-        else if (dias <= 365) tipo = 'ok';
-        else tipo = 'excesso';
-        return { sku: g.sku, label: g.label, anuncios: g.anuncios, preco: g.preco, est, vel, dias, tipo };
-      }).sort((a, b) => {
-        const ord = { ruptura: 0, alerta: 1, ok: 2, excesso: 3, semvenda: 4 };
-        return (ord[a.tipo] - ord[b.tipo]) || a.dias - b.dias;
+        let dias, tipo;
+        if (est === null) { dias = null; tipo = 'parcial'; }
+        else {
+          dias = vel > 0 ? Math.round(est / vel) : 9999;
+          if (vel === 0) tipo = 'semvenda';
+          else if (dias < 30) tipo = 'ruptura';
+          else if (dias < 90) tipo = 'alerta';
+          else if (dias <= 365) tipo = 'ok';
+          else tipo = 'excesso';
+        }
+        return { sku: g.sku, label: g.label, anuncios: g.anuncios, preco: g.preco, est, vel, dias, tipo, fis };
+      });
+      _estSemInfo = linhas.filter(l => l.tipo === 'parcial').length;
+      return linhas.sort((a, b) => {
+        const ord = { ruptura: 0, alerta: 1, ok: 2, excesso: 3, semvenda: 4, parcial: 5 };
+        return (ord[a.tipo] - ord[b.tipo]) || ((a.dias === null ? 99999 : a.dias) - (b.dias === null ? 99999 : b.dias));
       });
     }
 
@@ -9538,7 +9956,8 @@
         : _estData.filter(g => g.tipo === _estFiltro);
 
       document.getElementById('est-meta').textContent = `${dados.length} SKU${dados.length !== 1 ? 's' : ''}` +
-        (_estSemInfo ? ` \u00b7 ${_estSemInfo} da Amazon sem estoque pr\u00f3prio informado (fora da lista)` : '');
+        ' \u00b7 velocidade: vendas dos \u00faltimos 30 dias (n\u00e3o segue o per\u00edodo)' +
+        (_estSemInfo ? ` \u00b7 ${_estSemInfo} com estoque f\u00edsico incompleto (sem cobertura nem classifica\u00e7\u00e3o)` : '');
 
       // Labels e cores por tipo
       const TIPO = {
@@ -9547,15 +9966,18 @@
         ok: { label: 'Saudavel', cls: 'est-badge-ok', cor: 'var(--green)' },
         excesso: { label: 'Excesso', cls: 'est-badge-excesso', cor: 'var(--muted)' },
         semvenda: { label: 'Sem venda', cls: 'est-badge-semvenda', cor: 'var(--muted)' },
+        parcial: { label: 'Estoque parcial', cls: 'est-badge-semvenda', cor: 'var(--muted)' },
       };
 
       const fmtDias = dias => {
+        if (dias === null) return MOD_PLACEHOLDER;
         if (dias >= 9999) return '-';
         if (dias >= 365) return Math.round(dias / 30) + ' meses';
         return dias + ' dias';
       };
 
       const fmtData = dias => {
+        if (dias === null) return MOD_PLACEHOLDER;
         if (dias >= 9999 || dias <= 0) return '-';
         const d = new Date(); d.setDate(d.getDate() + dias);
         return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -9563,6 +9985,7 @@
 
       // Barra de cobertura: 0–365 dias mapeado em 0–100%
       const barPct = dias => {
+        if (dias === null) return 0;
         if (dias >= 9999) return 100;
         return Math.min(100, Math.round(dias / 365 * 100));
       };
@@ -9571,6 +9994,11 @@
         ruptura: 'var(--red)', alerta: 'var(--amber)', ok: 'var(--green)',
         excesso: 'var(--muted)', semvenda: 'var(--surface3)'
       })[tipo] || 'var(--muted)';
+
+      // Componente de estoque: numero (zero inclusive) ou "—" com a pendencia.
+      const celEst = (v, estilo, fis) => v === null
+        ? `<td style="text-align:center;color:var(--muted)" title="${escHtml(fis.pendencias.map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', '))}">${MOD_PLACEHOLDER}</td>`
+        : `<td style="text-align:center;${estilo}">${v.toLocaleString('pt-BR')}</td>`;
 
       const tbody = document.getElementById('est-table');
       tbody.innerHTML = dados.length
@@ -9591,13 +10019,16 @@
               <div class="est-cobertura-fill" style="width:${barPct(g.dias)}%;background:${barCor(g.tipo)}"></div>
             </div>
           </td>
-          <td style="text-align:center;font-family:var(--font-display);font-size:16px;font-weight:600;color:${g.est === 0 ? 'var(--red)' : g.est <= 5 ? 'var(--amber)' : 'var(--cream)'}">${g.est.toLocaleString('pt-BR')}</td>
+          ${celEst(g.fis.proprio, 'font-family:var(--font-display);font-size:16px;font-weight:600;color:' + (g.fis.proprio === 0 ? 'var(--red)' : g.fis.proprio !== null && g.fis.proprio <= 5 ? 'var(--amber)' : 'var(--cream)'), g.fis)}
+          ${celEst(g.fis.mlFull, 'font-size:13px;color:var(--cream)', g.fis)}
+          ${celEst(g.fis.amazonFba, 'font-size:13px;color:var(--cream)', g.fis)}
+          ${celEst(g.fis.totalFisico, 'font-size:14px;font-weight:600;color:var(--gold-light)', g.fis)}
           <td style="text-align:center;font-size:13px;color:var(--muted)">${g.vel > 0 ? g.vel + ' un/dia' : '-'}</td>
           <td style="text-align:center;font-size:13px;color:${g.tipo === 'ruptura' ? 'var(--red)' : g.tipo === 'alerta' ? 'var(--amber)' : 'var(--muted)'}">${fmtData(g.dias)}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(g.preco)}</span></td>
         </tr>`;
         }).join('')
-        : `<tr><td colspan="6"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
+        : `<tr><td colspan="9"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
     }
 
 
@@ -9785,17 +10216,21 @@
      * Onda D: faixa de KPIs da aba Pedidos. Duas fontes possiveis, NUNCA as
      * duas: se o historico ja esta em memoria, calcula local (comportamento
      * original, intocado); senao usa os agregados do backend, que aplicam as
-     * mesmas regras. O contador de CANCELADOS nao vem do agregado — o snapshot
-     * de ativos nao garante cobertura de cancelados — e fica em "—" ate
-     * garantirCancelados() concluir.
+     * mesmas regras. O contador de CANCELADOS (FASE A5) e o do periodo global,
+     * pela definicao unica cancelamentoOperacional — o mesmo numero com ou sem
+     * historico de outra aba; "—" enquanto a populacao nao estiver disponivel.
      */
     function renderPedidosKPIs() {
       const fmtK = v => 'R$\u00a0' + (v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
 
-      const cancelTxt = (_cancelLoadState === "loaded")
-        ? String(allCancelledOrders.length)
-        : MOD_PLACEHOLDER;
+      const _gCanc = gdrGet();
+      const _canc = cancelamentoOperacional(_gCanc.from, _gCanc.toEfetivo);
+      const cancelTxt = _canc.disponivel ? _canc.cancelados.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
+      const _cancEl = document.getElementById('ord-cancel');
+      if (_cancEl) _cancEl.title = _canc.disponivel
+        ? _canc.cancelados + ' cancelados em ' + _canc.pedidos + ' pedidos do per\u00edodo'
+        : textoCancelamentoIndisponivel(_canc.motivo);
 
       if (!pedidosEmMemoria()) {
         const j = _metrics && _metrics.janelas;
@@ -9819,6 +10254,7 @@
       }
 
       renderPedidosKPIsLocal();
+      set('ord-cancel', cancelTxt);
     }
 
     function renderPedidos() {
@@ -9875,13 +10311,13 @@
       let hojVal = 0, hojCnt = 0;
       let mesVal = 0, mesCnt = 0;
       let semVal = 0, semCnt = 0;
-      let cancelCnt = 0, totalPago = 0, cntPago = 0;
+      let totalPago = 0, cntPago = 0;
 
       allOrders.forEach(o => {
         const dia = ymdBRT(o.date_created);  // dia do pedido em BRT
         const m = dia.slice(0, 7);
         const val = o.paid_amount || 0;
-        if (pedidoForaDaVenda(o)) { if (pedidoCancelado(o)) cancelCnt++; return; }
+        if (pedidoForaDaVenda(o)) return;
         if (pedidoPago(o)) {
           totalPago += val; cntPago++;
           if (dia === hoje) { hojVal += val; hojCnt++; }
@@ -9898,7 +10334,6 @@
       document.getElementById('ord-sem-val').textContent = fmt(semVal);
       document.getElementById('ord-sem-cnt').textContent = semCnt;
       document.getElementById('ord-ticket').textContent = fmt(cntPago > 0 ? totalPago / cntPago : 0);
-      document.getElementById('ord-cancel').textContent = cancelCnt;
     }
 
     // Onda F: markup de UMA linha da tabela de Pedidos. Extraido de
@@ -9952,7 +10387,7 @@
 
     function updateOrdFiltroCard() {
       const orders = getFilteredOrders();
-      // O card diz "pedidos pagos" — contar somente pagos (nao pendentes, nao cancelados)
+      // O card diz "pedidos considerados venda" — contar so vendas (contaComoVenda: nao pendentes, nao cancelados)
       const pagos = orders.filter(o => pedidoPago(o));
       const fat = pagos.reduce((s, o) => s + (o.paid_amount || o.total_amount || 0), 0);
       const card = document.getElementById('ord-filtro-card');
@@ -10550,8 +10985,8 @@
      * Vendas de cada produto (SKU) no PERIODO GLOBAL. Pura.
      * Mesmos criterios das abas Pedidos e Analise de Preco: data do pedido
      * (date_created) dentro de [inicio, fim] em BRT, via dentroDoPeriodo;
-     * so pedidos pagos (pedidoPago — cancelado, devolvido e pendente ficam
-     * fora; partially_refunded tambem, como nas outras abas). Cada item do
+     * so vendas (pedidoPago = contaComoVenda: cancelado e pendente ficam
+     * fora; partially_refunded ENTRA, como nas outras abas). Cada item do
      * pedido conta (nao so o primeiro); valor = unit_price x quantity, o
      * preco realmente cobrado por unidade, sem frete. Um pedido conta UMA vez
      * por produto, mesmo com dois anuncios do mesmo produto no carrinho.
@@ -10596,10 +11031,10 @@
       const vendas = consVendasDoPeriodo(allOrders, skuDoItem, _g.fromDate, _g.toDate);
 
       return Object.values(grupos).map(g => {
-        // Estoque total real = proprio (somado por anuncio) + Full (dedup por inventory_id).
-        // Evita duplicar quando 2 anuncios do mesmo produto compartilham saldo Full.
+        // Estoque fisico (FASE A6): proprio unico + Full + FBA (estoqueFisicoDoGrupo).
+        // null = nao afirmado (compartilhamento nao confirmado ou componente nao informado).
         const _est = estoqueDoGrupo(g.items);
-        const estTotal = _est.confirmado ? _est.valor : 0;
+        const estTotal = _est.valor;
         const v = vendas[g.sku];
         const vendasTotal = v ? v.unidades : 0;
         const pedidosCnt = v ? v.pedidos.size : 0;
@@ -10619,6 +11054,7 @@
           estTotal, vendasTotal, pedidosCnt, precoMedio,
           precoMedioVendido, qtdVendida,
           estConfirmado: _est.confirmado, estPorAnuncio: _est.porAnuncio,
+          estParcial: _est.valor === null && _est.confirmado ? _est.parcial : null, estPendencias: _est.pendencias || [],
         };
       }).sort((a, b) => b.pedidosCnt - a.pedidosCnt || b.vendasTotal - a.vendasTotal);
     }
@@ -10660,7 +11096,9 @@
           <td style="text-align:center">${d.anuncios}</td>
           ${d.estConfirmado === false
               ? `<td style="text-align:center;font-size:12px;color:var(--cream)" data-estoque="nao-confirmado" title="O Mercado Livre n\u00e3o informa v\u00ednculo de estoque entre estes an\u00fancios: os saldos n\u00e3o foram somados nem deduplicados.">${textoEstoqueNaoConfirmado(d.estPorAnuncio)}<div style="font-size:10px;color:var(--muted)">compartilhamento n\u00e3o confirmado</div></td>`
-              : `<td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal > 0 ? d.estTotal.toLocaleString('pt-BR') : '-'}</td>`}
+              : d.estTotal === null
+                ? `<td style="text-align:center;color:var(--cream)" data-estoque="parcial">${d.estParcial.toLocaleString('pt-BR')}<div style="font-size:10px;color:var(--muted)">parcial \u00b7 ${escHtml(d.estPendencias.map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', '))}</div></td>`
+                : `<td style="text-align:center;font-weight:600;color:${d.estTotal > 0 ? 'var(--gold-light)' : 'var(--muted)'}">${d.estTotal.toLocaleString('pt-BR')}</td>`}
           <td style="text-align:center">${historico ? d.vendasTotal.toLocaleString('pt-BR') : '<span style="color:var(--muted)">...</span>'}</td>
           <td style="text-align:center;color:${d.pedidosCnt > 0 ? 'var(--gold)' : 'var(--muted)'};font-weight:${d.pedidosCnt > 0 ? '600' : '400'}">${historico ? d.pedidosCnt.toLocaleString('pt-BR') : '...'}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(d.precoMedio)}</span></td>
@@ -10758,9 +11196,93 @@
     const CANCEL_CODE_LABELS = { pack_splitted: 'Pack dividido pelo ML', pack_creation_error: 'Erro ao criar pack', shipment_not_delivered: 'Entrega nao realizada', shipment_operative_issue: 'Problema operacional de envio', buyer_cancel_express: 'Comprador cancelou (express)', feedback_out_of_stock: 'Sem estoque (vendedor)', mediations: 'Mediacao aberta' };
     const CANCEL_COLORS = { internal: '#C9A96E', shipment: '#E8A84A', buyer: '#9A8E94', seller: '#E05252', mediations: '#9B3A4A' };
 
-    function buildCancelMotivos() {
+    /**
+     * FASE A5 — por que a lista de cancelados do ML (sob demanda) ainda nao
+     * cobre o periodo que comeca em fromYmd; null quando cobre.
+     */
+    function motivoCoberturaCancelados(fromYmd) {
+      if (_cancelLoadState !== 'loading' && _cancelCobertura && _cancelCobertura.ok === false) return 'cancelados_indisponiveis';
+      if (_cancelLoadState !== 'loaded' || !_cancelCobertura || _cancelCobertura.ok !== true) return 'carregando_cancelados';
+      if (_cancelCobertura.limiteYmd !== null && !(_cancelCobertura.limiteYmd < fromYmd)) return 'cancelados_incompletos_no_periodo';
+      return null;
+    }
+
+    /**
+     * FASE A5 — taxa de cancelamento OPERACIONAL de [fromYmd, toYmd]. Uma
+     * definicao so, para a aba Cancelamentos e para a aba Pedidos.
+     *
+     *   populacao   = pedidos com data no periodo, cada id uma vez:
+     *                 - ML nao cancelado: historico (allOrders);
+     *                 - ML cancelado: lista dedicada do proxy (allCancelledOrders)
+     *                   — o snapshot de ativos NAO garante os cancelados; o
+     *                   mesmo id na lista prevalece como cancelado;
+     *                 - Amazon, qualquer status: historico (a leitura da Amazon
+     *                   traz todos, inclusive amazon:cancelled).
+     *   numerador   = pedidoCancelado (ML 'cancelled', Amazon 'amazon:cancelled');
+     *   denominador = TODOS os pedidos da populacao, cancelados inclusive —
+     *                 nao so as vendas.
+     *
+     * So e disponivel com historico completo em memoria, snapshot nao parcial
+     * e, havendo ML, lista de cancelados carregada sem falha e cobrindo o
+     * periodo (ate 500 por conta: se o 500o for do periodo, faltam cancelados).
+     * Zero cancelado = 0%. Periodo sem pedido nenhum: taxa null ("sem pedidos")
+     * — nao ha operacao para medir. Reputacao do ML NAO entra aqui.
+     * opcoes.canal === 'ml': so Mercado Livre (a aba Cancelamentos e so ML).
+     */
+    function cancelamentoOperacional(fromYmd, toYmd, opcoes) {
+      const soML = !!(opcoes && opcoes.canal === 'ml');
+      const indisponivel = motivo => ({ disponivel: false, cancelados: null, pedidos: null, taxa: null, fonte: null, periodoExato: false, motivo });
+      if (!pedidosEmMemoria()) return indisponivel('aguarda_historico');
+      if (_ultimoPartial) return indisponivel('historico_parcial');
+      const comML = soML || selecaoTemMercadoLivre();
+      if (comML) {
+        const m = motivoCoberturaCancelados(fromYmd);
+        if (m !== null) return indisponivel(m);
+      }
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      const populacao = new Map();
+      const incluir = o => {
+        if (!o || o.id == null || !dentroDoPeriodo(o.date_created, ini, fim)) return;
+        const amz = pedidoAmazon(o);
+        if (soML && amz) return;
+        populacao.set((amz ? 'amz:' : 'ml:') + o.id, o);
+      };
+      allOrders.forEach(incluir);
+      if (comML) allCancelledOrders.forEach(incluir);
+      let cancelados = 0;
+      populacao.forEach(o => { if (pedidoCancelado(o)) cancelados++; });
+      const pedidos = populacao.size;
+      return {
+        disponivel: true, cancelados, pedidos,
+        taxa: pedidos > 0 ? cancelados / pedidos : null,
+        fonte: comML ? 'historico+cancelados_ml' : 'historico',
+        periodoExato: true,
+        motivo: pedidos > 0 ? null : 'sem_pedidos',
+      };
+    }
+
+    /** Motivo de indisponibilidade em poucas palavras. */
+    function textoCancelamentoIndisponivel(motivo) {
+      return ({
+        aguarda_historico: 'aguardando histórico de pedidos',
+        historico_parcial: 'histórico de pedidos parcial (sincronizando)',
+        carregando_cancelados: 'carregando cancelados...',
+        cancelados_indisponiveis: 'cancelados ' + INDISPONIVEL + ' (a consulta falhou)',
+        cancelados_incompletos_no_periodo: 'período além dos 500 cancelados mais recentes',
+        sem_pedidos: 'sem pedidos no período',
+      })[motivo] || INDISPONIVEL;
+    }
+
+    /** Cancelados do ML (lista sob demanda) com data no periodo. */
+    function canceladosMLDoPeriodo(fromYmd, toYmd) {
+      const ini = brtStartOfDay(fromYmd), fim = brtEndOfDay(toYmd);
+      return allCancelledOrders.filter(o => dentroDoPeriodo(o.date_created, ini, fim));
+    }
+    let _cancListaPeriodo = []; // diagnosticos da aba: cancelados ML do periodo
+
+    function buildCancelMotivos(lista) {
       const motivos = {};
-      allCancelledOrders.forEach(o => {
+      lista.forEach(o => {
         const group = o.cancel_detail?.group || 'desconhecido';
         const code = o.cancel_detail?.code || 'sem_detalhe';
         const desc = CANCEL_CODE_LABELS[code] || o.cancel_detail?.description || 'Sem descricao';
@@ -10773,30 +11295,42 @@
     }
 
     function renderCancelamentos() {
-      const total = allCancelledOrders.length;
+      const g = gdrGet();
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+      // Taxa operacional (FASE A5): uma definicao, mesma janela e populacao.
+      // Sem populacao disponivel: "—" e o motivo, nunca 100% nem 0%.
+      const op = cancelamentoOperacional(g.from, g.toEfetivo, { canal: 'ml' });
+      set('canc-total', op.disponivel ? op.cancelados.toLocaleString('pt-BR') : MOD_PLACEHOLDER);
+      set('canc-grand-total', op.disponivel ? op.pedidos.toLocaleString('pt-BR') : MOD_PLACEHOLDER);
+      set('canc-taxa', op.disponivel && op.taxa !== null ? (op.taxa * 100).toFixed(1) + '%' : MOD_PLACEHOLDER);
+      set('canc-taxa-sub', op.disponivel && op.taxa !== null ? 'sobre todos os pedidos do período' : textoCancelamentoIndisponivel(op.motivo));
+
+      // Diagnosticos (valor, responsabilidade, motivos, lista): os cancelados do
+      // ML do MESMO periodo, so quando a lista cobre o periodo.
+      const motivoLista = motivoCoberturaCancelados(g.from);
+      _cancListaPeriodo = motivoLista === null ? canceladosMLDoPeriodo(g.from, g.toEfetivo) : [];
+      const total = _cancListaPeriodo.length;
       if (!total) {
-        ['canc-total', 'canc-taxa', 'canc-valor', 'canc-seller', 'canc-externo'].forEach(id => document.getElementById(id).textContent = '0');
-        document.getElementById('canc-grand-total').textContent = allOrders.length || '-';
-        document.getElementById('canc-donut-wrap').innerHTML = '<div class="empty-state"><p>Sem cancelamentos</p></div>';
-        document.getElementById('canc-insights').innerHTML = '<div class="insight-box ok"><div class="insight-title">Sem cancelamentos no periodo</div><div class="insight-text">Nenhum pedido cancelado encontrado.</div></div>';
+        ['canc-valor', 'canc-seller', 'canc-externo'].forEach(id => set(id, motivoLista === null ? '0' : MOD_PLACEHOLDER));
+        const msg = motivoLista === null ? 'Sem cancelamentos no periodo' : textoCancelamentoIndisponivel(motivoLista);
+        document.getElementById('canc-donut-wrap').innerHTML = '<div class="empty-state"><p>' + escHtml(msg) + '</p></div>';
+        document.getElementById('canc-insights').innerHTML = motivoLista === null
+          ? '<div class="insight-box ok"><div class="insight-title">Sem cancelamentos no periodo</div><div class="insight-text">Nenhum pedido cancelado encontrado.</div></div>'
+          : '';
         document.getElementById('canc-motivos-table').innerHTML = '';
-        document.getElementById('canc-orders-table').innerHTML = '';
+        renderCancOrdersTable();
         return;
       }
-      const grandTotal = total + allOrders.filter(o => pedidoPago(o)).length;
-      const taxa = total / (grandTotal || 1) * 100;
-      const valorTotal = allCancelledOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
-      const sellerCount = allCancelledOrders.filter(o => o.cancel_detail?.group === 'seller').length;
+      const valorTotal = _cancListaPeriodo.reduce((s, o) => s + (o.total_amount || 0), 0);
+      const sellerCount = _cancListaPeriodo.filter(o => o.cancel_detail?.group === 'seller').length;
       const externoCount = total - sellerCount;
-      document.getElementById('canc-total').textContent = total;
-      document.getElementById('canc-grand-total').textContent = grandTotal.toLocaleString('pt-BR');
-      document.getElementById('canc-taxa').textContent = taxa.toFixed(1) + '%';
-      document.getElementById('canc-valor').textContent = 'R$\u00a0' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      document.getElementById('canc-valor').textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       document.getElementById('canc-seller').textContent = sellerCount;
       document.getElementById('canc-externo').textContent = externoCount;
-      const motivos = buildCancelMotivos();
+      const motivos = buildCancelMotivos(_cancListaPeriodo);
       renderCancelDonut(motivos, total);
-      renderCancelInsights(motivos, total, taxa);
+      renderCancelInsights(motivos, total, op.disponivel ? op.taxa : null);
       document.getElementById('canc-motivos-meta').textContent = `${motivos.length} motivos distintos`;
       document.getElementById('canc-motivos-table').innerHTML = motivos.map(m => {
         const pct = Math.round(m.count / total * 100);
@@ -10846,13 +11380,13 @@
       const sellerCount = motivos.filter(m => m.group === 'seller').reduce((s, m) => s + m.count, 0);
       const externoCount = total - sellerCount;
       if (externoCount > sellerCount) insights.push({ type: 'ok', title: `${Math.round(externoCount / total * 100)}% dos cancelamentos estao fora do seu controle`, text: 'A maioria dos cancelos foi gerada pelo proprio ML ou por problemas de envio. Isso nao afeta diretamente sua reputacao como vendedor. Foque nos cancelamentos do grupo Vendedor.' });
-      if (!insights.length) insights.push({ type: 'ok', title: 'Volume de cancelamentos dentro do esperado', text: `Taxa de ${taxa.toFixed(1)}% esta dentro de parametros normais para o ML.` });
+      if (!insights.length) insights.push({ type: 'ok', title: 'Volume de cancelamentos dentro do esperado', text: taxa === null ? 'Taxa do periodo indisponivel: so os motivos foram avaliados.' : `Taxa de ${(taxa * 100).toFixed(1)}% esta dentro de parametros normais para o ML.` });
       el.innerHTML = insights.map(ins => `<div class="insight-box ${ins.type}"><div class="insight-title">${ins.title}</div><div class="insight-text">${ins.text}</div></div>`).join('');
     }
 
     function getFilteredCancOrders() {
-      if (cancFilter === 'all') return allCancelledOrders;
-      return allCancelledOrders.filter(o => (o.cancel_detail?.group || 'desconhecido') === cancFilter);
+      if (cancFilter === 'all') return _cancListaPeriodo;
+      return _cancListaPeriodo.filter(o => (o.cancel_detail?.group || 'desconhecido') === cancFilter);
     }
 
     function setCancFilter(f, btn) {
@@ -12151,7 +12685,7 @@
       apRender();
     }
 
-    // Coleta as vendas reais (pagas) do produto selecionado dentro do periodo
+    // Coleta as vendas reais (contaComoVenda) do produto selecionado dentro do periodo
     function apColetarVendas() {
       const sku = document.getElementById('ap-produto').value;
       if (!sku) return [];
@@ -12165,7 +12699,7 @@
       const vistos = new Set(); // evita duplicar o mesmo order_item do mesmo pedido
 
       allOrders.forEach(o => {
-        if (!pedidoPago(o)) return;                       // somente pagas
+        if (!pedidoPago(o)) return;                       // somente vendas
         if (!dentroDoPeriodo(o.date_created, ini, fim)) return; // respeita periodo BRT
         (o.order_items || []).forEach((oi, idx) => {
           const itemId = oi.item?.id;
@@ -12212,7 +12746,7 @@
       if (!_apVendas.length) {
         empty.style.display = 'block';
         empty.querySelector('.empty-state').innerHTML =
-          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas pagas em ' + escHtml(gdrGet().label) + '. Ajuste o periodo global, no topo.</span>';
+          '<p>Nenhuma venda no periodo</p><span>Esse produto nao teve vendas em ' + escHtml(gdrGet().label) + '. Ajuste o periodo global, no topo.</span>';
         cont.style.display = 'none';
         return;
       }
@@ -12420,7 +12954,7 @@
     // ABA: PREVISAO DE VENDAS
     // ══════════════════════════════════════
     // Fonte de dados: allOrders (pedidos reais do ML). Vendas diarias calculadas
-    // automaticamente — soma de pedidos pagos por dia. ZERO input manual de vendas.
+    // automaticamente — soma das vendas por dia. ZERO input manual de vendas.
     // Unico campo configuravel: a meta mensal. Mes/ano apenas filtram o periodo.
 
     let _pvInited = false;
@@ -12431,12 +12965,12 @@
       return 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
     }
 
-    // Agrupa pedidos pagos por dia (1..N) do PERIODO GLOBAL. Fonte: allOrders.
+    // Agrupa vendas (contaComoVenda) por dia (1..N) do PERIODO GLOBAL. Fonte: allOrders.
     // O indice 1 e o primeiro dia do periodo; `datas[d]` da o "YYYY-MM-DD".
     function pvGroupByDay(fromYmd, toYmd) {
       const porDia = {}; // indice do dia no periodo -> total
       (allOrders || []).forEach(o => {
-        if (!pedidoPago(o)) return;                 // somente pagos
+        if (!pedidoPago(o)) return;                 // somente vendas
         const ymd = ymdBRT(o.date_created);              // "YYYY-MM-DD" BRT
         if (!ymd || ymd < fromYmd || ymd > toYmd) return; // so o periodo global
         const d = gdrDiasEntre(fromYmd, ymd);
@@ -12545,6 +13079,20 @@
       document.getElementById('pv-c-periodo').textContent = c.label;
       document.getElementById('pv-c-diasrest').textContent = c.ehFuturo ? 'periodo futuro'
         : `${c.diasRestantes} dias restantes de ${c.diasDoMes}`;
+
+      // FASE A9: vendido, media e projecao vem do historico. Antes dele chegar,
+      // placeholder — nunca R$ 0 (comHistorico re-renderiza quando carregar).
+      if (!pedidosEmMemoria()) {
+        ['pv-c-vendido', 'pv-c-media', 'pv-c-proj'].forEach(id => { document.getElementById(id).textContent = MOD_PLACEHOLDER; });
+        ['pv-c-pct', 'pv-c-dia', 'pv-c-ideal', 'pv-c-necessaria', 'pv-c-difproj'].forEach(id => { document.getElementById(id).textContent = ''; });
+        document.getElementById('pv-c-pct').textContent = 'carregando hist\u00f3rico de pedidos...';
+        document.getElementById('pv-c-barra').style.width = '0%';
+        document.getElementById('pv-c-status').innerHTML = '';
+        document.getElementById('pv-alerta').innerHTML = '';
+        document.getElementById('pv-chart').innerHTML = '<div class="empty-state"><p>Carregando hist\u00f3rico de pedidos...</p></div>';
+        document.getElementById('pv-tabela').innerHTML = '';
+        return;
+      }
 
       document.getElementById('pv-c-vendido').textContent = pvFmtBRL(c.vendidoAcumulado);
       document.getElementById('pv-c-pct').textContent = `${c.percentualConcluido.toFixed(1)}% da meta`;
@@ -12810,7 +13358,7 @@
     // ABA: GIRO DE ESTOQUE (Analytics ML)
     // ══════════════════════════════════════
     // Tudo automatico: estoque vem de allItems (consolidado/deduplicado por SKU),
-    // vendas vem de allOrders (pagas) mapeadas por SKU. Meta semanal = estoque/semanas.
+    // vendas vem de allOrders (contaComoVenda) mapeadas por SKU. Meta semanal = estoque/semanas.
     // Sem input manual por produto. Configuravel: ciclo (datas) e semanas padrao.
 
     let _grInited = false;
@@ -12827,8 +13375,13 @@
       return Math.max(0, ms / (7 * 86400000));
     }
 
-    // Estoque consolidado por SKU (reusa itemSKU + consolidarEstoqueGrupo: dedup correto)
+    // Estoque FISICO por SKU (FASE A7): a definicao unica da A6,
+    // estoqueFisicoDoGrupo, sobre TODOS os anuncios do SKU (ativos e pausados).
+    // As linhas continuam sendo os SKUs com anuncio ativo. Total incompleto:
+    // estoque null — sem meta de giro e sem status.
     function grEstoquePorSku() {
+      const fisicosPorSku = {};
+      allItems.forEach(i => { const k = itemSKU(i); (fisicosPorSku[k] = fisicosPorSku[k] || []).push(i); });
       const grupos = {};
       allItems.forEach(i => {
         if (i.status !== 'active') return;
@@ -12839,11 +13392,12 @@
       });
       const out = {};
       Object.values(grupos).forEach(g => {
-        const c = consolidarEstoqueGrupo(g.items);
+        const f = estoqueFisicoDoGrupo(fisicosPorSku[g.sku] || g.items);
         out[g.sku] = {
           sku: g.sku,
           label: g.label,
-          estoque: c.proprio + c.full + c.fba,
+          estoque: f.completo ? f.totalFisico : null,
+          estoquePendencias: f.pendencias,
           categoria: grCategoria(g.label),
         };
       });
@@ -12860,7 +13414,7 @@
       return 'Outro';
     }
 
-    // Vendas por SKU dentro do ciclo: total + por semana. Fonte: allOrders pagos.
+    // Vendas por SKU dentro do ciclo: total + por semana. Fonte: allOrders (contaComoVenda).
     function grVendasPorSku(ini, fim) {
       const skuMap = apItemSkuMap(); // item_id -> sku (reuso)
       const out = {}; // sku -> { totalQty, totalRev, porSemana: {semana: qtd} }
@@ -12922,22 +13476,23 @@
       const linhas = Object.values(estoqueMap).map(p => {
         const v = vendasMap[p.sku] || { totalQty: 0, totalRev: 0, porSemana: {} };
         const semanasSku = grSemanasDoSku(p.sku, semanasPadrao);
-        const metaSemanal = semanasSku > 0 ? p.estoque / semanasSku : 0;
+        const temEstoque = p.estoque !== null;
+        const metaSemanal = !temEstoque ? null : (semanasSku > 0 ? p.estoque / semanasSku : 0);
         const mediaReal = semanasDecorridas > 0 ? v.totalQty / semanasDecorridas : 0;
-        const diferenca = mediaReal - metaSemanal;
-        const status = grStatus(mediaReal, metaSemanal);
+        const diferenca = temEstoque ? mediaReal - metaSemanal : null;
+        const status = temEstoque ? grStatus(mediaReal, metaSemanal) : 'parcial';
         const projecaoFinal = mediaReal * semanasSku;
         return {
           ...p, semanasSku, metaSemanal, mediaReal, diferenca, status,
           vendido: v.totalQty, receita: v.totalRev, porSemana: v.porSemana,
-          projecaoFinal, diferencaProjetada: projecaoFinal - p.estoque,
+          projecaoFinal, diferencaProjetada: temEstoque ? projecaoFinal - p.estoque : null,
           semanasDecorridas,
         };
       });
 
       // ordenar: sem giro e abaixo primeiro (prioridade operacional)
-      const ord = { abaixo: 0, semgiro: 1, noritmo: 2, acima: 3 };
-      linhas.sort((a, b) => (ord[a.status] - ord[b.status]) || b.estoque - a.estoque);
+      const ord = { abaixo: 0, semgiro: 1, noritmo: 2, acima: 3, parcial: 4 };
+      linhas.sort((a, b) => (ord[a.status] - ord[b.status]) || ((b.estoque === null ? -1 : b.estoque) - (a.estoque === null ? -1 : a.estoque)));
       return { linhas, semanasPadrao, semanasDecorridas, ini, fim };
     }
 
@@ -13255,26 +13810,36 @@
             escHtml(SELECAO.map(contaNome).join(' + ')) + '. A configura\u00e7\u00e3o da Overwine n\u00e3o \u00e9 aplicada a outra empresa.');
         }
         ['gr-c-meta'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = htmlIndisponivel('cobertura alvo n\u00e3o informada'); });
-        const est = grEstoquePorSku();
-        const tot = Object.values(est).reduce((s2, x) => s2 + (x.estoque || 0), 0);
-        const ce = document.getElementById('gr-c-estoque'); if (ce) ce.textContent = Math.round(tot).toLocaleString('pt-BR');
+        const est = Object.values(grEstoquePorSku());
+        const ce = document.getElementById('gr-c-estoque');
+        if (ce) grCardEstoque(ce, est);
         ['gr-c-vendido', 'gr-c-giro'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '-'; });
         _grLinhas = [];
         renderGiroTabela();
         return;
       }
       if (_avisoGiro) _avisoGiro.style.display = 'none';
+      // FASE A9: vendas do ciclo vem do historico. Antes dele chegar, nada de
+      // "0 vendido" nem SKU "Sem giro": placeholder ate comHistorico re-renderizar.
+      if (!pedidosEmMemoria()) {
+        const ce = document.getElementById('gr-c-estoque');
+        if (ce) grCardEstoque(ce, Object.values(grEstoquePorSku()));
+        ['gr-c-vendido', 'gr-c-meta', 'gr-c-giro'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = MOD_PLACEHOLDER; });
+        _grLinhas = [];
+        const tb = document.getElementById('gr-tabela');
+        if (tb) tb.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>Carregando hist\u00f3rico de pedidos...</p></div></td></tr>';
+        return;
+      }
       const { linhas, semanasPadrao, semanasDecorridas } = grBuildData();
 
-      // Cards
-      const estoqueTotal = linhas.reduce((s, l) => s + l.estoque, 0);
+      // Cards. Estoque fisico incompleto em algum SKU: o total nao e afirmado.
+      const estoqueTotal = grCardEstoque(document.getElementById('gr-c-estoque'), linhas);
       const vendidoTotal = linhas.reduce((s, l) => s + l.vendido, 0);
-      const metaSemanalGeral = semanasPadrao > 0 ? estoqueTotal / semanasPadrao : 0;
+      const metaSemanalGeral = (estoqueTotal !== null && semanasPadrao > 0) ? estoqueTotal / semanasPadrao : (estoqueTotal === null ? null : 0);
       const skusComGiro = linhas.filter(l => l.vendido > 0).length;
 
-      document.getElementById('gr-c-estoque').textContent = Math.round(estoqueTotal).toLocaleString('pt-BR');
       document.getElementById('gr-c-vendido').textContent = Math.round(vendidoTotal).toLocaleString('pt-BR');
-      document.getElementById('gr-c-meta').textContent = Math.round(metaSemanalGeral).toLocaleString('pt-BR');
+      document.getElementById('gr-c-meta').textContent = metaSemanalGeral === null ? MOD_PLACEHOLDER : Math.round(metaSemanalGeral).toLocaleString('pt-BR');
       document.getElementById('gr-c-giro').textContent = `${skusComGiro} / ${linhas.length}`;
 
       _grLinhas = linhas;
@@ -13288,6 +13853,21 @@
     }
 
     let _grLinhas = [];
+
+    /**
+     * Card de estoque do Giro: soma do estoque fisico dos SKUs. Se algum SKU
+     * tem total incompleto, nao afirma total: "—" e a contagem no title.
+     * Devolve a soma, ou null.
+     */
+    function grCardEstoque(el, linhas) {
+      const parciais = linhas.filter(l => l.estoque === null).length;
+      const soma = linhas.reduce((s, l) => s + (l.estoque === null ? 0 : l.estoque), 0);
+      if (el) {
+        el.textContent = parciais ? MOD_PLACEHOLDER : Math.round(soma).toLocaleString('pt-BR');
+        el.title = parciais ? parciais + ' produto' + (parciais !== 1 ? 's' : '') + ' com estoque f\u00edsico incompleto' : '';
+      }
+      return parciais ? null : soma;
+    }
 
     function renderGiroTabela() {
       const q = (document.getElementById('gr-search')?.value || '').toLowerCase();
@@ -13303,6 +13883,7 @@
         abaixo: '<span class="badge" style="border-color:rgba(224,82,82,0.4);color:var(--red)">Abaixo</span>',
         noritmo: '<span class="badge paused">No ritmo</span>',
         acima: '<span class="badge active">Acima</span>',
+        parcial: '<span class="badge closed" title="Estoque f\u00edsico incompleto: sem meta de giro">Estoque parcial</span>',
       }[st] || st);
 
       const tbody = document.getElementById('gr-tabela');
@@ -13324,7 +13905,7 @@
           </div>
         </div>
       </td>
-      <td style="text-align:right">${Math.round(l.estoque).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${l.estoque === null ? MOD_PLACEHOLDER : Math.round(l.estoque).toLocaleString('pt-BR')}</td>
       <td style="text-align:center" onclick="event.stopPropagation()">
         <input type="number" min="1" step="1" value="${l.semanasSku}"
           onchange="grSetSemanas('${escHtml(l.sku)}', this.value)"
@@ -13346,8 +13927,10 @@
 
     function renderGiroPainel(l) {
       const el = document.getElementById('gr-painel');
-      const statusLabel = { semgiro: 'Sem giro', abaixo: 'Abaixo', noritmo: 'No ritmo', acima: 'Acima' }[l.status] || l.status;
-      const statusCor = { semgiro: 'var(--muted)', abaixo: 'var(--red)', noritmo: 'var(--amber)', acima: 'var(--green)' }[l.status];
+      const statusLabel = { semgiro: 'Sem giro', abaixo: 'Abaixo', noritmo: 'No ritmo', acima: 'Acima', parcial: 'Estoque parcial' }[l.status] || l.status;
+      const statusCor = { semgiro: 'var(--muted)', abaixo: 'var(--red)', noritmo: 'var(--amber)', acima: 'var(--green)', parcial: 'var(--muted)' }[l.status];
+      const temEstoque = l.estoque !== null;
+      const pendTxt = (l.estoquePendencias || []).map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', ');
 
       el.innerHTML = `
     <div style="margin-bottom:16px">
@@ -13355,9 +13938,9 @@
       <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-top:3px">SKU: ${escHtml(l.sku)} · ${l.categoria}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${grMetric('Estoque', Math.round(l.estoque).toLocaleString('pt-BR') + ' un')}
+      ${grMetric('Estoque', temEstoque ? Math.round(l.estoque).toLocaleString('pt-BR') + ' un' : MOD_PLACEHOLDER)}
       ${grMetric('Vendido no ciclo', l.vendido + ' un')}
-      ${grMetric('Meta semanal', l.metaSemanal.toFixed(1) + ' un')}
+      ${grMetric('Meta semanal', temEstoque ? l.metaSemanal.toFixed(1) + ' un' : MOD_PLACEHOLDER)}
       ${grMetric('Media real/sem', l.mediaReal.toFixed(1) + ' un')}
     </div>
     <div style="padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:14px">
@@ -13367,8 +13950,9 @@
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">
         Nesse ritmo, este SKU vende <strong style="color:var(--cream)">${Math.round(l.projecaoFinal).toLocaleString('pt-BR')} un</strong> no ciclo de ${l.semanasSku} semanas.
-        Meta de giro: <strong style="color:var(--cream)">${Math.round(l.estoque).toLocaleString('pt-BR')} un</strong>.
-        Diferenca projetada: <strong style="color:${l.diferencaProjetada >= 0 ? 'var(--green)' : 'var(--red)'}">${l.diferencaProjetada >= 0 ? '+' : ''}${Math.round(l.diferencaProjetada).toLocaleString('pt-BR')} un</strong>.
+        ${temEstoque ? `Meta de giro: <strong style="color:var(--cream)">${Math.round(l.estoque).toLocaleString('pt-BR')} un</strong>.
+        Diferenca projetada: <strong style="color:${l.diferencaProjetada >= 0 ? 'var(--green)' : 'var(--red)'}">${l.diferencaProjetada >= 0 ? '+' : ''}${Math.round(l.diferencaProjetada).toLocaleString('pt-BR')} un</strong>.`
+          : `Estoque f\u00edsico incompleto (${escHtml(pendTxt)}): sem meta de giro nem diferen\u00e7a projetada.`}
       </div>
     </div>
     <div id="gr-estimativa" style="margin-bottom:14px"></div>
@@ -13388,7 +13972,8 @@
     <div id="gr-sliders" style="margin-top:18px"></div>
   `;
       renderGiroEstimativa(l);
-      renderGiroCurva(l);
+      if (temEstoque) renderGiroCurva(l);
+      else { const c = document.getElementById('gr-curva'); if (c) c.innerHTML = '<div class="empty-state"><p>Curva indispon\u00edvel: estoque f\u00edsico incompleto</p></div>'; }
       if (_grRevAtual) renderGiroSazonal();
       renderGiroSliders();
     }
@@ -13975,7 +14560,9 @@
     function aiAvaliarPortfolio() {
       _aiPrecos = aiPrecoPorSku();
       const sazonalProxima = aiSazonalidadeProxima();
-      const itens = _grLinhas.map(l => ({ l, m: aiMetricas(l) }));
+      // FASE A7: ruptura, cobertura e reposicao so com estoque FISICO completo.
+      const itens = _grLinhas.filter(l => l.estoque !== null).map(l => ({ l, m: aiMetricas(l) }));
+      const foraPorEstoqueParcial = _grLinhas.length - itens.length;
 
       // 1a passada: fatos por produto
       itens.forEach(d => {
@@ -14028,7 +14615,7 @@
         excedenteTemCusto: itens.some(d => d.excedente.fonte === 'custo'),
       };
 
-      return { itens, coberturaMedia, excedenteTotal, resumo, sazonalProxima, ctx, recos };
+      return { itens, coberturaMedia, excedenteTotal, resumo, sazonalProxima, ctx, recos, foraPorEstoqueParcial };
     }
 
     // ══════════════════════════════════════
@@ -14615,9 +15202,10 @@
       const meta = document.getElementById('ai-recos-meta');
       const LIMITE = 12;
       const recos = av.recos.slice(0, LIMITE);
-      if (meta) meta.textContent = av.recos.length
+      const _fora = av.foraPorEstoqueParcial ? ` \u00b7 ${av.foraPorEstoqueParcial} SKU${av.foraPorEstoqueParcial !== 1 ? 's' : ''} fora (estoque f\u00edsico incompleto)` : '';
+      if (meta) meta.textContent = (av.recos.length
         ? `${av.recos.length} acoes identificadas · exibindo ${recos.length} por impacto (urgencia × valor × eixo) · cenario ${_aiCenario}`
-        : 'Portfolio completo analisado automaticamente';
+        : 'Portfolio completo analisado automaticamente') + _fora;
 
       if (!recos.length) {
         el.innerHTML = '<div class="empty-state" style="padding:32px 0"><p>Nenhuma acao prioritaria</p><span>Portfolio saudavel no cenario atual.</span></div>';
@@ -15479,8 +16067,7 @@
 
       // Sem dependencia do historico bruto.
       if (tab === 'tipoanuncio') renderTipoAnuncio();
-      if (tab === 'mlads') renderMLAds();
-      if (tab === 'cancelamentos') { renderCancelamentos(); garantirCancelados(); }
+      if (tab === 'cancelamentos') { comHistorico('Cancelamentos', renderCancelamentos); garantirCancelados(); }
       if (tab === 'posicionamento') posInit();
       if (tab === 'radar') radarInit();
       if (tab === 'relampago') rlUpdateRanges();
@@ -15529,7 +16116,10 @@
       const ind = htmlIndisponivel(motivo);
       const T = dados.totais || {};
 
-      document.getElementById('mg-bruto').textContent = fmt(T.receitaProdutos || 0);
+      // FASE A9: receita ausente na resposta = indisponivel, nunca R$ 0.
+      const _mgBrutoEl = document.getElementById('mg-bruto');
+      if (typeof T.receitaProdutos === 'number' && Number.isFinite(T.receitaProdutos)) _mgBrutoEl.textContent = fmt(T.receitaProdutos);
+      else _mgBrutoEl.innerHTML = ind;
       // Custo de PRODUTO nao existe em pedido nem em envio: precisa de cadastro.
       ['mg-custo', 'mg-margem'].forEach(id => {
         const el = document.getElementById(id); if (el) { el.innerHTML = ind; el.style.color = ''; }
@@ -15548,13 +16138,15 @@
         if (liqEl) { liqEl.innerHTML = htmlIndisponivel(textoCobertura(k && k.liquido, 'l\u00edquido', nv)); liqEl.style.color = ''; }
         if (liqPct) liqPct.textContent = textoCobertura(k && k.liquido, 'l\u00edquido', nv);
       }
-      const totPub = mgPubManual > 0 ? mgPubManual : ((adCostDisponivel && adCostTotal > 0) ? adCostTotal : 0);
+      // Publicidade (FASE A4): a mesma fonte e o mesmo periodo da Home.
+      const _gPub = gdrGet();
+      const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);
       const pubEl = document.getElementById('mg-pub');
-      if (pubEl) pubEl.innerHTML = totPub > 0 ? fmt(totPub) : ind;
+      if (pubEl) pubEl.innerHTML = _pub.disponivel ? fmt(_pub.custo) : ind;
       const pubPct = document.getElementById('mg-pub-pct');
-      if (pubPct) pubPct.textContent = totPub > 0
-        ? (mgPubManual > 0 ? 'inserido manualmente' : 'via API')
-        : (selecaoConsolidada() ? 'informe por empresa' : 'nao informado');
+      if (pubPct) pubPct.textContent = _pub.disponivel
+        ? rotuloFontePublicidade(_pub)
+        : textoPublicidadeIndisponivel(_pub.motivo);
 
       const varias = selecaoConsolidada();
       const catalogo = {};
@@ -15648,10 +16240,10 @@
         const totLiq = T.receitaLiquida;
         const totCusto = T.custoTotal;
 
-        // Publicidade continua sendo assunto da tela.
-        const _mgAds = getAdsDataParaPeriodo(Math.max(1, gdrGet().dias));
-        const totPub = mgPubManual > 0 ? mgPubManual :
-          (_mgAds.totalInvestimento > 0 ? _mgAds.totalInvestimento : (adCostTotal || 0));
+        // Publicidade (FASE A4): a mesma fonte e o mesmo periodo da Home.
+        // Sem fonte confiavel nada e descontado (0) e o card diz por que.
+        const _pub = publicidadeDoPeriodo(from, to);
+        const totPub = _pub.disponivel ? _pub.custo : 0;
         const totMargem = T.margem - totPub;
 
         const fmt = v => 'R$\u00a0' + Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -15659,10 +16251,15 @@
 
         document.getElementById('mg-bruto').textContent = fmt(totBruto);
         document.getElementById('mg-liq').textContent = fmt(totLiq);
-        document.getElementById('mg-liq-pct').textContent = pct(totLiq, totBruto) + ' do bruto';
-        const pubFonte = mgPubManual > 0 ? 'inserido manualmente' : adCostTotal > 0 ? 'via API' : 'nao informado';
-        document.getElementById('mg-pub').textContent = totPub > 0 ? fmt(totPub) : 'N/D';
-        document.getElementById('mg-pub-pct').textContent = totPub > 0 ? pct(totPub, totBruto) + ' do bruto · ' + pubFonte : pubFonte;
+        // FASE A3: totLiq (/margin receitaLiquida) cobre SO os produtos com custo
+        // cadastrado; dividi-lo pela receita de TODOS os produtos misturava bases.
+        // O subtitulo diz a cobertura: receitaComCusto / receitaProdutos.
+        document.getElementById('mg-liq-pct').textContent = typeof T.receitaComCusto === 'number' && totBruto > 0
+          ? 'produtos com custo: ' + pct(T.receitaComCusto, totBruto) + ' da receita'
+          : 'produtos com custo cadastrado';
+        const pubFonte = _pub.disponivel ? rotuloFontePublicidade(_pub) : textoPublicidadeIndisponivel(_pub.motivo);
+        document.getElementById('mg-pub').textContent = _pub.disponivel ? fmt(totPub) : 'N/D';
+        document.getElementById('mg-pub-pct').textContent = _pub.disponivel ? pct(totPub, totBruto) + ' do bruto · ' + pubFonte : pubFonte;
         document.getElementById('mg-custo').textContent = fmt(totCusto);
         document.getElementById('mg-margem').textContent = fmt(totMargem);
         document.getElementById('mg-margem-pct').textContent = pct(totMargem, totBruto) + ' do bruto';
@@ -16489,6 +17086,8 @@
         mladsRenderReport(data, file.name);
         mlAdsReports.push(data);
         mladsRenderHistory();
+        // So vira custo de publicidade se cobrir exatamente o periodo global.
+        renderKPIsPeriodo();
         showToast('Relatório carregado: ' + data.rows.length + ' anúncios', 'success');
       } catch (e) {
         showToast('Erro ao processar arquivo: ' + e.message, 'error');
@@ -16621,19 +17220,6 @@
       mladsRenderChartCampanhas(data);
       mladsRenderChartDias(data);
       mladsRenderTable(data);
-
-      // Atualizar ADS_DATA para uso na margem
-      if (data.totalInv > 0) {
-        ADS_DATA.totalInvestimento = data.totalInv;
-        ADS_DATA.periodo = { de: data.de, ate: data.ate };
-        ADS_DATA.porMLB = {};
-        data.rows.forEach(r => {
-          if (r.investimento > 0) {
-            ADS_DATA.porMLB[r.mlb] = (ADS_DATA.porMLB[r.mlb] || 0) + r.investimento;
-          }
-        });
-        showToast('Dados de publicidade atualizados na aba Margem Real', 'success');
-      }
     }
 
     function mladsRenderChartCampanhas(data) {
@@ -16780,26 +17366,6 @@
         <div style="font-family:var(--font-display);font-size:24px;color:var(--gold)">${fmt(mlAdsReports.reduce((s, d) => s + d.totalRec, 0))}</div>
       </div>
     </div>`;
-    }
-
-    function renderMLAds() {
-      // Se já tem relatório carregado (do ADS_DATA hardcoded), mostrar resumo automático
-      if (ADS_DATA?.totalInvestimento > 0 && !mlAdsReports.length) {
-        document.getElementById('mlads-periodo-label').textContent =
-          (ADS_DATA.periodo?.de || '06-mar-2026') + ' → ' + (ADS_DATA.periodo?.ate || '12-mar-2026');
-        const fmt = v => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-        document.getElementById('mlads-kpis').innerHTML = `
-      <div>
-        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Total Investido</div>
-        <div style="font-family:var(--font-display);font-size:32px;color:var(--red)">${fmt(ADS_DATA.totalInvestimento)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:4px">dados do último relatório importado</div>
-      </div>
-      <div style="padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:12px;color:var(--muted);line-height:1.7">
-          Carregue um novo relatório acima para atualizar os dados e ver o detalhamento por anúncio, campanha e dia.
-        </div>
-      </div>`;
-      }
     }
 
     // Fechar detail ao clicar fora
@@ -16974,7 +17540,9 @@
       allItems.forEach(i => { itemMap[i.id] = i; });
 
       return allOrders
-        .filter(o => !pedidoForaDaVenda(o))
+        // Entregas acompanha ENVIOS, nao vendas: so o cancelado sai (como antes
+        // da FASE A1, quando pedidoForaDaVenda era `=== 'cancelled'` no ML).
+        .filter(o => !pedidoCancelado(o))
         .map(o => {
           const oi = o.order_items?.[0];
           const itemId = oi?.item?.id || '';
@@ -17201,15 +17769,15 @@
           // lido como "ticket de hoje", que e outro numero.
           var linhas = [
             'Resumo de hoje (' + ctx.periodo.hojeBRT + ', horario de Brasilia):',
-            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento pago hoje: ' + owcMoeda(p.hoje.faturamento) +
+            '- Pedidos hoje: ' + p.hoje.qtd + ' | Faturamento hoje: ' + owcMoeda(p.hoje.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.hoje.qtd, p.hoje.faturamento),
             '- Ultimos 7 dias: ' + p.ultimos7.qtd + ' pedidos | ' + owcMoeda(p.ultimos7.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.ultimos7.qtd, p.ultimos7.faturamento),
             '- Mes atual: ' + p.mesAtual.qtd + ' pedidos | ' + owcMoeda(p.mesAtual.faturamento) +
               ' | Ticket medio: ' + owcTicket(p.mesAtual.qtd, p.mesAtual.faturamento),
             '',
-            '- Ticket medio de todo o historico carregado (pedidos pagos): ' +
-              (p.ticketMedioGeral == null ? 'sem pedidos pagos' : owcMoeda(p.ticketMedioGeral))
+            '- Ticket medio de todo o historico carregado (pedidos considerados venda): ' +
+              (p.ticketMedioGeral == null ? 'sem vendas' : owcMoeda(p.ticketMedioGeral))
           ];
           if (ctx.origem.snapshotPartial) linhas.push('(sincronizacao mais recente em andamento; usando a ultima versao publicada.)');
           if (ctx.origem.ordersServedFrom === 'proxy_fallback') linhas.push('(origem: proxy/fallback — sem versao de snapshot.)');
@@ -17635,14 +18203,14 @@
 
         var total = lista.length, pagos = 0, cancelados = 0, parcial = 0;
         var hojeQtd = 0, hojeFat = 0, s7Qtd = 0, s7Fat = 0, mesQtd = 0, mesFat = 0;
-        var totalPago = 0, cntPago = 0; // ticket geral (todos os pagos carregados)
+        var totalPago = 0, cntPago = 0; // ticket geral (todas as vendas carregadas)
 
         lista.forEach(function (o) {
           var st = o && o.status;
-          // ML: exatamente a comparacao de antes ('cancelled' / 'paid'). Amazon: tudo menos cancelado.
+          // Cancelado por pedidoCancelado; venda por pedidoPago (= contaComoVenda, regra unica da FASE A1).
           if (pedidoCancelado(o)) { cancelados++; return; }
           if (st === 'partially_refunded') { parcial++; }
-          if (!pedidoPago(o)) return; // hoje/7d/mes e ticket geral: SOMENTE pagos
+          if (!pedidoPago(o)) return; // hoje/7d/mes e ticket geral: SOMENTE vendas (contaComoVenda)
 
           pagos++;
           var dia = podeParidade ? ymdBRT(o.date_created) : owcDiaBRT(o && o.date_created);
@@ -17699,8 +18267,9 @@
 
         /**
          * ATENCAO ao ler este campo: `riscoRuptura` conta a faixa `ruptura` da
-         * aba Estoque, e a aba Estoque classifica sobre o estoque PROPRIO
-         * (`consolidarEstoqueGrupo(...).proprio`, sem o Full). Ele NAO e a
+         * aba Estoque, que (FASE A7) classifica sobre o estoque FISICO completo
+         * (`estoqueFisicoDoGrupo`: proprio + Full + FBA; incompleto = sem
+         * classificacao). Ele NAO e a
          * classificacao que o Assistente usa para responder sobre ruptura —
          * essa vem do backend, sobre a base TOTAL (`classification.basis`).
          *
@@ -17810,7 +18379,7 @@
       /**
        * Ticket medio de UMA janela, derivado dos dois numeros que a propria
        * linha exibe. E a mesma definicao do backend — `receita / pedidos` do
-       * sales-metrics, incluindo o `null` quando nao ha pedido pago (divisao
+       * sales-metrics, incluindo o `null` quando nao ha venda (divisao
        * por zero nao vira R$ 0,00, que seria lido como "vendemos a zero").
        *
        * Derivar da linha, em vez de buscar um ticket calculado a parte, e o que
@@ -17820,7 +18389,7 @@
        */
       function owcTicket(qtd, faturamento) {
         var n = Number(qtd) || 0;
-        if (n <= 0) return 'sem pedidos pagos';
+        if (n <= 0) return 'sem vendas';
         return owcMoeda((Number(faturamento) || 0) / n);
       }
 

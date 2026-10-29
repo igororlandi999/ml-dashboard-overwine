@@ -328,6 +328,7 @@ describe('publicidade passa pelos bloqueadores de anuncio (14/10/2026)', () => {
 
   test('Overwine sozinha: falha da consulta deixa a publicidade indisponivel, nunca zero', () => {
     const corpo = extrairFuncao('loadAdCost');
-    assert.match(corpo, /adCostDisponivel = \(r !== null\)/);
+    assert.match(corpo, /if \(x === null\) ok = false;/);
+    assert.match(corpo, /custo: ok \? soma : null/);
   });
 });
