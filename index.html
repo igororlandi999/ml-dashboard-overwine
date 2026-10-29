@@ -3261,11 +3261,11 @@
         <div class="kpi-label">Custo Publicidade</div>
         <div style="display:flex;align-items:baseline;gap:4px;margin-bottom:8px">
           <span style="font-family:var(--font-display);font-size:14px;color:var(--amber)">R$</span>
-          <input type="number" id="kpi-pub-input" min="0" step="0.01" placeholder="0"
+          <input type="number" id="kpi-pub-input" min="0" step="0.01" placeholder="—"
             style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--border-strong);color:var(--amber);font-family:var(--font-display);font-size:26px;font-weight:600;outline:none;padding:0 0 2px 2px;line-height:1"
             oninput="saveKpiPubManual(); renderKPIsPeriodo()" onkeydown="if(event.key==='Enter') this.blur()">
         </div>
-        <div class="kpi-delta neutral" id="kpi-pub-status">digite o valor do painel ML</div>
+        <div class="kpi-delta neutral" id="kpi-pub-status">carregando...</div>
       </div>
     </div>
 
@@ -5237,6 +5237,9 @@
 
     let reputacaoData = null;
     let visitasPorDia = [];
+    // FASE A9: a consulta de visitas do PERIODO respondeu? null = ainda nao
+    // tentou; false = falhou (visitas e conversao indisponiveis, nunca 0).
+    let _visitasPeriodoOk = null;
 
     // Range de datas do periodo selecionado na Visao Geral (objetos Date, em horario do Brasil)
     let periodoDateInicio = null; // Date — inicio do dia (00:00:00.000 BRT)
@@ -8305,6 +8308,7 @@
           ? await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`)
           : await visitasDaSelecao(last);
         const porDia = (vData.results || []).filter(d => d && d.date);
+        _visitasPeriodoOk = true;
         totalVisitasAPI = porDia.length
           ? porDia.filter(d => { const y = String(d.date).slice(0, 10); return y >= fromYmd && y <= toYmd; })
             .reduce((s, d) => s + (d.total || 0), 0)
@@ -8326,6 +8330,7 @@
         });
       } catch (e) {
         console.warn('Visitas API falhou:', e.message);
+        _visitasPeriodoOk = false;
       }
 
       // Montar periodoData cruzando com pedidos e allItems
@@ -9137,7 +9142,8 @@
         <span style="font-size:13px;font-weight:600;color:${color}">${ok ? '0% perfeito' : pct + '%'}</span>
       </div>`;
       };
-      const totalVendas = rep.transactions?.total || 0;
+      // FASE A9: ausente = "—", nunca 0.
+      const totalVendas = (typeof rep.transactions?.total === 'number') ? rep.transactions.total : null;
 
       // ── Caminho MercadoLider (Gold / Platinum) ────────────────
       // A API expoe power_seller_status: null | 'silver' | 'gold' | 'platinum'.
@@ -9190,15 +9196,14 @@
       // de 60 dias). Faturamento: soma as vendas (contaComoVenda) dos MESMOS 60 dias.
       // Assim vendas e faturamento ficam na mesma base — nunca historico.
       const PERIODO_DIAS = ML_REPUTATION_TARGETS.periodoDias || 60;
-      const vendasPeriodo = (mSales !== undefined && mSales !== null)
-        ? mSales
-        : 0; // fallback defensivo
+      const vendasPeriodo = (typeof mSales === 'number' && Number.isFinite(mSales)) ? mSales : null; // ausente: sem progresso
 
       // Faturamento dos ultimos PERIODO_DIAS (vendas: paid e partially_refunded; sem cancelados)
       // Onda D: mesma regra (paid; paid_amount || total_amount) local ou do
       // agregado — nunca as duas para a mesma renderizacao.
-      let faturamentoPeriodo = 0;
+      let faturamentoPeriodo = null; // sem historico nem agregado: indisponivel, nunca R$ 0
       if (pedidosEmMemoria()) {
+        faturamentoPeriodo = 0;
         const _limiteRep = new Date(); _limiteRep.setDate(_limiteRep.getDate() - PERIODO_DIAS);
         (allOrders || []).forEach(o => {
           if (!pedidoPago(o)) return;
@@ -9207,7 +9212,8 @@
           faturamentoPeriodo += o.paid_amount || o.total_amount || 0;
         });
       } else if (_metrics && _metrics.reputacao60d) {
-        faturamentoPeriodo = _metrics.reputacao60d.bruto || 0;
+        const _b = _metrics.reputacao60d.bruto;
+        faturamentoPeriodo = (typeof _b === 'number' && Number.isFinite(_b)) ? _b : null;
       }
 
       const fmtBRL = v => 'R$\u00a0' + Math.round(v).toLocaleString('pt-BR');
@@ -9224,14 +9230,21 @@
           </div>
         </div>`;
         }
-        const faltamVendas = Math.max(0, metaVendas - vendasPeriodo);
-        const faltamFat = Math.max(0, metaFat - faturamentoPeriodo);
-        const progVendas = metaVendas > 0 ? Math.min(100, vendasPeriodo / metaVendas * 100) : 0;
-        const progFat = metaFat > 0 ? Math.min(100, faturamentoPeriodo / metaFat * 100) : 0;
+        const faltamVendas = vendasPeriodo === null ? null : Math.max(0, metaVendas - vendasPeriodo);
+        const faltamFat = faturamentoPeriodo === null ? null : Math.max(0, metaFat - faturamentoPeriodo);
+        const progVendas = (vendasPeriodo !== null && metaVendas > 0) ? Math.min(100, vendasPeriodo / metaVendas * 100) : 0;
+        const progFat = (faturamentoPeriodo !== null && metaFat > 0) ? Math.min(100, faturamentoPeriodo / metaFat * 100) : 0;
         const okVendas = faltamVendas === 0;
         const okFat = faltamFat === 0;
 
-        const linha = (label, atualStr, metaStr, faltamStr, prog, ok) => `
+        const linha = (label, atualStr, metaStr, faltamStr, prog, ok) => faltamStr === null ? `
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">${label}</span>
+          <span style="font-size:12px;color:var(--muted)">${MOD_PLACEHOLDER} <span>/ ${metaStr}</span></span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">${INDISPONIVEL}</div>
+      </div>` : `
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
           <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em">${label}</span>
@@ -9248,8 +9261,8 @@
         return `
       <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
         <div style="font-size:11px;color:var(--gold);font-weight:600;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">${titulo}</div>
-        ${linha('Vendas', fmtNum(vendasPeriodo), fmtNum(metaVendas), faltamVendas + ' vendas', progVendas, okVendas)}
-        ${linha('Faturamento', fmtBRL(faturamentoPeriodo), fmtBRL(metaFat), fmtBRL(faltamFat), progFat, okFat)}
+        ${linha('Vendas', vendasPeriodo === null ? null : fmtNum(vendasPeriodo), fmtNum(metaVendas), faltamVendas === null ? null : faltamVendas + ' vendas', progVendas, okVendas)}
+        ${linha('Faturamento', faturamentoPeriodo === null ? null : fmtBRL(faturamentoPeriodo), fmtBRL(metaFat), faltamFat === null ? null : fmtBRL(faltamFat), progFat, okFat)}
       </div>`;
       };
 
@@ -9275,7 +9288,7 @@
       <div style="display:inline-block;margin-top:10px;padding:4px 14px;border:1px solid ${atual.cor};border-radius:3px">
         <span style="font-size:13px;font-weight:600;color:${atual.cor}">${atual.label}</span>
       </div>
-      <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas === null ? MOD_PLACEHOLDER : totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
     </div>
     ${metric('Cancelamentos (reputa\u00e7\u00e3o ML, 60d)', mCancel)}
     ${metric('Atrasos (reputa\u00e7\u00e3o ML, 60d)', mDelay)}
@@ -9315,8 +9328,14 @@
       // FASE A6: estoque FISICO, nunca a soma crua dos anuncios (espelhos do
       // mesmo saldo proprio em varios anuncios e na Amazon contavam N vezes).
       const fis = estoqueFisicoTotal(allItems);
-      const totalSold = allItems.reduce((s, i) => s + (i.sold_quantity || 0), 0);
-      const avgPrice = allItems.filter(i => i.status === 'active').reduce((s, i) => s + (i.price || 0), 0) / (active || 1);
+      // FASE A9: a Amazon nao informa sold_quantity. Sem nenhum anuncio que
+      // informe, "Vendas Totais" e indisponivel; com parte, soma o que existe e
+      // o title diz quantos ficaram de fora. Nunca 0 por ausencia.
+      const comVendido = allItems.filter(i => typeof i.sold_quantity === 'number' && Number.isFinite(i.sold_quantity));
+      const totalSold = comVendido.length ? comVendido.reduce((s, i) => s + i.sold_quantity, 0) : null;
+      const semVendido = allItems.length - comVendido.length;
+      // Sem anuncio ativo nao ha preco medio (antes: R$ 0).
+      const avgPrice = active > 0 ? allItems.filter(i => i.status === 'active').reduce((s, i) => s + (i.price || 0), 0) / active : null;
 
       document.getElementById('kpi-active').textContent = active;
       document.getElementById('kpi-total').textContent = allItems.length;
@@ -9331,8 +9350,11 @@
       if (_stockSub) _stockSub.textContent = fis.completo
         ? 'pr\u00f3prio + Full + FBA'
         : 'parcial \u00b7 ' + fis.incompletos + ' produto' + (fis.incompletos !== 1 ? 's' : '') + ' sem saldo informado';
-      document.getElementById('kpi-sold').textContent = totalSold.toLocaleString('pt-BR');
-      document.getElementById('kpi-avgprice').textContent = 'R$\u00a0' + avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+      const _soldEl = document.getElementById('kpi-sold');
+      _soldEl.textContent = totalSold === null ? MOD_PLACEHOLDER : totalSold.toLocaleString('pt-BR');
+      _soldEl.title = (totalSold !== null && semVendido > 0) ? semVendido + ' an\u00fancio' + (semVendido !== 1 ? 's' : '') + ' sem vendas informadas (Amazon) fora da soma' : '';
+      document.getElementById('kpi-avgprice').textContent = avgPrice === null ? MOD_PLACEHOLDER
+        : 'R$\u00a0' + avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
 
     function renderKPIsPeriodo() {
@@ -9490,8 +9512,10 @@
       if (_visSub) _visSub.textContent = _janVis === 'truncada' ? '\u00faltimos 150 dias do per\u00edodo (limite da API)'
         : _janVis === 'fora' ? 'fora dos 150 dias da API' : 'no per\u00edodo';
       const _motJanela = 'Per\u00edodo fora dos \u00faltimos 150 dias cobertos pela API de visitas';
+      const _motFalhaVis = 'A consulta de visitas falhou';
       if (_perOk && _amzVis && !selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motVis);
       else if (_perOk && _janVis === 'fora') document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motJanela);
+      else if (_perOk && _visitasPeriodoOk === false) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motFalhaVis);
       else document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       if (_perOk && _amzVis && selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').title = 'S\u00f3 Mercado Livre: ' + _motVis.toLowerCase();
       // FASE A2: sem totais confiaveis (sem historico em memoria), Transacoes,
@@ -9506,6 +9530,7 @@
       ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].forEach(id => { document.getElementById(id).title = _totTitle; });
       if (_perOk && _amzVis) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
       else if (_perOk && _janVis === 'fora') document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motJanela + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
+      else if (_perOk && _visitasPeriodoOk === false) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motFalhaVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
       else document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
       document.getElementById('kpi-conversao').title = _janVis === 'truncada'
         ? 'Visitas s\u00f3 dos \u00faltimos 150 dias do per\u00edodo (limite da API); vendas do per\u00edodo inteiro: convers\u00e3o superestimada.' : '';
@@ -9676,12 +9701,20 @@
       document.getElementById('q-expboa').textContent = expBoa;
       document.getElementById('q-exptotal').textContent = allItems.length;
 
+      // FASE A9: o que depende de visitas so classifica com a consulta de visitas
+      // RESPONDIDA. Falhou (false) ou ainda nao respondeu (null): as visitas por
+      // anuncio sao 0 artificiais — nada de ranking "menos visitas" nem lista
+      // "sem visitas" com elas. Resposta valida (true) com zero = zero real.
+      const _semVis = _visitasPeriodoOk === false ? 'Visitas indispon\u00edveis (a consulta falhou)'
+        : _visitasPeriodoOk === null ? 'Carregando visitas...' : null;
+      const _linhaSemVis = cols => '<tr><td colspan="' + cols + '"><div class="empty-state"><p>' + _semVis + '</p></div></td></tr>';
+
       // Tabela: anuncios com menos visitas — oportunidade de melhoria
       const paraMelhorar = [...periodoData]
         .sort((a, b) => a.visitas - b.visitas)
         .slice(0, 15);
 
-      document.getElementById('qualidade-table').innerHTML = paraMelhorar.length
+      document.getElementById('qualidade-table').innerHTML = _semVis ? _linhaSemVis(5) : paraMelhorar.length
         ? paraMelhorar.map(d => {
           const item = allItems.find(i => i.id === d.id) || {};
           const tipo = item.listing_type_id || '-';
@@ -9706,7 +9739,7 @@
         .filter(i => i.status === 'active')
         .filter(i => !periodoData.find(d => d.id === i.id));
 
-      document.getElementById('semvisitas-table').innerHTML = semVisitas.length
+      document.getElementById('semvisitas-table').innerHTML = _semVis ? _linhaSemVis(4) : semVisitas.length
         ? semVisitas.map(item => `
         <tr onclick="openDetail('${item.id}')"${attrConta(item)}>
           <td><span class="item-title">${escHtml(item.title)}</span>${tagConta(item)}<div class="item-sku">${item.id}</div></td>
@@ -9726,13 +9759,13 @@
           return `
           <tr onclick="openDetail('${d.id}')">
             <td><span class="item-title">${escHtml(d.titulo)}</span><div class="item-sku">${d.id}</div></td>
-            <td>${d.visitas}</td>
+            <td${_semVis ? ' title="' + _semVis + '"' : ''}>${_semVis ? MOD_PLACEHOLDER : d.visitas}</td>
             <td>${d.vendas}</td>
             <td style="color:${d.receita > 0 ? 'var(--gold-light)' : 'var(--muted)'}">
               ${d.receita > 0 ? 'R$\u00a0' + d.receita.toLocaleString('pt-BR', { minimumFractionDigits: 0 }) : '-'}
             </td>
-            <td style="color:${convColor};font-weight:500">
-              ${d.conversao > 0 ? d.conversao.toFixed(1) + '%' : '0%'}
+            <td style="color:${_semVis ? 'var(--muted)' : convColor};font-weight:500">
+              ${_semVis ? MOD_PLACEHOLDER : (d.conversao > 0 ? d.conversao.toFixed(1) + '%' : '0%')}
             </td>
             <td>
               <span class="badge paused" style="font-size:10px">
@@ -9806,7 +9839,7 @@
       <div class="top-info">
         <div class="top-name">${escHtml(item.title)}</div>
         <div class="top-bar-wrap"><div class="top-bar-fill" style="width:${((item.sold_quantity || 0) / max * 100)}%"></div></div>
-        <div class="top-meta">${item.sold_quantity || 0} vendas · estoque: ${item.available_quantity || 0}</div>
+        <div class="top-meta">${item.sold_quantity ?? MOD_PLACEHOLDER} vendas · estoque: ${item.available_quantity ?? MOD_PLACEHOLDER}</div>
       </div>
       <div class="top-price">R$\u00a0${fmtPrice(item.price)}</div>
     </div>`).join('');
@@ -13047,6 +13080,20 @@
       document.getElementById('pv-c-diasrest').textContent = c.ehFuturo ? 'periodo futuro'
         : `${c.diasRestantes} dias restantes de ${c.diasDoMes}`;
 
+      // FASE A9: vendido, media e projecao vem do historico. Antes dele chegar,
+      // placeholder — nunca R$ 0 (comHistorico re-renderiza quando carregar).
+      if (!pedidosEmMemoria()) {
+        ['pv-c-vendido', 'pv-c-media', 'pv-c-proj'].forEach(id => { document.getElementById(id).textContent = MOD_PLACEHOLDER; });
+        ['pv-c-pct', 'pv-c-dia', 'pv-c-ideal', 'pv-c-necessaria', 'pv-c-difproj'].forEach(id => { document.getElementById(id).textContent = ''; });
+        document.getElementById('pv-c-pct').textContent = 'carregando hist\u00f3rico de pedidos...';
+        document.getElementById('pv-c-barra').style.width = '0%';
+        document.getElementById('pv-c-status').innerHTML = '';
+        document.getElementById('pv-alerta').innerHTML = '';
+        document.getElementById('pv-chart').innerHTML = '<div class="empty-state"><p>Carregando hist\u00f3rico de pedidos...</p></div>';
+        document.getElementById('pv-tabela').innerHTML = '';
+        return;
+      }
+
       document.getElementById('pv-c-vendido').textContent = pvFmtBRL(c.vendidoAcumulado);
       document.getElementById('pv-c-pct').textContent = `${c.percentualConcluido.toFixed(1)}% da meta`;
       document.getElementById('pv-c-barra').style.width = Math.min(100, c.percentualConcluido) + '%';
@@ -13772,6 +13819,17 @@
         return;
       }
       if (_avisoGiro) _avisoGiro.style.display = 'none';
+      // FASE A9: vendas do ciclo vem do historico. Antes dele chegar, nada de
+      // "0 vendido" nem SKU "Sem giro": placeholder ate comHistorico re-renderizar.
+      if (!pedidosEmMemoria()) {
+        const ce = document.getElementById('gr-c-estoque');
+        if (ce) grCardEstoque(ce, Object.values(grEstoquePorSku()));
+        ['gr-c-vendido', 'gr-c-meta', 'gr-c-giro'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = MOD_PLACEHOLDER; });
+        _grLinhas = [];
+        const tb = document.getElementById('gr-tabela');
+        if (tb) tb.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>Carregando hist\u00f3rico de pedidos...</p></div></td></tr>';
+        return;
+      }
       const { linhas, semanasPadrao, semanasDecorridas } = grBuildData();
 
       // Cards. Estoque fisico incompleto em algum SKU: o total nao e afirmado.
@@ -16058,7 +16116,10 @@
       const ind = htmlIndisponivel(motivo);
       const T = dados.totais || {};
 
-      document.getElementById('mg-bruto').textContent = fmt(T.receitaProdutos || 0);
+      // FASE A9: receita ausente na resposta = indisponivel, nunca R$ 0.
+      const _mgBrutoEl = document.getElementById('mg-bruto');
+      if (typeof T.receitaProdutos === 'number' && Number.isFinite(T.receitaProdutos)) _mgBrutoEl.textContent = fmt(T.receitaProdutos);
+      else _mgBrutoEl.innerHTML = ind;
       // Custo de PRODUTO nao existe em pedido nem em envio: precisa de cadastro.
       ['mg-custo', 'mg-margem'].forEach(id => {
         const el = document.getElementById(id); if (el) { el.innerHTML = ind; el.style.color = ''; }

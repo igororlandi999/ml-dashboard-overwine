@@ -106,7 +106,7 @@ function montar({ ads = {}, atraso = {}, consolidado = false, xlsx = [], storage
     'async function loadMetrics(dias, from, to) { const r = _metricsPor[from + ".." + to]; if (r) _metrics = r; return r; }',
     'function showToast() {}',
     'function renderQualidade() {} function renderChartReceitaProduto() {} function renderCardReputacao() {} function renderVisaoGeral() {}',
-    'let _adsLoadState = "idle", _periodoLoadState = "loaded";',
+    'let _adsLoadState = "idle", _periodoLoadState = "loaded";', 'let _visitasPeriodoOk = null;',
     'let adsApi = null; let _adsSeq = 0; let pubManual = null; let mlAdsReports = _xlsx;',
     'const MOD_PLACEHOLDER = "\\u2014", INDISPONIVEL = "indispon\\u00edvel";',
     'function htmlIndisponivel(m) { return "[indisponivel: " + m + "]"; } function htmlAvisoSelecao(x) { return x; } function escHtml(x) { return String(x); }',

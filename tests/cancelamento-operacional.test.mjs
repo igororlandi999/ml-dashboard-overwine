@@ -366,7 +366,8 @@ describe('reputacao separada', () => {
     const h = montar({ reputacao: { level_id: '5_green', metrics: {} } });
     const r = h.reputacao();
     assert.ok(!/0% perfeito/.test(r));
-    assert.equal((r.match(/—/g) || []).length, 3);
+    // as tres taxas de reputacao (60d) ausentes: "—" em cada uma
+    assert.equal((r.match(/60d\)<\/span>\s*<span[^>]*>—<\/span>/g) || []).length, 3);
     // zero real continua "0% perfeito"
     assert.match(montar({ reputacao: REP }).reputacao(), /Atrasos \(reputa\u00e7\u00e3o ML, 60d\)[\s\S]*?0% perfeito/);
   });

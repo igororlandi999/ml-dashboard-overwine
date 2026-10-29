@@ -115,7 +115,7 @@ function montar({ pedidos = PEDIDOS, itens = ITENS, historico = true, metrics = 
     'const USER_ID = 1; async function mlFetch() { return { results: [{ date: "2026-10-20", total: 1000 }] }; }',
     'async function visitasDaSelecao() { return { results: [] }; }',
     // Publicidade e textos auxiliares: neutros (fora do escopo).
-    'let _adsLoadState = "loaded", _periodoLoadState = "loaded";',
+    'let _adsLoadState = "loaded", _periodoLoadState = "loaded";', 'let _visitasPeriodoOk = null;',
     'function publicidadeDoPeriodo() { return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial: false, motivo: "sem_fonte_confiavel" }; }',
     'function rotuloFontePublicidade() { return ""; } function textoPublicidadeIndisponivel() { return "dados de Ads indisponiveis"; }',
     'const MOD_PLACEHOLDER = "\\u2014", INDISPONIVEL = "indisponivel";',
