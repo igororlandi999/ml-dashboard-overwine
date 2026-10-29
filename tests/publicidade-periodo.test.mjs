@@ -117,6 +117,7 @@ function montar({ ads = {}, atraso = {}, consolidado = false, xlsx = [], storage
     extrairFuncao('fontePorItemPeriodo'), extrairFuncao('totaisDoPeriodo'), extrairFuncao('ticketMedioExibido'),
     'async ' + extrairFuncao('loadPeriodoData'),
     extrairFuncao('calcLiquidoPeriodo'), extrairFuncao('liquidoApurado'),
+    'const VISITAS_JANELA_API_DIAS = 150;', extrairFuncao('janelaVisitas'),
     extrairFuncao('renderKPIsPeriodo'),
     'async ' + extrairFuncao('aplicarPeriodoGlobal'),
     // Publicidade: tudo REAL.

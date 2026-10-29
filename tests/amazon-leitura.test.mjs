@@ -291,7 +291,7 @@ describe('regras de negócio da Amazon (revisão 10/2026)', () => {
   test('visitas e conversão: a Amazon não informa visitas, nada vira zero', () => {
     const i = html.indexOf("const _amzVis = selecaoTemAmazon();");
     assert.notEqual(i, -1);
-    const bloco = html.slice(i, i + 1600);
+    const bloco = html.slice(i, i + 3200);
     assert.match(bloco, /kpi-visitas'\)\.innerHTML = htmlIndisponivel/);
     assert.match(bloco, /kpi-conversao'\)\.innerHTML = htmlIndisponivel/);
   });

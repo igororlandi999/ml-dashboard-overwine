@@ -3235,7 +3235,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Visitas Unicas</div>
         <div class="kpi-value" id="kpi-visitas">-</div>
-        <div class="kpi-delta neutral">no periodo</div>
+        <div class="kpi-delta neutral" id="kpi-visitas-sub">no periodo</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Transacoes</div>
@@ -3439,7 +3439,7 @@
           <div class="card">
             <div class="card-header">
               <div class="card-title">Mais Vendidos</div>
-              <div class="card-meta">por qtd vendida</div>
+              <div class="card-meta">qtd vendida (histórico do anúncio)</div>
             </div>
             <div class="card-body" id="top-vendas-list">
               <div class="empty-state">
@@ -3715,7 +3715,7 @@
         <div class="kpi-card">
           <div class="kpi-label">Ticket Medio</div>
           <div class="kpi-value" id="ord-ticket">-</div>
-          <div class="kpi-delta neutral">todos os pedidos</div>
+          <div class="kpi-delta neutral">vendas do histórico</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Cancelamentos</div>
@@ -8267,6 +8267,21 @@
       return pedidos > 0 ? faturamento / pedidos : 0;
     }
 
+    /**
+     * FASE A8 — janela de VISITAS do periodo. A API so devolve os ultimos 150
+     * dias ate hoje (`last <= 150`). 'completa': o periodo cabe na janela;
+     * 'truncada': o inicio do periodo ficou fora e as visitas sao so dos dias
+     * cobertos; 'fora': nenhum dia do periodo esta na janela (visitas e
+     * conversao nao existem — nunca 0).
+     */
+    const VISITAS_JANELA_API_DIAS = 150;
+    function janelaVisitas(fromYmd, toYmd) {
+      if (!fromYmd || !toYmd) return 'completa';
+      const hoje = hojeBRT();
+      if (gdrDiasEntre(fromYmd, hoje) <= VISITAS_JANELA_API_DIAS) return 'completa';
+      return gdrDiasEntre(toYmd, hoje) > VISITAS_JANELA_API_DIAS ? 'fora' : 'truncada';
+    }
+
     async function loadPeriodoData(fromYmd, toYmd) {
       periodoData = [];
       periodoTotais = null;
@@ -8279,11 +8294,13 @@
       // Visitas: a API so aceita "ultimos N dias ate hoje" (N <= 150). Pedimos
       // do inicio do periodo ate hoje e somamos SO os dias dentro do periodo —
       // exato para qualquer intervalo dos ultimos 150 dias; alem disso, o
-      // inicio e truncado e a conversao fica subestimada (declarado no rotulo).
+      // inicio e truncado: menos visitas para as vendas do periodo inteiro, a
+      // conversao fica SUPERestimada. O rotulo declara (janelaVisitas, em
+      // renderKPIsPeriodo).
       const visitasMap = {};
       let totalVisitasAPI = 0;
       try {
-        const last = Math.min(150, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
+        const last = Math.min(VISITAS_JANELA_API_DIAS, Math.max(1, gdrDiasEntre(fromYmd, hojeBRT())));
         const vData = selecaoLegada()
           ? await mlFetch(`/users/${USER_ID}/items_visits/time_window?last=${last}&unit=day`)
           : await visitasDaSelecao(last);
@@ -9261,8 +9278,8 @@
       <div style="font-size:11px;color:var(--muted);margin-top:8px">${totalVendas.toLocaleString('pt-BR')} vendas no historico</div>
     </div>
     ${metric('Cancelamentos (reputa\u00e7\u00e3o ML, 60d)', mCancel)}
-    ${metric('Atrasos (60d)', mDelay)}
-    ${metric('Reclamacoes (60d)', mClaims)}
+    ${metric('Atrasos (reputa\u00e7\u00e3o ML, 60d)', mDelay)}
+    ${metric('Reclama\u00e7\u00f5es (reputa\u00e7\u00e3o ML, 60d)', mClaims)}
     ${mSales !== undefined ? `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;color:var(--muted)">Vendas concluidas (60d)</span>
@@ -9466,7 +9483,15 @@
       // conversao (vendas de todos / visitas do ML) seria falsa.
       const _amzVis = selecaoTemAmazon();
       const _motVis = 'A Amazon n\u00e3o informa visitas';
+      // FASE A8: a API de visitas so cobre 150 dias ate hoje.
+      const _gVis = gdrGet();
+      const _janVis = janelaVisitas(_gVis.from, _gVis.toEfetivo);
+      const _visSub = document.getElementById('kpi-visitas-sub');
+      if (_visSub) _visSub.textContent = _janVis === 'truncada' ? '\u00faltimos 150 dias do per\u00edodo (limite da API)'
+        : _janVis === 'fora' ? 'fora dos 150 dias da API' : 'no per\u00edodo';
+      const _motJanela = 'Per\u00edodo fora dos \u00faltimos 150 dias cobertos pela API de visitas';
       if (_perOk && _amzVis && !selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motVis);
+      else if (_perOk && _janVis === 'fora') document.getElementById('kpi-visitas').innerHTML = htmlIndisponivel(_motJanela);
       else document.getElementById('kpi-visitas').textContent = _perOk ? totalVisitas.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       if (_perOk && _amzVis && selecaoTemMercadoLivre()) document.getElementById('kpi-visitas').title = 'S\u00f3 Mercado Livre: ' + _motVis.toLowerCase();
       // FASE A2: sem totais confiaveis (sem historico em memoria), Transacoes,
@@ -9480,7 +9505,10 @@
       document.getElementById('kpi-unidades').textContent = _totOk ? totalUnidades.toLocaleString('pt-BR') : MOD_PLACEHOLDER;
       ['kpi-transacoes', 'kpi-unidades', 'kpi-ticket'].forEach(id => { document.getElementById(id).title = _totTitle; });
       if (_perOk && _amzVis) document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motVis + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
+      else if (_perOk && _janVis === 'fora') document.getElementById('kpi-conversao').innerHTML = htmlIndisponivel(_motJanela + ': sem elas n\u00e3o h\u00e1 convers\u00e3o');
       else document.getElementById('kpi-conversao').textContent = _perOk ? conversaoGeral.toFixed(1) + '%' : MOD_PLACEHOLDER;
+      document.getElementById('kpi-conversao').title = _janVis === 'truncada'
+        ? 'Visitas s\u00f3 dos \u00faltimos 150 dias do per\u00edodo (limite da API); vendas do per\u00edodo inteiro: convers\u00e3o superestimada.' : '';
       document.getElementById('kpi-ticket').textContent = _totOk ? fmt(ticketMedio) : MOD_PLACEHOLDER;
     }
 
@@ -9895,6 +9923,7 @@
         : _estData.filter(g => g.tipo === _estFiltro);
 
       document.getElementById('est-meta').textContent = `${dados.length} SKU${dados.length !== 1 ? 's' : ''}` +
+        ' \u00b7 velocidade: vendas dos \u00faltimos 30 dias (n\u00e3o segue o per\u00edodo)' +
         (_estSemInfo ? ` \u00b7 ${_estSemInfo} com estoque f\u00edsico incompleto (sem cobertura nem classifica\u00e7\u00e3o)` : '');
 
       // Labels e cores por tipo

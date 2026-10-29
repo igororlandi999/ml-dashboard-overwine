@@ -116,6 +116,7 @@ function montar({ historico = false, porPeriodo = {}, metricsInicial = null, fin
     extrairFuncao('fontePorItemPeriodo'), extrairFuncao('totaisDoPeriodo'), extrairFuncao('ticketMedioExibido'),
     'async ' + extrairFuncao('loadPeriodoData'),
     extrairFuncao('calcLiquidoPeriodo'), extrairFuncao('liquidoApurado'),
+    'const VISITAS_JANELA_API_DIAS = 150;', extrairFuncao('janelaVisitas'),
     extrairFuncao('renderKPIsPeriodo'),
     'async ' + extrairFuncao('aplicarPeriodoGlobal'),
     `return {

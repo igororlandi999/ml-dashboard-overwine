@@ -368,7 +368,7 @@ describe('reputacao separada', () => {
     assert.ok(!/0% perfeito/.test(r));
     assert.equal((r.match(/—/g) || []).length, 3);
     // zero real continua "0% perfeito"
-    assert.match(montar({ reputacao: REP }).reputacao(), /Atrasos \(60d\)[\s\S]*?0% perfeito/);
+    assert.match(montar({ reputacao: REP }).reputacao(), /Atrasos \(reputa\u00e7\u00e3o ML, 60d\)[\s\S]*?0% perfeito/);
   });
 
   test('a definicao operacional nao le reputacao', () => {

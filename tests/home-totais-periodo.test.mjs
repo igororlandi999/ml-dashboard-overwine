@@ -130,6 +130,7 @@ function montar({ pedidos = PEDIDOS, itens = ITENS, historico = true, metrics = 
     'async ' + extrairFuncao('loadPeriodoData'),
     extrairFuncao('calcLiquidoPeriodo'),
     extrairFuncao('liquidoApurado'),
+    'const VISITAS_JANELA_API_DIAS = 150;', extrairFuncao('janelaVisitas'),
     extrairFuncao('renderKPIsPeriodo'),
     'return { async run(from, to) { await loadPeriodoData(from, to); renderKPIsPeriodo(); return { dom: _dom, periodoData, totais: periodoTotais }; }, totaisDoPeriodo, ticketMedioExibido };',
   ].join('\n');
