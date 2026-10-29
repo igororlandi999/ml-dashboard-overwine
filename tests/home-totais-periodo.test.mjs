@@ -123,6 +123,7 @@ function montar({ pedidos = PEDIDOS, itens = ITENS, historico = true, metrics = 
     'const _dom = {}; const document = { getElementById: id => (_dom[id] ??= { textContent: "", innerHTML: "", value: "", style: {}, title: "", setAttribute() {} }) };',
     'const console = { warn() {}, log() {} };',
     extrairFuncao('fontePorItemPeriodo'),
+    extrairFuncao('metricsDoPeriodo'), extrairFuncao('agregadoCompleto'),
     extrairFuncao('totaisDoPeriodo'),
     extrairFuncao('ticketMedioExibido'),
     'async ' + extrairFuncao('loadPeriodoData'),
@@ -349,10 +350,19 @@ describe('Home sem historico + backend NOVO (FASE A2c: periodo.pedidos/unidades)
     for (const id of ['kpi-faturamento', 'kpi-transacoes', 'kpi-unidades', 'kpi-ticket']) assert.equal(d[id].textContent, PH, id);
   });
 
-  test('com historico em memoria o calculo local continua vencendo, mesmo com os campos novos no agregado', async () => {
+  test('com historico em memoria e agregado COMPLETO, o agregado e a fonte unica do bloco (revisao da A3)', async () => {
+    // Snapshot do backend mais novo que a memoria: o bloco inteiro segue o agregado, sem misturar com o local.
     const mb = novo();
-    mb.periodo.pedidos = 123; mb.periodo.unidades = 456;
+    mb.periodo.pedidos = 123; mb.periodo.unidades = 456; mb.periodo.faturamento.bruto = 12300;
     const r = await montar({ historico: true, metrics: mb }).run(FROM, TO);
+    assert.equal(r.totais.fonte, 'agregado');
+    assert.deepEqual([r.totais.pedidos, r.totais.unidades], [123, 456]);
+    assert.equal(reais(r.dom['kpi-faturamento'].textContent), 12300);
+    assert.equal(reais(r.dom['kpi-ticket'].textContent), 100);
+  });
+
+  test('com historico e backend ANTIGO (sem pedidos/unidades), o bloco inteiro fica local', async () => {
+    const r = await montar({ historico: true, metrics: metricsDoBackend(PEDIDOS, FROM, TO) }).run(FROM, TO);
     assert.equal(r.totais.fonte, 'local');
     assert.deepEqual([r.totais.pedidos, r.totais.unidades], [5, 9]);
   });
@@ -373,7 +383,8 @@ describe('Home sem historico + backend NOVO (FASE A2c: periodo.pedidos/unidades)
 describe('contrato de codigo', () => {
   test('ticket exibido deriva do mesmo valor escrito em kpi-faturamento', () => {
     const f = extrairFuncao('renderKPIsPeriodo');
-    assert.match(f, /const fatExibido = bruto \|\| totalFaturamento;/);
+    assert.match(f, /const fatExibido = bruto;/);
+    assert.doesNotMatch(f, /const fatExibido = bruto \|\|/);
     assert.match(f, /const ticketMedio = ticketMedioExibido\(fatExibido, totalTransacoes \|\| 0\);/);
     assert.equal((f.match(/getElementById\('kpi-faturamento'\)\.textContent = fmt\(fatExibido\)/g) || []).length, 2);
     assert.doesNotMatch(f, /getElementById\('kpi-faturamento'\)\.textContent = fmt\(bruto \|\| totalFaturamento\)/);

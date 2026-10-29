@@ -400,15 +400,24 @@ describe('rótulos por canal: nome de tela separado da chave de agrupamento', ()
 
   test('KPIs: "ML" só com Mercado Livre, "Amazon" só com Amazon, sem sufixo na mistura', () => {
     const els = {};
-    const documento = { getElementById: id => (els[id] = els[id] || { textContent: id === 'kpi-liq-pct' ? 'apos tarifas ML + envio' : '' }) };
-    const rodar = (ml, amz) => {
+    const documento = { getElementById: id => (els[id] = els[id] || { textContent: id === 'kpi-liq-pct' ? 'estimado \u00b7 tarifas m\u00e9dias' : '' }) };
+    const rodar = (ml, amz, financeiro = false) => {
       Object.keys(els).forEach(k => delete els[k]);
-      new Function('document', 'selecaoTemMercadoLivre', 'selecaoTemAmazon', extrairFuncao('aplicarRotulosPorCanal') + '; aplicarRotulosPorCanal();')(documento, () => ml, () => amz);
+      new Function('document', 'selecaoTemMercadoLivre', 'selecaoTemAmazon', 'selecaoTemFinanceiro', extrairFuncao('aplicarRotulosPorCanal') + '; aplicarRotulosPorCanal();')(documento, () => ml, () => amz, () => financeiro);
       return [els['kpi-liq-rotulo'].textContent, els['kpi-tarifa-ml-rotulo'].textContent, els['mg-th-liq'].textContent, els['kpi-liq-pct'].textContent];
     };
-    assert.deepEqual(rodar(true, false), ['Receita Liquida ML', 'Tarifas ML', 'Liq. ML', 'apos tarifas ML + envio']);
+    // Sem perfil proprio: liquido apurado (real), rotulo por canal, sem "Estimada".
+    assert.deepEqual(rodar(true, false), ['Receita Liquida ML', 'Tarifas ML', 'Liq. ML', 'apos tarifas + envio']);
     assert.deepEqual(rodar(false, true), ['Receita Liquida Amazon', 'Tarifas Amazon', 'Liq. Amazon', 'apos tarifas + envio']);
     assert.deepEqual(rodar(true, true), ['Receita Liquida', 'Tarifas', 'Liq.', 'apos tarifas + envio']);
+    // FASE A3 — Overwine (perfil proprio): a Home diz que e estimativa; o subtitulo fica o do HTML.
+    assert.deepEqual(rodar(true, false, true), ['Receita L\u00edquida Estimada', 'Tarifas ML', 'Liq. ML', 'estimado \u00b7 tarifas m\u00e9dias']);
+    // A Margem nunca recebe o rotulo da Home: e outra grandeza (/margin).
+    for (const [ml, amz, fin] of [[true, false, true], [true, false, false], [false, true, false], [true, true, false]]) {
+      rodar(ml, amz, fin);
+      assert.equal(els['mg-liq-rotulo'].textContent, 'Receita ap\u00f3s Tarifas e Frete');
+      assert.notEqual(els['mg-liq-rotulo'].textContent, els['kpi-liq-rotulo'].textContent);
+    }
     assert.match(extrairFuncao('aplicarAbasPorCanal'), /aplicarRotulosPorCanal\(\)/);
   });
 });

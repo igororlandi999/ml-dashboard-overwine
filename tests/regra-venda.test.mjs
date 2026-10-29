@@ -130,6 +130,7 @@ function montarAreas() {
     'function gdrGet() { return { fromDate: periodoDateInicio, toDate: periodoDateFim }; }',
     // DOM falso: so o que renderPedidosKPIsLocal escreve.
     'const _dom = {}; const document = { getElementById: id => (_dom[id] ??= { textContent: "" }) };',
+    extrairFuncao('metricsDoPeriodo'), extrairFuncao('agregadoCompleto'),
     extrairFuncao('calcLiquidoPeriodo'),
     extrairFuncao('renderPedidosKPIsLocal'),
     extrairFuncao('pvGroupByDay'),

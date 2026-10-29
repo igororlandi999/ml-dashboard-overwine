@@ -327,11 +327,11 @@ describe('o que e da Overwine nao vaza para outra empresa', () => {
     assert.match(prep, /getElementById\('pv-meta'\)/);
     assert.match(prep, /getElementById\('gr-semanas'\)/);
   });
-  test('as tarifas medias da planilha so entram quando a selecao tem financeiro', () => {
+  test('as tarifas medias da planilha nunca sao aplicadas no frontend (FASE A3: so o /metrics as aplica, e so com perfil)', () => {
     const corpo = extrairFuncao('calcLiquidoPeriodo');
-    const guarda = corpo.indexOf('if (!selecaoTemFinanceiro())');
-    assert.notEqual(guarda, -1);
-    assert.ok(guarda < corpo.indexOf('const TAXA_ML = 0.1480'), 'a guarda vem ANTES das tarifas da Overwine');
+    assert.notEqual(corpo.indexOf('if (!selecaoTemFinanceiro())'), -1);
+    // Nenhum percentual no frontend: a estimativa e do backend (config/taxas.json da Overwine).
+    assert.ok(!/0\.14|TAXA_/.test(corpo), 'nenhuma taxa media embutida no frontend');
     assert.match(corpo, /liquido: null, semFinanceiro: true/);
   });
   test('sem financeiro os cards mostram texto, nao numero', () => {
@@ -437,8 +437,11 @@ describe('tarifa e frete reais, com cobertura', () => {
     const corpo = extrairFuncao('liquidoApurado');
     assert.ok(!/0\.14|TAXA_/.test(corpo));
   });
-  test('trocar o periodo fora da Overwine pede o apurado ao backend, mesmo com o historico em memoria', () => {
-    assert.match(extrairFuncao('aplicarPeriodoGlobal'), /if \(!pedidosEmMemoria\(\) \|\| !selecaoLegada\(\)\) await loadMetrics\(/);
+  test('trocar o periodo pede o agregado ao backend em QUALQUER selecao, mesmo com o historico em memoria (FASE A3)', () => {
+    const corpo = extrairFuncao('aplicarPeriodoGlobal');
+    // Incondicional: a linha nao e precedida por `if (...)`.
+    assert.match(corpo, /\n\s*await loadMetrics\(null, g\.from, g\.toEfetivo\);/);
+    assert.doesNotMatch(corpo, /if \([^)]*\)\s*await loadMetrics\(/);
   });
 });
 
