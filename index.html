@@ -9826,8 +9826,9 @@
         _metrics.estoque30d.porItem.forEach(l => { vendas30[l.itemId] = l.unidades; });
       }
 
-      // FASE A6: populacao FISICA do SKU = todos os anuncios, ativos e pausados
-      // (a mesma da Home). As linhas e a cobertura seguem so os ativos (A7).
+      // FASE A6/A7: populacao FISICA do SKU = todos os anuncios, ativos e
+      // pausados (a mesma da Home). As LINHAS continuam sendo os SKUs com
+      // anuncio ativo; vendas30 continua dos anuncios ativos (formula intacta).
       const fisicosPorSku = {};
       allItems.forEach(i => { const k = itemSKU(i); (fisicosPorSku[k] = fisicosPorSku[k] || []).push(i); });
 
@@ -9842,30 +9843,31 @@
         if (i.title.length < grupos[sku].label.length) grupos[sku].label = i.title;
       });
 
-      // Amazon sem estoque proprio informado (e sem anuncio do ML no grupo):
-      // o saldo e DESCONHECIDO. Fora da lista, contado a parte — nunca como 0,
-      // que viraria "ruptura" falsa.
-      const _semEstoqueInformado = g => g.items.every(i => isFbaItem(i) || (i.canal === 'amazon' && i.amazon && i.amazon.estoqueInformado === false));
-      _estSemInfo = Object.values(grupos).filter(_semEstoqueInformado).length;
-      return Object.values(grupos).filter(g => !_semEstoqueInformado(g)).map(g => {
-        // Gestao de Estoque usa SOMENTE estoque proprio (exclui Full e FBA), sem duplicar
-        const est = consolidarEstoqueGrupo(g.items).proprio;
-        const vel = +(g.vendas30 / 30).toFixed(2);
-        const dias = vel > 0 ? Math.round(est / vel) : 9999;
-        let tipo;
-        if (vel === 0) tipo = 'semvenda';
-        else if (dias < 30) tipo = 'ruptura';
-        else if (dias < 90) tipo = 'alerta';
-        else if (dias <= 365) tipo = 'ok';
-        else tipo = 'excesso';
-        // FASE A6: colunas de estoque pela definicao unica, sobre TODOS os
-        // anuncios do SKU (ativos e pausados). A cobertura (dias, tipo) continua
-        // sobre `est`, dos ativos — revisao na A7.
+      // FASE A7: cobertura e ruptura sobre o ESTOQUE FISICO (estoqueFisicoDoGrupo:
+      // proprio unico + Full + FBA). Total incompleto (Amazon `null`, FBA nao
+      // informado, compartilhamento nao confirmado): `est` null, sem dias e sem
+      // classificacao ('parcial') — nunca 0, que viraria ruptura falsa, nem o
+      // total conhecido como se fosse o fisico. Velocidade e faixas: as de sempre.
+      const linhas = Object.values(grupos).map(g => {
         const fis = estoqueFisicoDoGrupo(fisicosPorSku[g.sku] || g.items);
+        const est = fis.completo ? fis.totalFisico : null;
+        const vel = +(g.vendas30 / 30).toFixed(2);
+        let dias, tipo;
+        if (est === null) { dias = null; tipo = 'parcial'; }
+        else {
+          dias = vel > 0 ? Math.round(est / vel) : 9999;
+          if (vel === 0) tipo = 'semvenda';
+          else if (dias < 30) tipo = 'ruptura';
+          else if (dias < 90) tipo = 'alerta';
+          else if (dias <= 365) tipo = 'ok';
+          else tipo = 'excesso';
+        }
         return { sku: g.sku, label: g.label, anuncios: g.anuncios, preco: g.preco, est, vel, dias, tipo, fis };
-      }).sort((a, b) => {
-        const ord = { ruptura: 0, alerta: 1, ok: 2, excesso: 3, semvenda: 4 };
-        return (ord[a.tipo] - ord[b.tipo]) || a.dias - b.dias;
+      });
+      _estSemInfo = linhas.filter(l => l.tipo === 'parcial').length;
+      return linhas.sort((a, b) => {
+        const ord = { ruptura: 0, alerta: 1, ok: 2, excesso: 3, semvenda: 4, parcial: 5 };
+        return (ord[a.tipo] - ord[b.tipo]) || ((a.dias === null ? 99999 : a.dias) - (b.dias === null ? 99999 : b.dias));
       });
     }
 
@@ -9893,7 +9895,7 @@
         : _estData.filter(g => g.tipo === _estFiltro);
 
       document.getElementById('est-meta').textContent = `${dados.length} SKU${dados.length !== 1 ? 's' : ''}` +
-        (_estSemInfo ? ` \u00b7 ${_estSemInfo} da Amazon sem estoque pr\u00f3prio informado (fora da lista)` : '');
+        (_estSemInfo ? ` \u00b7 ${_estSemInfo} com estoque f\u00edsico incompleto (sem cobertura nem classifica\u00e7\u00e3o)` : '');
 
       // Labels e cores por tipo
       const TIPO = {
@@ -9902,15 +9904,18 @@
         ok: { label: 'Saudavel', cls: 'est-badge-ok', cor: 'var(--green)' },
         excesso: { label: 'Excesso', cls: 'est-badge-excesso', cor: 'var(--muted)' },
         semvenda: { label: 'Sem venda', cls: 'est-badge-semvenda', cor: 'var(--muted)' },
+        parcial: { label: 'Estoque parcial', cls: 'est-badge-semvenda', cor: 'var(--muted)' },
       };
 
       const fmtDias = dias => {
+        if (dias === null) return MOD_PLACEHOLDER;
         if (dias >= 9999) return '-';
         if (dias >= 365) return Math.round(dias / 30) + ' meses';
         return dias + ' dias';
       };
 
       const fmtData = dias => {
+        if (dias === null) return MOD_PLACEHOLDER;
         if (dias >= 9999 || dias <= 0) return '-';
         const d = new Date(); d.setDate(d.getDate() + dias);
         return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -9918,6 +9923,7 @@
 
       // Barra de cobertura: 0–365 dias mapeado em 0–100%
       const barPct = dias => {
+        if (dias === null) return 0;
         if (dias >= 9999) return 100;
         return Math.min(100, Math.round(dias / 365 * 100));
       };
@@ -13293,8 +13299,13 @@
       return Math.max(0, ms / (7 * 86400000));
     }
 
-    // Estoque consolidado por SKU (reusa itemSKU + consolidarEstoqueGrupo: dedup correto)
+    // Estoque FISICO por SKU (FASE A7): a definicao unica da A6,
+    // estoqueFisicoDoGrupo, sobre TODOS os anuncios do SKU (ativos e pausados).
+    // As linhas continuam sendo os SKUs com anuncio ativo. Total incompleto:
+    // estoque null — sem meta de giro e sem status.
     function grEstoquePorSku() {
+      const fisicosPorSku = {};
+      allItems.forEach(i => { const k = itemSKU(i); (fisicosPorSku[k] = fisicosPorSku[k] || []).push(i); });
       const grupos = {};
       allItems.forEach(i => {
         if (i.status !== 'active') return;
@@ -13305,11 +13316,12 @@
       });
       const out = {};
       Object.values(grupos).forEach(g => {
-        const c = consolidarEstoqueGrupo(g.items);
+        const f = estoqueFisicoDoGrupo(fisicosPorSku[g.sku] || g.items);
         out[g.sku] = {
           sku: g.sku,
           label: g.label,
-          estoque: c.proprio + c.full + c.fba,
+          estoque: f.completo ? f.totalFisico : null,
+          estoquePendencias: f.pendencias,
           categoria: grCategoria(g.label),
         };
       });
@@ -13388,22 +13400,23 @@
       const linhas = Object.values(estoqueMap).map(p => {
         const v = vendasMap[p.sku] || { totalQty: 0, totalRev: 0, porSemana: {} };
         const semanasSku = grSemanasDoSku(p.sku, semanasPadrao);
-        const metaSemanal = semanasSku > 0 ? p.estoque / semanasSku : 0;
+        const temEstoque = p.estoque !== null;
+        const metaSemanal = !temEstoque ? null : (semanasSku > 0 ? p.estoque / semanasSku : 0);
         const mediaReal = semanasDecorridas > 0 ? v.totalQty / semanasDecorridas : 0;
-        const diferenca = mediaReal - metaSemanal;
-        const status = grStatus(mediaReal, metaSemanal);
+        const diferenca = temEstoque ? mediaReal - metaSemanal : null;
+        const status = temEstoque ? grStatus(mediaReal, metaSemanal) : 'parcial';
         const projecaoFinal = mediaReal * semanasSku;
         return {
           ...p, semanasSku, metaSemanal, mediaReal, diferenca, status,
           vendido: v.totalQty, receita: v.totalRev, porSemana: v.porSemana,
-          projecaoFinal, diferencaProjetada: projecaoFinal - p.estoque,
+          projecaoFinal, diferencaProjetada: temEstoque ? projecaoFinal - p.estoque : null,
           semanasDecorridas,
         };
       });
 
       // ordenar: sem giro e abaixo primeiro (prioridade operacional)
-      const ord = { abaixo: 0, semgiro: 1, noritmo: 2, acima: 3 };
-      linhas.sort((a, b) => (ord[a.status] - ord[b.status]) || b.estoque - a.estoque);
+      const ord = { abaixo: 0, semgiro: 1, noritmo: 2, acima: 3, parcial: 4 };
+      linhas.sort((a, b) => (ord[a.status] - ord[b.status]) || ((b.estoque === null ? -1 : b.estoque) - (a.estoque === null ? -1 : a.estoque)));
       return { linhas, semanasPadrao, semanasDecorridas, ini, fim };
     }
 
@@ -13721,9 +13734,9 @@
             escHtml(SELECAO.map(contaNome).join(' + ')) + '. A configura\u00e7\u00e3o da Overwine n\u00e3o \u00e9 aplicada a outra empresa.');
         }
         ['gr-c-meta'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = htmlIndisponivel('cobertura alvo n\u00e3o informada'); });
-        const est = grEstoquePorSku();
-        const tot = Object.values(est).reduce((s2, x) => s2 + (x.estoque || 0), 0);
-        const ce = document.getElementById('gr-c-estoque'); if (ce) ce.textContent = Math.round(tot).toLocaleString('pt-BR');
+        const est = Object.values(grEstoquePorSku());
+        const ce = document.getElementById('gr-c-estoque');
+        if (ce) grCardEstoque(ce, est);
         ['gr-c-vendido', 'gr-c-giro'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '-'; });
         _grLinhas = [];
         renderGiroTabela();
@@ -13732,15 +13745,14 @@
       if (_avisoGiro) _avisoGiro.style.display = 'none';
       const { linhas, semanasPadrao, semanasDecorridas } = grBuildData();
 
-      // Cards
-      const estoqueTotal = linhas.reduce((s, l) => s + l.estoque, 0);
+      // Cards. Estoque fisico incompleto em algum SKU: o total nao e afirmado.
+      const estoqueTotal = grCardEstoque(document.getElementById('gr-c-estoque'), linhas);
       const vendidoTotal = linhas.reduce((s, l) => s + l.vendido, 0);
-      const metaSemanalGeral = semanasPadrao > 0 ? estoqueTotal / semanasPadrao : 0;
+      const metaSemanalGeral = (estoqueTotal !== null && semanasPadrao > 0) ? estoqueTotal / semanasPadrao : (estoqueTotal === null ? null : 0);
       const skusComGiro = linhas.filter(l => l.vendido > 0).length;
 
-      document.getElementById('gr-c-estoque').textContent = Math.round(estoqueTotal).toLocaleString('pt-BR');
       document.getElementById('gr-c-vendido').textContent = Math.round(vendidoTotal).toLocaleString('pt-BR');
-      document.getElementById('gr-c-meta').textContent = Math.round(metaSemanalGeral).toLocaleString('pt-BR');
+      document.getElementById('gr-c-meta').textContent = metaSemanalGeral === null ? MOD_PLACEHOLDER : Math.round(metaSemanalGeral).toLocaleString('pt-BR');
       document.getElementById('gr-c-giro').textContent = `${skusComGiro} / ${linhas.length}`;
 
       _grLinhas = linhas;
@@ -13754,6 +13766,21 @@
     }
 
     let _grLinhas = [];
+
+    /**
+     * Card de estoque do Giro: soma do estoque fisico dos SKUs. Se algum SKU
+     * tem total incompleto, nao afirma total: "—" e a contagem no title.
+     * Devolve a soma, ou null.
+     */
+    function grCardEstoque(el, linhas) {
+      const parciais = linhas.filter(l => l.estoque === null).length;
+      const soma = linhas.reduce((s, l) => s + (l.estoque === null ? 0 : l.estoque), 0);
+      if (el) {
+        el.textContent = parciais ? MOD_PLACEHOLDER : Math.round(soma).toLocaleString('pt-BR');
+        el.title = parciais ? parciais + ' produto' + (parciais !== 1 ? 's' : '') + ' com estoque f\u00edsico incompleto' : '';
+      }
+      return parciais ? null : soma;
+    }
 
     function renderGiroTabela() {
       const q = (document.getElementById('gr-search')?.value || '').toLowerCase();
@@ -13769,6 +13796,7 @@
         abaixo: '<span class="badge" style="border-color:rgba(224,82,82,0.4);color:var(--red)">Abaixo</span>',
         noritmo: '<span class="badge paused">No ritmo</span>',
         acima: '<span class="badge active">Acima</span>',
+        parcial: '<span class="badge closed" title="Estoque f\u00edsico incompleto: sem meta de giro">Estoque parcial</span>',
       }[st] || st);
 
       const tbody = document.getElementById('gr-tabela');
@@ -13790,7 +13818,7 @@
           </div>
         </div>
       </td>
-      <td style="text-align:right">${Math.round(l.estoque).toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${l.estoque === null ? MOD_PLACEHOLDER : Math.round(l.estoque).toLocaleString('pt-BR')}</td>
       <td style="text-align:center" onclick="event.stopPropagation()">
         <input type="number" min="1" step="1" value="${l.semanasSku}"
           onchange="grSetSemanas('${escHtml(l.sku)}', this.value)"
@@ -13812,8 +13840,10 @@
 
     function renderGiroPainel(l) {
       const el = document.getElementById('gr-painel');
-      const statusLabel = { semgiro: 'Sem giro', abaixo: 'Abaixo', noritmo: 'No ritmo', acima: 'Acima' }[l.status] || l.status;
-      const statusCor = { semgiro: 'var(--muted)', abaixo: 'var(--red)', noritmo: 'var(--amber)', acima: 'var(--green)' }[l.status];
+      const statusLabel = { semgiro: 'Sem giro', abaixo: 'Abaixo', noritmo: 'No ritmo', acima: 'Acima', parcial: 'Estoque parcial' }[l.status] || l.status;
+      const statusCor = { semgiro: 'var(--muted)', abaixo: 'var(--red)', noritmo: 'var(--amber)', acima: 'var(--green)', parcial: 'var(--muted)' }[l.status];
+      const temEstoque = l.estoque !== null;
+      const pendTxt = (l.estoquePendencias || []).map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', ');
 
       el.innerHTML = `
     <div style="margin-bottom:16px">
@@ -13821,9 +13851,9 @@
       <div style="font-size:11px;color:var(--muted);font-family:var(--font-mono);margin-top:3px">SKU: ${escHtml(l.sku)} · ${l.categoria}</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      ${grMetric('Estoque', Math.round(l.estoque).toLocaleString('pt-BR') + ' un')}
+      ${grMetric('Estoque', temEstoque ? Math.round(l.estoque).toLocaleString('pt-BR') + ' un' : MOD_PLACEHOLDER)}
       ${grMetric('Vendido no ciclo', l.vendido + ' un')}
-      ${grMetric('Meta semanal', l.metaSemanal.toFixed(1) + ' un')}
+      ${grMetric('Meta semanal', temEstoque ? l.metaSemanal.toFixed(1) + ' un' : MOD_PLACEHOLDER)}
       ${grMetric('Media real/sem', l.mediaReal.toFixed(1) + ' un')}
     </div>
     <div style="padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);margin-bottom:14px">
@@ -13833,8 +13863,9 @@
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6">
         Nesse ritmo, este SKU vende <strong style="color:var(--cream)">${Math.round(l.projecaoFinal).toLocaleString('pt-BR')} un</strong> no ciclo de ${l.semanasSku} semanas.
-        Meta de giro: <strong style="color:var(--cream)">${Math.round(l.estoque).toLocaleString('pt-BR')} un</strong>.
-        Diferenca projetada: <strong style="color:${l.diferencaProjetada >= 0 ? 'var(--green)' : 'var(--red)'}">${l.diferencaProjetada >= 0 ? '+' : ''}${Math.round(l.diferencaProjetada).toLocaleString('pt-BR')} un</strong>.
+        ${temEstoque ? `Meta de giro: <strong style="color:var(--cream)">${Math.round(l.estoque).toLocaleString('pt-BR')} un</strong>.
+        Diferenca projetada: <strong style="color:${l.diferencaProjetada >= 0 ? 'var(--green)' : 'var(--red)'}">${l.diferencaProjetada >= 0 ? '+' : ''}${Math.round(l.diferencaProjetada).toLocaleString('pt-BR')} un</strong>.`
+          : `Estoque f\u00edsico incompleto (${escHtml(pendTxt)}): sem meta de giro nem diferen\u00e7a projetada.`}
       </div>
     </div>
     <div id="gr-estimativa" style="margin-bottom:14px"></div>
@@ -13854,7 +13885,8 @@
     <div id="gr-sliders" style="margin-top:18px"></div>
   `;
       renderGiroEstimativa(l);
-      renderGiroCurva(l);
+      if (temEstoque) renderGiroCurva(l);
+      else { const c = document.getElementById('gr-curva'); if (c) c.innerHTML = '<div class="empty-state"><p>Curva indispon\u00edvel: estoque f\u00edsico incompleto</p></div>'; }
       if (_grRevAtual) renderGiroSazonal();
       renderGiroSliders();
     }
@@ -14441,7 +14473,9 @@
     function aiAvaliarPortfolio() {
       _aiPrecos = aiPrecoPorSku();
       const sazonalProxima = aiSazonalidadeProxima();
-      const itens = _grLinhas.map(l => ({ l, m: aiMetricas(l) }));
+      // FASE A7: ruptura, cobertura e reposicao so com estoque FISICO completo.
+      const itens = _grLinhas.filter(l => l.estoque !== null).map(l => ({ l, m: aiMetricas(l) }));
+      const foraPorEstoqueParcial = _grLinhas.length - itens.length;
 
       // 1a passada: fatos por produto
       itens.forEach(d => {
@@ -14494,7 +14528,7 @@
         excedenteTemCusto: itens.some(d => d.excedente.fonte === 'custo'),
       };
 
-      return { itens, coberturaMedia, excedenteTotal, resumo, sazonalProxima, ctx, recos };
+      return { itens, coberturaMedia, excedenteTotal, resumo, sazonalProxima, ctx, recos, foraPorEstoqueParcial };
     }
 
     // ══════════════════════════════════════
@@ -15081,9 +15115,10 @@
       const meta = document.getElementById('ai-recos-meta');
       const LIMITE = 12;
       const recos = av.recos.slice(0, LIMITE);
-      if (meta) meta.textContent = av.recos.length
+      const _fora = av.foraPorEstoqueParcial ? ` \u00b7 ${av.foraPorEstoqueParcial} SKU${av.foraPorEstoqueParcial !== 1 ? 's' : ''} fora (estoque f\u00edsico incompleto)` : '';
+      if (meta) meta.textContent = (av.recos.length
         ? `${av.recos.length} acoes identificadas · exibindo ${recos.length} por impacto (urgencia × valor × eixo) · cenario ${_aiCenario}`
-        : 'Portfolio completo analisado automaticamente';
+        : 'Portfolio completo analisado automaticamente') + _fora;
 
       if (!recos.length) {
         el.innerHTML = '<div class="empty-state" style="padding:32px 0"><p>Nenhuma acao prioritaria</p><span>Portfolio saudavel no cenario atual.</span></div>';
@@ -18142,8 +18177,9 @@
 
         /**
          * ATENCAO ao ler este campo: `riscoRuptura` conta a faixa `ruptura` da
-         * aba Estoque, e a aba Estoque classifica sobre o estoque PROPRIO
-         * (`consolidarEstoqueGrupo(...).proprio`, sem o Full). Ele NAO e a
+         * aba Estoque, que (FASE A7) classifica sobre o estoque FISICO completo
+         * (`estoqueFisicoDoGrupo`: proprio + Full + FBA; incompleto = sem
+         * classificacao). Ele NAO e a
          * classificacao que o Assistente usa para responder sobre ruptura —
          * essa vem do backend, sobre a base TOTAL (`classification.basis`).
          *

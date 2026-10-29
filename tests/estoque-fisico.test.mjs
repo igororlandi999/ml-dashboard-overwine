@@ -265,7 +265,7 @@ describe('telas', () => {
     const r = montar({ itens: FIX() }).gestao();
     const a = r.dados.find(g => g.sku === 'A');
     assert.deepEqual(comp(a.fis), [12, 5, 8, 25]);
-    assert.equal(a.est, 12, 'a cobertura continua sobre o proprio (A7)');
+    assert.equal(a.est, 25, 'FASE A7: a cobertura usa o total fisico');
     const tabela = r.dom['est-table'].innerHTML.replace(/\s+/g, ' ');
     assert.match(tabela, />12<\/td> <td[^>]*>5<\/td> <td[^>]*>8<\/td> <td[^>]*>25<\/td>/);
     assert.match(tabela, />7<\/td> <td[^>]*>0<\/td> <td[^>]*>0<\/td> <td[^>]*>7<\/td>/);
@@ -283,8 +283,8 @@ describe('telas', () => {
     assert.equal(p.anuncios, 1, 'a linha e a cobertura continuam so com os ativos (A7)');
     const tabela = r.dom['est-table'].innerHTML.replace(/\s+/g, ' ');
     assert.match(tabela, />10<\/td> <td[^>]*>6<\/td> <td[^>]*>4<\/td> <td[^>]*>20<\/td>/);
-    // so o proprio ativo: o que vinha antes como "Estoque" segue igual
-    assert.equal(p.est, 10);
+    // FASE A7: a cobertura usa o mesmo total fisico (pausados inclusive)
+    assert.equal(p.est, 20);
   });
 
   test('Gestao: componente nao informado aparece "—", nunca 0', () => {
@@ -306,16 +306,13 @@ describe('telas', () => {
 });
 
 describe('o resto nao muda', () => {
-  test('15. ruptura, giro, previsao e Estoque Full seguem as regras de antes', () => {
+  test('15. (A7) Gestao e Giro sobre o estoque fisico; formula de dias, Estoque Full e Previsao intactos', () => {
     const est = extrairFuncao('estGetSKUData');
-    assert.match(est, /const est = consolidarEstoqueGrupo\(g\.items\)\.proprio;/);
-    assert.match(est, /const dias = vel > 0 \? Math\.round\(est \/ vel\) : 9999;/);
-    assert.match(extrairFuncao('grEstoquePorSku'), /estoque: c\.proprio \+ c\.full \+ c\.fba,/);
+    assert.match(est, /const est = fis\.completo \? fis\.totalFisico : null;/);
+    assert.match(est, /dias = vel > 0 \? Math\.round\(est \/ vel\) : 9999;/);
+    assert.match(extrairFuncao('grEstoquePorSku'), /estoque: f\.completo \? f\.totalFisico : null,/);
     assert.match(extrairFuncao('renderEstoqueFull'), /consolidarEstoqueGrupo\(g\.items\)/);
-    for (const f of ['grEstoquePorSku', 'renderEstoqueFull', 'pvCalc', 'renderGiro']) {
-      if (html.indexOf('function ' + f + '(') === -1) continue;
-      assert.ok(!/estoqueFisico/.test(extrairFuncao(f)), f);
-    }
+    for (const f of ['renderEstoqueFull', 'pvCalc']) assert.ok(!/estoqueFisico/.test(extrairFuncao(f)), f);
   });
 
   test('16. vendas, liquido, publicidade, Margem e cancelamentos nao leem estoque fisico', () => {

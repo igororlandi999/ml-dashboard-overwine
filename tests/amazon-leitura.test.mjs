@@ -295,10 +295,10 @@ describe('regras de negócio da Amazon (revisão 10/2026)', () => {
     assert.match(bloco, /kpi-visitas'\)\.innerHTML = htmlIndisponivel/);
     assert.match(bloco, /kpi-conversao'\)\.innerHTML = htmlIndisponivel/);
   });
-  test('Gestão de Estoque: SKU da Amazon sem estoque próprio informado fica fora (nunca 0 = ruptura falsa)', () => {
+  test('Gestão de Estoque: estoque da Amazon não informado nunca vira 0 = ruptura falsa (FASE A7: linha "parcial", sem classificação)', () => {
     const f = extrairFuncao('estGetSKUData');
-    assert.match(f, /estoqueInformado === false/);
-    assert.match(f, /filter\(g => !_semEstoqueInformado\(g\)\)/);
+    assert.match(f, /const est = fis\.completo \? fis\.totalFisico : null;/);
+    assert.match(f, /if \(est === null\) \{ dias = null; tipo = 'parcial'; \}/);
   });
 
   test('seletor: com Degustar escolhida, Amazon fica desabilitada e o marketplace cai no ML', () => {
