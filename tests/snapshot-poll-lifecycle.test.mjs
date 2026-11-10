@@ -598,6 +598,7 @@ function montarPedidos({ allOrders = [], snapVersao = 3, previewState = 'idle', 
     'async function loadAllOrders(o) { _e.forceLoads++; allOrders = [{ id: "full" }]; _snapVersaoAtivos = 99; }',
     'function renderPedidosKPIs() { _r.push("kpis"); }',
     'function renderPedidos() { _r.push("pedidos"); }',
+    'function recalcularGestaoComHistorico() { _r.push("gestao"); }',
     extrairFuncao('atualizarPedidosEmMemoria'),
     'return { run: atualizarPedidosEmMemoria, estado: () => ({ allOrders, _snapVersaoAtivos, ordersPreviewState, ordersPreview, _ordersPreviewVersao, _ultimoNewestDate, _ultimoUpdatedAt }) };',
   ].join('\n');
@@ -635,7 +636,7 @@ describe('aba Pedidos acompanha a versao nova', () => {
     assert.equal(e._snapVersaoAtivos, 4);
     assert.equal(e._ultimoNewestDate, '2026-09-25T11:43:00.000Z');
     assert.equal(a.interno.forceLoads, 0, 'historico NAO foi repaginado');
-    assert.deepEqual(a.renders, ['kpis', 'pedidos']);
+    assert.deepEqual(a.renders, ['gestao', 'kpis', 'pedidos'], 'historico novo: a Gestao e recalculada com ele');
   });
 
   test('versao da reconciliacao (incremental/full): repagina o historico inteiro', async () => {
@@ -654,6 +655,7 @@ describe('aba Pedidos acompanha a versao nova', () => {
   test('so o preview em memoria: invalida para a proxima abertura da aba', async () => {
     const a = montarPedidos({ allOrders: [], previewState: 'loaded', status: { versao: 4 } });
     await a.run();
+    assert.ok(!a.renders.includes('gestao'), 'sem historico, nada de recalcular a Gestao');
     const e = a.estado();
     assert.equal(e.ordersPreviewState, 'idle');
     assert.deepEqual(e.ordersPreview, []);
@@ -663,7 +665,7 @@ describe('aba Pedidos acompanha a versao nova', () => {
   test('aba Pedidos fechada: atualiza a memoria e os KPIs, sem renderizar a tabela', async () => {
     const a = montarPedidos({ allOrders: [{ id: 1, date_created: '2026-09-25T10:00:00Z' }], snapVersao: 3, status: { versao: 4 }, pagina: { versao: 4, items: [] }, abaAtiva: false });
     await a.run();
-    assert.deepEqual(a.renders, ['kpis']);
+    assert.deepEqual(a.renders, ['gestao', 'kpis']);
   });
 });
 

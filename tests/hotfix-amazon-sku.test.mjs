@@ -202,7 +202,7 @@ describe('Gestao, Giro, Consolidado e Analise de Preco com venda Amazon', () => 
     assert.equal(h.ap().reduce((s, x) => s + x.qtd, 0), 53);
   });
 
-  test('seller_sku do pedido Amazon e ultimo recurso, so na mesma empresa e nunca para o ML', () => {
+  test('seller_sku do pedido Amazon casa dentro da mesma empresa e nunca vale para o ML', () => {
     const h = montar({ itens: [amzFba('21002', null, 73)] });   // anuncio sem asin
     const amz = pedAmz('B0NOVOASIN', '21002', 2, diasAtras(1));
     assert.equal(h.sku(amz, amz.order_items[0]), '21002');
