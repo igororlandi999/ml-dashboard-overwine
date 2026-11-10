@@ -5853,18 +5853,29 @@
       const sku = indiceItemSku().ids.get(String(id));
       return sku === undefined ? null : sku;
     }
-    /** Linha de pedido -> itemSKU; null quando nao casa ou e ambigua. */
+    /**
+     * Linha de pedido -> itemSKU; null quando nao casa ou e ambigua.
+     *
+     * CORRECAO (auditoria 10/11): no pedido Amazon, o `seller_sku` e o SKU que
+     * a Amazon diz ter VENDIDO, entao ele vem PRIMEIRO, validado dentro da
+     * empresa do pedido (Overwine ML + Amazon casam entre si; Degustar nunca).
+     * So se ele nao casar (SKU sem anuncio na selecao, ou ambiguo na empresa)
+     * cai no id do anuncio / ASIN. Antes, o ASIN vinha primeiro: o pedido
+     * `B0H2NHR771` com seller_sku 21003 ia para o anuncio antigo `86-YFR2-YKJG`,
+     * e um ASIN ambiguo devolvia null sem tentar o seller_sku.
+     * Mercado Livre: identico (so o id do anuncio).
+     */
     function skuDaLinhaPedido(o, oi) {
       const id = oi && oi.item ? oi.item.id : null;
       const idx = indiceItemSku();
-      if (id !== undefined && id !== null && id !== '') {
-        if (idx.ambIds.has(String(id))) return null;
-        const sku = idx.ids.get(String(id));
-        if (sku !== undefined) return sku;
-      }
       const vs = oi && oi.item ? oi.item.seller_sku : null;
       if (vs && pedidoAmazon(o) && o.conta) {
         const sku = idx.vend.get(empresaDaConta(o.conta) + '|' + vs);
+        if (sku !== undefined) return sku;
+      }
+      if (id !== undefined && id !== null && id !== '') {
+        if (idx.ambIds.has(String(id))) return null;
+        const sku = idx.ids.get(String(id));
         if (sku !== undefined) return sku;
       }
       return null;
@@ -7242,10 +7253,25 @@
         Promise.resolve(loadAllOrders()),
         carregarLogistica(),
       ])
-        .then(() => allOrders)
+        .then(() => { recalcularGestaoComHistorico(); return allOrders; })
         .catch(err => { _pedidosPromise = null; throw err; })
         .then(r => { _pedidosPromise = null; return r; });
       return _pedidosPromise;
+    }
+
+    /**
+     * CORRECAO (auditoria 10/11): a Gestao de Estoque era calculada so no
+     * renderDashboard, quase sempre ANTES do historico. Sem historico ela usa o
+     * agregado de 30 dias do backend, que identifica a venda Amazon so pelo ASIN
+     * do pedido — e o ASIN do pedido pode nao ser mais o do anuncio (relistagem),
+     * entao a venda Amazon virava 0. Ao chegar o historico (ou ao ser atualizado),
+     * a Gestao e recalculada pelo caminho do historico (seller_sku primeiro).
+     * Nao soma nada: estGetSKUData usa historico OU agregado, nunca os dois.
+     */
+    function recalcularGestaoComHistorico() {
+      if (!pedidosEmMemoria()) return;
+      try { renderEstoque(); }
+      catch (e) { console.warn('[gestao] recalculo com historico falhou:', e && e.message); }
     }
 
     /**
@@ -7792,6 +7818,7 @@
           }
         }
         if (!mesclou) await loadAllOrders({ force: true });
+        recalcularGestaoComHistorico();   // historico novo: Gestao recalculada com ele
       }
 
       renderPedidosKPIs();
@@ -16173,6 +16200,10 @@
       if (tab === 'analisepreco') comHistorico('Analise de Preco', apInit);
       if (tab === 'previsao') comHistorico('Previsao de Vendas', pvInit);
       if (tab === 'giro') comHistorico('Giro de Estoque', grInit);
+      // CORRECAO: com Amazon na selecao, o agregado de 30 dias nao identifica
+      // a venda Amazon com seguranca; a Gestao pede o historico e e recalculada
+      // quando ele chega (garantirPedidosCarregados -> recalcularGestaoComHistorico).
+      if (tab === 'estoque' && selecaoTemAmazon() && !pedidosEmMemoria()) comHistorico('Gestao de Estoque', renderEstoque);
 
       // Sem dependencia do historico bruto.
       if (tab === 'tipoanuncio') renderTipoAnuncio();
