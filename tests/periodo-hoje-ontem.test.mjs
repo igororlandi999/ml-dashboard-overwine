@@ -62,6 +62,8 @@ function montar({ hoje, itens = [], pedidos = [] } = {}) {
     'function estoqueDoGrupo(items) { return { confirmado: true, valor: 0, porAnuncio: [] }; }',
     'let allItems = _itens; let allOrders = _pedidos; let ordFilter = "paid";',
     extrairFuncao('getFilteredOrders'),
+    extrairFuncao('_skuDoVendedor'), 'function empresaDaConta(c) { return c; }',
+    'let _indiceItemSku = { ref: null, n: -1, sel: null, ids: null, vend: null };', extrairFuncao('_registrarChave'), extrairFuncao('indiceItemSku'), extrairFuncao('skuDoIdentificador'), extrairFuncao('skuDaLinhaPedido'),
     extrairFuncao('consVendasDoPeriodo'), extrairFuncao('buildConsolidado'),
     'return { gdrGet, gdrDefinir, gdrCalcularRange, gdrRotulo, gdrVirarDia, gdrMontarSelect, getFilteredOrders, buildConsolidado, estado: () => globalDateRange };',
   ].join('\n');

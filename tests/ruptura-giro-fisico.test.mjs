@@ -88,6 +88,8 @@ function montar({ itens = [], selecao = ['overwine-ml'], vendas30 = {}, vendasCi
     'const _dom = { "gr-semanas": { value: String(_semanas) } };',
     'const document = { querySelectorAll: () => [], getElementById: id => (_dom[id] ??= { textContent: "", innerHTML: "", title: "", style: {}, value: "" }) };',
     'let _estData = [], _estFiltro = "todos", _estSemInfo = 0;',
+    'let _indiceItemSku = { ref: null, n: -1, sel: null, ids: null, vend: null };', extrairFuncao('_registrarChave'), extrairFuncao('indiceItemSku'), extrairFuncao('skuDoIdentificador'), extrairFuncao('skuDaLinhaPedido'),
+    extrairFuncao('contaEhAmazon'), extrairFuncao('selecaoTemAmazon'), extrairFuncao('selecaoDaEmpresaOverwine'), extrairFuncao('estoqueMostraFba'),
     extrairFuncao('estGetSKUData'), extrairFuncao('renderEstoque'),
     // Giro
     'let _grWeeks = {};',

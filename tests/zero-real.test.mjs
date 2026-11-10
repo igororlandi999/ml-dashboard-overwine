@@ -262,6 +262,7 @@ describe('telas que dependem do historico: loading nunca e zero', () => {
         extrairFuncao('_qtdInformada'), extrairFuncao('estoqueFisicoDoGrupo'), extrairFuncao('estoqueFisicoTotal'), extrairConstante('ROTULO_PENDENCIA_ESTOQUE'),
         'const MOD_PLACEHOLDER = "\\u2014";',
         'const document = { getElementById: id => (_dom[id] ??= { textContent: "", title: "" }) };',
+        extrairFuncao('selecaoLegada'), extrairFuncao('contaEhAmazon'), extrairFuncao('selecaoTemAmazon'), extrairFuncao('selecaoDaEmpresaOverwine'), extrairFuncao('estoqueMostraFba'),
         extrairFuncao('renderKPIs'), 'renderKPIs();',
       ].join('\n'))(itens, dom);
       return dom;

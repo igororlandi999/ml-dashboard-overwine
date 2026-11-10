@@ -3193,7 +3193,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Estoque Físico</div>
         <div class="kpi-value" id="kpi-stock">-</div>
-        <div class="kpi-delta neutral" id="kpi-stock-sub">próprio + Full + FBA</div>
+        <div class="kpi-delta neutral" id="kpi-stock-sub">estoque físico</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Vendas Totais</div>
@@ -3544,8 +3544,8 @@
               <th style="text-align:center">Cobertura</th>
               <th style="text-align:center" title="Estoque próprio único (base da cobertura)">Próprio</th>
               <th style="text-align:center">Full</th>
-              <th style="text-align:center">FBA</th>
-              <th style="text-align:center" title="Próprio + Full + FBA">Total físico</th>
+              <th style="text-align:center" id="est-th-fba">FBA</th>
+              <th style="text-align:center" id="est-th-total" title="Próprio + Full + FBA">Total físico</th>
               <th style="text-align:center">Vel. 30d</th>
               <th style="text-align:center">Previsao Ruptura</th>
               <th style="text-align:center">Preco</th>
@@ -4318,7 +4318,7 @@
       <div class="kpi-card">
         <div class="kpi-label">Valor Perdido</div>
         <div class="kpi-value" id="canc-valor" style="color:var(--red)">-</div>
-        <div class="kpi-delta neutral">em pedidos cancelados</div>
+        <div class="kpi-delta neutral" id="canc-valor-sub">em pedidos cancelados</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Sua Responsabilidade</div>
@@ -4336,7 +4336,7 @@
       <div class="card">
         <div class="card-header">
           <div class="card-title">Por Responsavel</div>
-          <div class="card-meta">quem originou o cancelamento</div>
+          <div class="card-meta" id="canc-donut-meta">quem originou o cancelamento</div>
         </div>
         <div class="card-body" id="canc-donut-wrap">
           <div class="empty-state">
@@ -4676,7 +4676,7 @@
       <div class="kpi-card highlight">
         <div class="kpi-label">Estoque Total</div>
         <div class="kpi-value gold" id="gr-c-estoque">-</div>
-        <div class="kpi-delta neutral">unidades em todos os SKUs</div>
+        <div class="kpi-delta neutral">unidades nos SKUs com anúncio ativo</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Vendido no Periodo</div>
@@ -5807,6 +5807,69 @@
     }
     function identidadeReal(chave) { return !/^sem-sku-/.test(String(chave || '')); }
 
+    /**
+     * HOTFIX — resolucao UNICA de identificador de item -> chave fisica (itemSKU).
+     * Usada por Gestao, Giro, Consolidado e Analise de Preco.
+     *
+     * O pedido da Amazon identifica o produto pelo ASIN
+     * (`order_items[].item.id = "B0FCH81LW5"`), enquanto o catalogo usa
+     * `id = "21002#fba"` e guarda o ASIN em `asin`. Indexar so `i.id` descartava
+     * toda venda Amazon. O indice aceita:
+     *   - id do anuncio (ML e Amazon), como antes;
+     *   - ASIN do anuncio Amazon;
+     *   - SKU do vendedor por empresa (`seller_sku` do pedido Amazon), so como
+     *     ultimo recurso e so para pedido Amazon — o casamento do ML fica
+     *     identico.
+     * Um identificador que aponta para DUAS chaves fisicas diferentes e
+     * AMBIGUO: sai do indice e a venda nao e atribuida a nenhum SKU (nunca o
+     * primeiro nem o ultimo). Duas linhas do mesmo produto (`21002` e
+     * `21002#fba`, mesmo itemSKU) nao sao ambiguidade.
+     */
+    let _indiceItemSku = { ref: null, n: -1, sel: null, ids: null, vend: null };
+    function _registrarChave(mapa, ambiguos, id, sku) {
+      if (id === undefined || id === null || id === '') return;
+      const k = String(id);
+      if (ambiguos.has(k)) return;
+      if (mapa.has(k) && mapa.get(k) !== sku) { mapa.delete(k); ambiguos.add(k); return; }
+      mapa.set(k, sku);
+    }
+    function indiceItemSku() {
+      const sel = typeof selecaoChave === 'function' ? selecaoChave() : '';
+      const c = _indiceItemSku;
+      if (c.ref === allItems && c.n === (allItems || []).length && c.sel === sel && c.ids) return c;
+      const ids = new Map(), ambIds = new Set(), vend = new Map(), ambVend = new Set();
+      (allItems || []).forEach(i => _registrarChave(ids, ambIds, i.id, itemSKU(i)));
+      (allItems || []).forEach(i => { if (i.asin) _registrarChave(ids, ambIds, i.asin, itemSKU(i)); });
+      (allItems || []).forEach(i => {
+        const s = _skuDoVendedor(i);
+        if (s && i.conta) _registrarChave(vend, ambVend, empresaDaConta(i.conta) + '|' + s, itemSKU(i));
+      });
+      _indiceItemSku = { ref: allItems, n: (allItems || []).length, sel, ids, ambIds, vend, ambVend };
+      return _indiceItemSku;
+    }
+    /** id de anuncio OU ASIN -> itemSKU; null quando desconhecido ou ambiguo. */
+    function skuDoIdentificador(id) {
+      if (id === undefined || id === null || id === '') return null;
+      const sku = indiceItemSku().ids.get(String(id));
+      return sku === undefined ? null : sku;
+    }
+    /** Linha de pedido -> itemSKU; null quando nao casa ou e ambigua. */
+    function skuDaLinhaPedido(o, oi) {
+      const id = oi && oi.item ? oi.item.id : null;
+      const idx = indiceItemSku();
+      if (id !== undefined && id !== null && id !== '') {
+        if (idx.ambIds.has(String(id))) return null;
+        const sku = idx.ids.get(String(id));
+        if (sku !== undefined) return sku;
+      }
+      const vs = oi && oi.item ? oi.item.seller_sku : null;
+      if (vs && pedidoAmazon(o) && o.conta) {
+        const sku = idx.vend.get(empresaDaConta(o.conta) + '|' + vs);
+        if (sku !== undefined) return sku;
+      }
+      return null;
+    }
+
     /** Etiqueta da empresa ao lado de um pedido ou anuncio. So existe no consolidado. */
     function tagConta(obj) {
       if (!selecaoConsolidada() || !obj || !obj.conta) return '';
@@ -6195,6 +6258,10 @@
     function selecaoChave() { return SELECAO.join(','); }
     /** A Overwine sozinha: o caminho que nao pode mudar em nada. */
     function selecaoLegada() { return SELECAO.length === 1 && SELECAO[0] === CONTA_LEGADA; }
+    /** HOTFIX: TODAS as contas selecionadas sao da empresa Overwine/Alem Mar (ML, Amazon ou as duas). Decisao por empresa, nao por canal. */
+    function selecaoDaEmpresaOverwine() { return SELECAO.length > 0 && SELECAO.every(contaDaEmpresaOverwine); }
+    /** HOTFIX: FBA so aparece onde a Amazon existe (selecao com Amazon ou da empresa Overwine/Alem Mar). Degustar e so Mercado Livre. */
+    function estoqueMostraFba() { return selecaoTemAmazon() || selecaoDaEmpresaOverwine(); }
     function selecaoConsolidada() { return SELECAO.length > 1; }
     function selecaoInclui(id) { return SELECAO.indexOf(id) !== -1; }
     function contaInfo(id) {
@@ -6534,7 +6601,10 @@
       if (meta) { const v = lerNum('pv_meta'); meta.value = v === null ? '' : String(v); meta.placeholder = 'informe a meta'; }
       const semanas = document.getElementById('gr-semanas');
       if (semanas) {
-        const v = lerNum('gr_semanas'); semanas.value = v === null ? '' : String(v); semanas.placeholder = 'informe';
+        const v = lerNum('gr_semanas');
+        // HOTFIX: selecao so da Overwine (Amazon / consolidado) nasce com as 24 semanas da Overwine.
+        semanas.value = v !== null ? String(v) : (selecaoDaEmpresaOverwine() ? '24' : '');
+        semanas.placeholder = 'informe';
         semanas.addEventListener('change', () => { try { localStorage.setItem(chaveLocal('gr_semanas'), semanas.value || ''); } catch (e) { } });
       }
 
@@ -8093,8 +8163,14 @@
       const x = xlsxDoPeriodo(fromYmd, toYmd);
       if (x !== null) return achou(x, 'xlsx_ml_ads');
 
+      // HOTFIX: "indisponivel" so depois que a tentativa DESTE periodo terminou.
+      // Antes da primeira consulta (idle), durante ela (loading) ou com a ultima
+      // resposta sendo de OUTRO periodo (a do periodo atual ainda nao veio), o
+      // estado e "carregando" — era o flash falso no boot e na troca de periodo.
+      const pendente = _adsLoadState === 'idle' || _adsLoadState === 'loading'
+        || (_adsLoadState === 'loaded' && !apiDoPeriodo);
       const motivo = apiDoPeriodo && a.motivo ? a.motivo
-        : _adsLoadState === 'loading' ? 'carregando'
+        : pendente ? 'carregando'
           : 'sem_fonte_confiavel';
       return { disponivel: false, custo: null, fonte: null, periodoExato: false, parcial, motivo };
     }
@@ -9343,12 +9419,14 @@
       document.getElementById('kpi-nostock').textContent = nostock;
       const _stockEl = document.getElementById('kpi-stock');
       _stockEl.textContent = fis.totalConhecido.toLocaleString('pt-BR');
+      // HOTFIX: Degustar (sem Amazon) nao fala de FBA no subtitulo nem no title.
+      const _mostraFba = estoqueMostraFba();
       _stockEl.title = 'Pr\u00f3prio ' + fis.proprio.toLocaleString('pt-BR') + ' \u00b7 Full ' + fis.mlFull.toLocaleString('pt-BR') +
-        ' \u00b7 FBA ' + fis.amazonFba.toLocaleString('pt-BR') +
+        (_mostraFba ? ' \u00b7 FBA ' + fis.amazonFba.toLocaleString('pt-BR') : '') +
         (fis.completo ? '' : ' \u00b7 ' + Object.keys(fis.pendencias).map(k => (ROTULO_PENDENCIA_ESTOQUE[k] || k) + ' em ' + fis.pendencias[k]).join(', '));
       const _stockSub = document.getElementById('kpi-stock-sub');
       if (_stockSub) _stockSub.textContent = fis.completo
-        ? 'pr\u00f3prio + Full + FBA'
+        ? (_mostraFba ? 'pr\u00f3prio + Full + FBA' : 'pr\u00f3prio + Full')
         : 'parcial \u00b7 ' + fis.incompletos + ' produto' + (fis.incompletos !== 1 ? 's' : '') + ' sem saldo informado';
       const _soldEl = document.getElementById('kpi-sold');
       _soldEl.textContent = totalSold === null ? MOD_PLACEHOLDER : totalSold.toLocaleString('pt-BR');
@@ -9872,7 +9950,14 @@
       // Onda D: unidades por item nos ultimos 30 dias. Local quando o
       // historico esta em memoria; senao, do agregado (unidadesPorItem, mesma
       // regra: exclui cancelados, percorre TODOS os order_items, quantity||1).
+      // HOTFIX: venda cujo identificador NAO e o id de um anuncio do catalogo
+      // (pedido Amazon: item.id = ASIN) vai para a chave fisica resolvida
+      // (skuDaLinhaPedido / skuDoIdentificador) em `vendas30Sku`. O caminho por
+      // id do anuncio (Mercado Livre) segue identico. A precedencia da fonte nao
+      // muda: historico OU agregado, nunca os dois.
       const vendas30 = {};
+      const vendas30Sku = {};
+      const _idsCatalogo = new Set(allItems.map(i => String(i.id)));
       if (pedidosEmMemoria()) {
         allOrders.forEach(o => {
           if (pedidoForaDaVenda(o)) return;
@@ -9880,11 +9965,17 @@
           if (dt < limite30) return;
           (o.order_items || []).forEach(oi => {
             const id = oi.item?.id;
-            if (id) vendas30[id] = (vendas30[id] || 0) + (oi.quantity || 1);
+            if (id && _idsCatalogo.has(String(id))) { vendas30[id] = (vendas30[id] || 0) + (oi.quantity || 1); return; }
+            const sku = skuDaLinhaPedido(o, oi);
+            if (sku) vendas30Sku[sku] = (vendas30Sku[sku] || 0) + (oi.quantity || 1);
           });
         });
       } else if (_metrics && _metrics.estoque30d && Array.isArray(_metrics.estoque30d.porItem)) {
-        _metrics.estoque30d.porItem.forEach(l => { vendas30[l.itemId] = l.unidades; });
+        _metrics.estoque30d.porItem.forEach(l => {
+          if (_idsCatalogo.has(String(l.itemId))) { vendas30[l.itemId] = l.unidades; return; }
+          const sku = skuDoIdentificador(l.itemId);
+          if (sku) vendas30Sku[sku] = (vendas30Sku[sku] || 0) + l.unidades;
+        });
       }
 
       // FASE A6/A7: populacao FISICA do SKU = todos os anuncios, ativos e
@@ -9903,6 +9994,8 @@
         if ((i.price || 0) > grupos[sku].preco) grupos[sku].preco = i.price || 0;
         if (i.title.length < grupos[sku].label.length) grupos[sku].label = i.title;
       });
+      // HOTFIX: vendas resolvidas por ASIN entram UMA vez no SKU (nao por anuncio).
+      Object.values(grupos).forEach(g => { g.vendas30 += vendas30Sku[g.sku] || 0; });
 
       // FASE A7: cobertura e ruptura sobre o ESTOQUE FISICO (estoqueFisicoDoGrupo:
       // proprio unico + Full + FBA). Total incompleto (Amazon `null`, FBA nao
@@ -10000,6 +10093,12 @@
         ? `<td style="text-align:center;color:var(--muted)" title="${escHtml(fis.pendencias.map(p => ROTULO_PENDENCIA_ESTOQUE[p] || p).join(', '))}">${MOD_PLACEHOLDER}</td>`
         : `<td style="text-align:center;${estilo}">${v.toLocaleString('pt-BR')}</td>`;
 
+      // HOTFIX: sem Amazon na selecao (Degustar), a coluna FBA nao aparece.
+      const _mostraFba = estoqueMostraFba();
+      const _thFba = document.getElementById('est-th-fba');
+      if (_thFba) _thFba.style.display = _mostraFba ? '' : 'none';
+      const _thTot = document.getElementById('est-th-total');
+      if (_thTot) _thTot.title = _mostraFba ? 'Pr\u00f3prio + Full + FBA' : 'Pr\u00f3prio + Full';
       const tbody = document.getElementById('est-table');
       tbody.innerHTML = dados.length
         ? dados.map(g => {
@@ -10021,14 +10120,14 @@
           </td>
           ${celEst(g.fis.proprio, 'font-family:var(--font-display);font-size:16px;font-weight:600;color:' + (g.fis.proprio === 0 ? 'var(--red)' : g.fis.proprio !== null && g.fis.proprio <= 5 ? 'var(--amber)' : 'var(--cream)'), g.fis)}
           ${celEst(g.fis.mlFull, 'font-size:13px;color:var(--cream)', g.fis)}
-          ${celEst(g.fis.amazonFba, 'font-size:13px;color:var(--cream)', g.fis)}
+          ${_mostraFba ? celEst(g.fis.amazonFba, 'font-size:13px;color:var(--cream)', g.fis) : ''}
           ${celEst(g.fis.totalFisico, 'font-size:14px;font-weight:600;color:var(--gold-light)', g.fis)}
           <td style="text-align:center;font-size:13px;color:var(--muted)">${g.vel > 0 ? g.vel + ' un/dia' : '-'}</td>
           <td style="text-align:center;font-size:13px;color:${g.tipo === 'ruptura' ? 'var(--red)' : g.tipo === 'alerta' ? 'var(--amber)' : 'var(--muted)'}">${fmtData(g.dias)}</td>
           <td style="text-align:center"><span class="price">R$\u00a0${fmtPrice(g.preco)}</span></td>
         </tr>`;
         }).join('')
-        : `<tr><td colspan="9"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
+        : `<tr><td colspan="${_mostraFba ? 9 : 8}"><div class="empty-state"><p>Nenhum SKU nesta categoria</p></div></td></tr>`;
     }
 
 
@@ -10997,8 +11096,9 @@
         if (!pedidoPago(o)) return;
         if (!dentroDoPeriodo(o.date_created, inicio, fim)) return;
         (o.order_items || []).forEach(oi => {
-          const sku = skuDoItem[oi && oi.item && oi.item.id];
-          if (sku === undefined) return;
+          // HOTFIX: `skuDoItem` pode ser a resolucao unica (funcao) ou um mapa id -> sku.
+          const sku = typeof skuDoItem === 'function' ? skuDoItem(o, oi) : skuDoItem[oi && oi.item && oi.item.id];
+          if (sku === undefined || sku === null) return;
           const qtd = Number(oi.quantity) > 0 ? Number(oi.quantity) : 1;
           const r = porSku[sku] || (porSku[sku] = { pedidos: new Set(), unidades: 0, valor: 0, unidadesComPreco: 0 });
           r.pedidos.add(String(o.id));
@@ -11025,10 +11125,10 @@
 
       // Vendas e pedidos: so o PERIODO GLOBAL (o mesmo de todas as abas).
       // Estoque, anuncios e preco medio continuam sendo o estado atual.
-      const skuDoItem = {};
-      Object.values(grupos).forEach(g => g.items.forEach(i => { skuDoItem[i.id] = g.sku; }));
+      // HOTFIX: a MESMA resolucao de Gestao/Giro (id do anuncio ou ASIN da Amazon).
+      // Os grupos sao itemSKU, a mesma chave que skuDaLinhaPedido devolve.
       const _g = gdrGet();
-      const vendas = consVendasDoPeriodo(allOrders, skuDoItem, _g.fromDate, _g.toDate);
+      const vendas = consVendasDoPeriodo(allOrders, skuDaLinhaPedido, _g.fromDate, _g.toDate);
 
       return Object.values(grupos).map(g => {
         // Estoque fisico (FASE A6): proprio unico + Full + FBA (estoqueFisicoDoGrupo).
@@ -11311,7 +11411,16 @@
       const motivoLista = motivoCoberturaCancelados(g.from);
       _cancListaPeriodo = motivoLista === null ? canceladosMLDoPeriodo(g.from, g.toEfetivo) : [];
       const total = _cancListaPeriodo.length;
-      if (!total) {
+      // HOTFIX 139/138: o total OPERACIONAL e a autoridade da contagem. Pedido
+      // cancelado sem `cancel_detail` (ou fora da lista de cancelados do ML) NAO
+      // e classificado: vira "Sem detalhe do Mercado Livre". Nada de reduzir o
+      // total nem de inventar responsabilidade.
+      const totalRef = op.disponivel ? Math.max(op.cancelados, total) : total;
+      const classificados = _cancListaPeriodo.filter(o => o.cancel_detail && o.cancel_detail.group).length;
+      const semDetalhe = Math.max(0, totalRef - classificados);
+      set('canc-donut-meta', semDetalhe > 0 ? classificados + ' classificados de ' + totalRef : 'quem originou o cancelamento');
+      set('canc-valor-sub', semDetalhe > 0 && total < totalRef ? 'em ' + total + ' de ' + totalRef + ' pedidos cancelados' : 'em pedidos cancelados');
+      if (!totalRef) {
         ['canc-valor', 'canc-seller', 'canc-externo'].forEach(id => set(id, motivoLista === null ? '0' : MOD_PLACEHOLDER));
         const msg = motivoLista === null ? 'Sem cancelamentos no periodo' : textoCancelamentoIndisponivel(motivoLista);
         document.getElementById('canc-donut-wrap').innerHTML = '<div class="empty-state"><p>' + escHtml(msg) + '</p></div>';
@@ -11324,14 +11433,15 @@
       }
       const valorTotal = _cancListaPeriodo.reduce((s, o) => s + (o.total_amount || 0), 0);
       const sellerCount = _cancListaPeriodo.filter(o => o.cancel_detail?.group === 'seller').length;
-      const externoCount = total - sellerCount;
+      const externoCount = classificados - sellerCount;   // so os CLASSIFICADOS fora do vendedor
       document.getElementById('canc-valor').textContent = 'R$ ' + valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
       document.getElementById('canc-seller').textContent = sellerCount;
       document.getElementById('canc-externo').textContent = externoCount;
       const motivos = buildCancelMotivos(_cancListaPeriodo);
-      renderCancelDonut(motivos, total);
-      renderCancelInsights(motivos, total, op.disponivel ? op.taxa : null);
-      document.getElementById('canc-motivos-meta').textContent = `${motivos.length} motivos distintos`;
+      renderCancelDonut(motivos, totalRef, semDetalhe);
+      renderCancelInsights(motivos, totalRef, op.disponivel ? op.taxa : null, semDetalhe);
+      document.getElementById('canc-motivos-meta').textContent = `${motivos.length} motivos distintos` +
+        (semDetalhe > 0 ? ` \u00b7 ${semDetalhe} sem detalhe do Mercado Livre` : '');
       document.getElementById('canc-motivos-table').innerHTML = motivos.map(m => {
         const pct = Math.round(m.count / total * 100);
         const color = CANCEL_COLORS[m.group] || '#9A8E94';
@@ -11340,15 +11450,18 @@
       renderCancOrdersTable();
     }
 
-    function renderCancelDonut(motivos, total) {
+    function renderCancelDonut(motivos, total, semDetalhe) {
       const el = document.getElementById('canc-donut-wrap');
       const SIZE = 140; const cx = SIZE / 2, cy = SIZE / 2, R = 52, r = 30;
       let startAngle = -Math.PI / 2;
+      // HOTFIX: so os grupos CLASSIFICADOS (cancel_detail.group); o resto vira a
+      // fatia "Sem detalhe do Mercado Livre", e a soma fecha no total operacional.
       const byGroup = {};
-      motivos.forEach(m => { byGroup[m.group] = (byGroup[m.group] || 0) + m.count; });
+      motivos.forEach(m => { if (m.group !== 'desconhecido') byGroup[m.group] = (byGroup[m.group] || 0) + m.count; });
       const slices = Object.entries(byGroup).sort((a, b) => b[1] - a[1]).map(([group, count]) => ({
         group, count, pct: count / total, color: CANCEL_COLORS[group] || '#9A8E94', label: CANCEL_GROUP_LABELS[group] || group
       }));
+      if (semDetalhe > 0) slices.push({ group: 'sem_detalhe', count: semDetalhe, pct: semDetalhe / total, color: '#5E5459', label: 'Sem detalhe do Mercado Livre' });
       let paths = '';
       slices.forEach(s => {
         const angle = s.pct * Math.PI * 2; const endAngle = startAngle + angle;
@@ -11364,7 +11477,7 @@
       el.innerHTML = `<div class="cancel-donut-wrap"><svg width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}" style="flex-shrink:0">${paths}<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="20" font-weight="600" fill="var(--cream)" font-family="Playfair Display, serif">${total}</text><text x="${cx}" y="${cy + 12}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="Plus Jakarta Sans, sans-serif" letter-spacing="0.08em">CANCELADOS</text></svg><div class="cancel-legend">${legend}</div></div>`;
     }
 
-    function renderCancelInsights(motivos, total, taxa) {
+    function renderCancelInsights(motivos, total, taxa, semDetalhe) {
       const el = document.getElementById('canc-insights');
       const insights = [];
       const packSplit = motivos.find(m => m.code === 'pack_splitted');
@@ -11378,8 +11491,10 @@
       if (buyerCancel && buyerCancel.count > 0) insights.push({ type: 'warning', title: `Comprador cancelou antes da entrega (${buyerCancel.count} ocorrencia${buyerCancel.count > 1 ? 's' : ''})`, text: 'Cancelos express pelo comprador geralmente indicam arrependimento rapido ou preco melhor encontrado. Nao ha muito o que fazer alem de garantir preco competitivo e prazo rapido.' });
       if (mediations && mediations.count > 0) insights.push({ type: 'danger', title: `Mediacoes abertas (${mediations.count} ocorrencia${mediations.count > 1 ? 's' : ''})`, text: 'Mediacoes indicam conflito formal entre comprador e vendedor. Recomenda-se resolver proativamente antes que o ML intervenha.' });
       const sellerCount = motivos.filter(m => m.group === 'seller').reduce((s, m) => s + m.count, 0);
-      const externoCount = total - sellerCount;
+      // HOTFIX: "fora do controle" so conta os CLASSIFICADOS; sem detalhe nao entra.
+      const externoCount = motivos.filter(m => m.group !== 'seller' && m.group !== 'desconhecido').reduce((s, m) => s + m.count, 0);
       if (externoCount > sellerCount) insights.push({ type: 'ok', title: `${Math.round(externoCount / total * 100)}% dos cancelamentos estao fora do seu controle`, text: 'A maioria dos cancelos foi gerada pelo proprio ML ou por problemas de envio. Isso nao afeta diretamente sua reputacao como vendedor. Foque nos cancelamentos do grupo Vendedor.' });
+      if (semDetalhe > 0) insights.push({ type: 'warning', title: `${semDetalhe} cancelamento${semDetalhe > 1 ? 's' : ''} sem detalhe do Mercado Livre`, text: 'O Mercado Livre nao informou quem originou ' + (semDetalhe > 1 ? 'esses cancelamentos' : 'esse cancelamento') + '. Ele entra no total e na taxa, mas fica fora da responsabilidade e dos motivos.' });
       if (!insights.length) insights.push({ type: 'ok', title: 'Volume de cancelamentos dentro do esperado', text: taxa === null ? 'Taxa do periodo indisponivel: so os motivos foram avaliados.' : `Taxa de ${(taxa * 100).toFixed(1)}% esta dentro de parametros normais para o ML.` });
       el.innerHTML = insights.map(ins => `<div class="insight-box ${ins.type}"><div class="insight-title">${ins.title}</div><div class="insight-text">${ins.text}</div></div>`).join('');
     }
@@ -12665,13 +12780,6 @@
       return Object.values(grupos).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
     }
 
-    // Mapa item_id -> sku consolidado
-    function apItemSkuMap() {
-      const map = {};
-      allItems.forEach(i => { map[i.id] = itemSKU(i); });
-      return map;
-    }
-
     function apInit() {
       if (!_apInited) {
         // Popular seletor de produtos
@@ -12693,7 +12801,6 @@
       // Periodo GLOBAL
       const _g = gdrGet();
       const ini = _g.fromDate, fim = _g.toDate;
-      const skuMap = apItemSkuMap();
 
       const vendas = [];
       const vistos = new Set(); // evita duplicar o mesmo order_item do mesmo pedido
@@ -12704,7 +12811,7 @@
         (o.order_items || []).forEach((oi, idx) => {
           const itemId = oi.item?.id;
           if (!itemId) return;
-          if (skuMap[itemId] !== sku) return;                  // so este produto consolidado
+          if (skuDaLinhaPedido(o, oi) !== sku) return;         // so este produto (id do anuncio ou ASIN)
           const chave = o.id + ':' + itemId + ':' + idx;
           if (vistos.has(chave)) return;                       // nao duplicar
           vistos.add(chave);
@@ -13416,7 +13523,8 @@
 
     // Vendas por SKU dentro do ciclo: total + por semana. Fonte: allOrders (contaComoVenda).
     function grVendasPorSku(ini, fim) {
-      const skuMap = apItemSkuMap(); // item_id -> sku (reuso)
+      // HOTFIX: item do pedido -> SKU pela resolucao unica (id do anuncio, ASIN
+      // da Amazon), nao mais so pelo id do anuncio.
       const out = {}; // sku -> { totalQty, totalRev, porSemana: {semana: qtd} }
       (allOrders || []).forEach(o => {
         if (!pedidoPago(o)) return;
@@ -13424,9 +13532,7 @@
         const dt = new Date(o.date_created);
         const semana = Math.floor(grSemanasEntre(ini, dt)) + 1; // semana 1, 2, ...
         (o.order_items || []).forEach(oi => {
-          const itemId = oi.item?.id;
-          if (!itemId) return;
-          const sku = skuMap[itemId];
+          const sku = skuDaLinhaPedido(o, oi);
           if (!sku) return;
           const qty = oi.quantity || 1;
           if (!out[sku]) out[sku] = { totalQty: 0, totalRev: 0, porSemana: {} };
@@ -13453,7 +13559,10 @@
      */
     function grSemanasAlvo() {
       const v = parseInt(document.getElementById('gr-semanas').value);
-      if (selecaoLegada()) return Math.max(1, v || 24);
+      // HOTFIX: as 24 semanas da Overwine valem para qualquer selecao so da
+      // empresa Overwine/Alem Mar (ML, Amazon ou consolidado). Degustar e
+      // mistura de empresas continuam sem cobertura alvo ate ser informada.
+      if (selecaoLegada() || selecaoDaEmpresaOverwine()) return Math.max(1, v || 24);
       return (Number.isFinite(v) && v >= 1) ? v : null;
     }
 

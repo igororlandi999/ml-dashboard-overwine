@@ -397,3 +397,88 @@ describe('o resto nao muda', () => {
     assert.ok(!/cancelCnt/.test(extrairFuncao('renderPedidosKPIsLocal')));
   });
 });
+
+describe('HOTFIX — cancelamento sem detalhe do Mercado Livre (139 total / 138 classificados)', () => {
+  const dOut = i => '10-' + String(1 + (i % 20)).padStart(2, '0');
+  const GRUPOS = [['internal', 'pack_splitted', 84], ['shipment', 'shipment_not_delivered', 26], ['buyer', 'buyer_cancel_express', 22], ['mediations', 'mediations', 6]];
+  const comDetalhe = (base = 5000) => {
+    const out = []; let n = 0;
+    GRUPOS.forEach(([group, code, qtd]) => { for (let i = 0; i < qtd; i++) out.push(ml(base + n, 'cancelled', dOut(n++), { cancel_detail: { group, code } })); });
+    return out;   // 138
+  };
+  const PAGOS = Array.from({ length: 1000 }, (_, i) => ml(i + 1, 'paid', dOut(i)));
+  const SEM_DETALHE = ml(2000018740568118, 'cancelled', '10-01');   // no historico, fora da lista do ML, sem cancel_detail
+  const donut = d => {
+    const h = d['canc-donut-wrap'].innerHTML;
+    const centro = Number((/font-weight="600"[^>]*>(\d+)</.exec(h) || [])[1]);
+    const fatias = [...h.matchAll(/cancel-legend-label">([^<]+)<\/span><span class="cancel-legend-count">(\d+) \(/g)].map(m => [m[1], Number(m[2])]);
+    return { centro, fatias, soma: fatias.reduce((s, f) => s + f[1], 0) };
+  };
+
+  test('17. 139 operacionais / 138 com detalhe: total 139, 138 classificados, 1 sem detalhe, categorias somam 139', async () => {
+    const lista = comDetalhe();
+    const h = montar({ historico: [...PAGOS, SEM_DETALHE], cancelados: { legado: lista } });
+    await h.carregar();
+    const op = h.op(P, 'ml');
+    assert.deepEqual([op.cancelados, op.pedidos], [139, 1139]);
+    const d = h.aba();
+    assert.equal(d['canc-total'].textContent, '139', 'o total nao cai para 138');
+    assert.equal(d['canc-donut-meta'].textContent, '138 classificados de 139');
+    assert.equal(String(d['canc-seller'].textContent), '0');
+    assert.equal(String(d['canc-externo'].textContent), '138');
+    const g = donut(d);
+    assert.equal(g.centro, 139);
+    assert.deepEqual(g.fatias.find(f => /Sem detalhe/.test(f[0])), ['Sem detalhe do Mercado Livre', 1]);
+    assert.equal(g.soma, 139, 'Sua responsabilidade + Fora do seu controle + Sem detalhe = total operacional');
+    assert.equal(Number(d['canc-seller'].textContent) + Number(d['canc-externo'].textContent) + 1, 139);
+    assert.match(d['canc-motivos-meta'].textContent, /1 sem detalhe do Mercado Livre/);
+    assert.match(d['canc-valor-sub'].textContent, /em 138 de 139 pedidos cancelados/);
+    assert.match(d['canc-insights'].innerHTML, /1 cancelamento sem detalhe do Mercado Livre/);
+  });
+
+  test('18. todos com detalhe: sem detalhe = 0 e a tela de sempre', async () => {
+    const h = montar();
+    await h.carregar();
+    const d = h.aba();
+    assert.equal(d['canc-total'].textContent, '5');
+    assert.equal(d['canc-donut-meta'].textContent, 'quem originou o cancelamento');
+    assert.equal(d['canc-valor-sub'].textContent, 'em pedidos cancelados');
+    const g = donut(d);
+    assert.ok(!g.fatias.some(f => /Sem detalhe/.test(f[0])));
+    assert.deepEqual([g.centro, g.soma], [5, 5]);
+    assert.ok(!/sem detalhe/i.test(d['canc-motivos-meta'].textContent + d['canc-insights'].innerHTML));
+  });
+
+  test('19. pedido sem cancel_detail nunca entra em "Sua responsabilidade" nem em "Fora do seu controle"', async () => {
+    // Um da lista do ML sem cancel_detail + um so no historico.
+    const lista = [...CANC_ML.slice(0, 5), ml(106, 'cancelled', '10-09')];
+    const h = montar({ historico: [...HIST_ML, ml(107, 'cancelled', '10-11')], cancelados: { legado: lista } });
+    await h.carregar();
+    const d = h.aba();
+    assert.equal(d['canc-total'].textContent, '7');
+    assert.equal(String(d['canc-seller'].textContent), '1');
+    assert.equal(String(d['canc-externo'].textContent), '4', 'so os 4 classificados fora do vendedor');
+    assert.equal(d['canc-donut-meta'].textContent, '5 classificados de 7');
+    const g = donut(d);
+    assert.deepEqual(g.fatias.find(f => /Sem detalhe/.test(f[0])), ['Sem detalhe do Mercado Livre', 2]);
+    assert.equal(g.soma, 7);
+    assert.ok(!/desconhecido/.test(d['canc-donut-wrap'].innerHTML), 'sem fatia de grupo inventado');
+  });
+
+  test('20. taxa operacional nao muda (cancelados / todos os pedidos do periodo)', async () => {
+    const h = montar({ historico: [...PAGOS, SEM_DETALHE], cancelados: { legado: comDetalhe() } });
+    await h.carregar();
+    const d = h.aba();
+    assert.equal(d['canc-taxa'].textContent, (139 / 1139 * 100).toFixed(1) + '%');
+    assert.equal(h.pedidos()['ord-cancel'].textContent, '139');
+  });
+
+  test('periodo global continua respeitado: setembro nao ve o sem-detalhe de outubro', async () => {
+    const h = montar({ historico: [...HIST_ML, SEM_DETALHE], periodo: SET });
+    await h.carregar();
+    const d = h.aba();
+    assert.equal(d['canc-total'].textContent, '3');
+    assert.equal(d['canc-donut-meta'].textContent, '0 classificados de 3', 'os 3 de setembro da lista nao tem cancel_detail');
+    assert.ok(!/2000018740568118/.test(JSON.stringify(d)));
+  });
+});
