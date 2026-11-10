@@ -182,14 +182,15 @@ describe('API Product Ads — metrics_summary.cost do periodo exato', () => {
     assert.equal(card(d).status, 'publicidade indisponível (a consulta falhou)');
   });
 
-  test('4. custo consultado para OUTRO periodo nao e usado', async () => {
+  test('4. custo consultado para OUTRO periodo nao e usado (a consulta deste periodo ainda nao veio: carregando, nao indisponivel)', async () => {
     const h = montar({ ads: { [chave(P2)]: resposta(350) } });
     await h.consultar(P2);                 // a ultima consulta foi de setembro
     const d = h.definirPeriodoSemConsultar(P1);
     assert.equal(h.api().custo, 350);
     assert.equal(h.pub(P1).disponivel, false);
     assert.equal(card(d).valor, '');
-    assert.equal(card(d).status, 'publicidade indisponível (sem dado do período)');
+    // HOTFIX: "indisponivel" so depois que a tentativa DESTE periodo terminar.
+    assert.equal(card(d).status, 'carregando...');
   });
 
   test('4b. resposta atrasada de um periodo ja trocado e descartada', async () => {
@@ -410,5 +411,38 @@ describe('o resto nao muda', () => {
       'const totPub = _pub.disponivel ? _pub.custo : 0;',
     ]) assert.ok(r.includes(linha), linha);
     assert.ok(extrairFuncao('renderMargemSemFinanceiro').includes('const _pub = publicidadeDoPeriodo(_gPub.from, _gPub.toEfetivo);'));
+  });
+});
+
+describe('HOTFIX — carregando x indisponivel (sem flash falso)', () => {
+  test('21. consulta pendente: "carregando...", nunca "indisponível" (antes e durante a consulta do periodo)', async () => {
+    const h = montar({ ads: { [chave(P1)]: resposta(200) }, atraso: { [chave(P1)]: 30 } });
+    assert.equal(card(h.render()).status, 'carregando...', 'boot: nenhuma consulta ainda (idle)');
+    const pend = h.boot();
+    await new Promise(r => setTimeout(r, 5));
+    const d = h.render();
+    assert.equal(card(d).status, 'carregando...', 'durante a consulta do periodo');
+    assert.equal(card(d).valor, '');
+    await pend;
+    assert.equal(card(h.dom).status, '10.0% do bruto · Product Ads');
+  });
+
+  test('22. a tentativa do periodo terminou sem dado: indisponível', async () => {
+    const h = montar({ ads: {} });
+    const d = await h.boot();
+    assert.equal(h.pub(P1).disponivel, false);
+    assert.equal(card(d).valor, '');
+    assert.match(card(d).status, /^publicidade indisponível/);
+  });
+
+  test('23. resposta valida: o valor', async () => {
+    const d = await montar({ ads: { [chave(P1)]: resposta(200) } }).boot();
+    assert.equal(card(d).valor, '200.00');
+  });
+
+  test('24. zero real: R$ 0,00 (nao "carregando", nao "indisponível")', async () => {
+    const d = await montar({ ads: { [chave(P1)]: resposta(0) } }).boot();
+    assert.equal(card(d).valor, '0.00');
+    assert.equal(card(d).status, '0.0% do bruto · Product Ads');
   });
 });
